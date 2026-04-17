@@ -1,0 +1,20 @@
+# 비전
+ultralytics
+mediapipe
+opencv-python
+numpy
+
+# 트래킹
+lap
+
+# 백엔드
+fastapi
+uvicorn[standard]
+websockets
+
+# 오디오
+# (미정)
+
+# 유틸
+python-dotenv
+pydantic

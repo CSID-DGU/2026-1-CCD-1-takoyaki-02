@@ -1,0 +1,52 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+.venv/
+venv/
+env/
+
+# YOLO 가중치
+weights/*.pt
+weights/*.pth
+
+# 환경 변수
+.env
+.env.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# 로그
+*.log
+logs/
+
+# Node
+frontend/node_modules/
+frontend/dist/
+frontend/.env
+
+# TTS 캐시
+audio/assets/tts_cache/*.wav
+
+# Jupyter
+.ipynb_checkpoints/
+
+# 학습 데이터 (용량)
+training/*/images/
+training/*/labels/
+training/runs/
