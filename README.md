@@ -3,17 +3,19 @@
 ## 📁 디렉토리 구조
 
 ```text
-boardmaster-ai/
+boardgame-ai/
 ├── app.py                  # 전체 모듈을 조립하고 실행하는 진입점
 ├── requirements.txt        # Python 의존성 목록
+├── pyproject.toml          # 패키지 설정 및 개발 도구 설정
 ├── .gitignore              # Git 추적 제외 파일 목록
 │
-├── 📁 core/                # 게임 공통 모델과 이벤트, 식별 로직
-│   ├── models.py           # Player, Session 등 공통 데이터 모델
-│   ├── events.py           # GameEvent, FusionContext 등 공통 이벤트 스키마
-│   ├── player_identifier.py# zone + handedness 기반 플레이어 식별
-│   ├── seat_registration.py# 좌석 등록 및 제스처 확인 로직
-│   └── pointing_resolver.py# 검지 방향과 앵커를 매칭하는 로직
+├── 📁 core/                # 공유 타입·상수 (순수 Python, 외부 라이브러리 금지)
+│   ├── constants.py        # MsgType, CommonPhase, CommonEventType, DEFAULT_PARAMS 등
+│   ├── models.py           # Player, SeatZone 공통 데이터 모델
+│   ├── events.py           # GameEvent, FusionContext 이벤트 스키마
+│   ├── envelope.py         # WSMessage 공통 메시지 봉투
+│   ├── audio.py            # TTSRequest, AudioType, AudioPriority
+│   └── player_manager.py   # 플레이어 CRUD + 좌석 등록 공통 로직
 │
 ├── 📁 vision/              # 객체·제스처 인식을 수행하는 비전 파이프라인
 │   ├── pipeline.py         # 전체 비전 파이프라인 조립
@@ -27,10 +29,10 @@ boardmaster-ai/
 │   ├── yacht/              # 요트다이스 전용 FSM/상태/점수 로직
 │   └── werewolf/           # 늑대인간 전용 FSM/상태/판정 로직
 │
-├── 📁 bridge/              # 비전과 게임 로직을 연결하는 인터페이스 계층
-│   ├── interface.py        # 공통 브리지 인터페이스 정의
-│   ├── local_bridge.py     # 로컬 실행용 직접 호출 브리지
-│   └── websocket_bridge.py # 분리 배포용 WebSocket 브리지
+├── 📁 bridge/              # 비전 ↔ FSM 통신 인터페이스 계층
+│   ├── interface.py        # 추상 Bridge 인터페이스 정의
+│   ├── local_bridge.py     # 인프로세스 직접 연결 (개발/테스트용)
+│   └── websocket_bridge.py # WebSocket 브리지 (Phase 1 후반 구현 예정)
 │
 ├── 📁 audio/               # TTS, 효과음, BGM 등 오디오 관리
 │   ├── manager.py          # 오디오 재생 큐와 인터럽트 관리
@@ -49,9 +51,8 @@ boardmaster-ai/
 │   ├── package.json        # 프론트엔드 의존성 및 스크립트 설정
 │   └── vite.config.js      # Vite 빌드 설정
 │
-├── 📁 weights/             # 학습된 모델 가중치 파일 저장
-│   ├── yacht_best.pt       # 요트다이스 객체 인식 가중치
-│   └── werewolf_best.pt    # 늑대인간 객체 인식 가중치
+├── 📁 weights/             # 학습된 모델 가중치 (Git 제외, Google Drive 공유)
+│   └── README.md           # 명명 규칙 및 관리 방법
 │
 ├── 📁 training/            # 객체 인식 모델 학습 코드와 설정 파일
 │   ├── yacht/              # 요트다이스 학습 데이터 설정
@@ -64,13 +65,17 @@ boardmaster-ai/
 │   └── dice_prototype_v2.py# 주사위 인식 프로토타입 코드
 │
 ├── 📁 tests/               # 게임 로직과 규칙 검증용 테스트 코드
+│   ├── test_contracts.py   # core/ 타입 직렬화·구조 계약 테스트 (CI 필수)
 │   ├── test_yacht_fsm.py   # 요트다이스 FSM 테스트
 │   ├── test_werewolf_fsm.py# 늑대인간 FSM 테스트
 │   ├── test_scoring.py     # 점수 계산 테스트
 │   └── test_fusion_rules.py# 퓨전 규칙 테스트
 │
 └── 📁 docs/                # 설계 문서와 통신/데이터 흐름 명세
+    ├── phase1_spec.md      # 비전↔FSM 인터페이스 계약서 (Phase 1)
+    ├── team_workflow.md    # 브랜치·PR·CI·가중치 관리 규칙
     ├── FSM_설계.md         # FSM 설계 문서
     ├── WebSocket_명세.md   # WebSocket 메시지 명세
     ├── 데이터흐름_명세.md   # 시스템 데이터 흐름 문서
     └── diagrams/           # 아키텍처 및 설계 다이어그램
+```

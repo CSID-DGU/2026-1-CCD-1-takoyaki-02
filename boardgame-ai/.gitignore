@@ -50,3 +50,19 @@ audio/assets/tts_cache/*.wav
 training/*/images/
 training/*/labels/
 training/runs/
+
+# 개발 도구 캐시
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+
+# 모델 가중치
+weights/*.onnx
+weights/*.engine
+
+# 학습 데이터
+training/**/datasets/
+training/**/runs/
+training/**/*.zip
