@@ -42,19 +42,19 @@ def draw_overlay(
         x2 = int(bbox.x2 * w)
         y2 = int(bbox.y2 * h)
         cv2.rectangle(frame_bgr, (x1, y1), (x2, y2), color, 2)
-        cv2.putText(frame_bgr, label, (x1, max(y1 - 6, 10)),
-                    _FONT, 0.5, color, 1, cv2.LINE_AA)
+        cv2.putText(frame_bgr, label, (x1, max(y1 - 6, 10)), _FONT, 0.5, color, 1, cv2.LINE_AA)
 
     # tray 계열
     if perception.tray:
-        _draw_bbox(perception.tray, _COLOR_TRAY,
-                   f"tray {perception.tray.conf:.2f}")
+        _draw_bbox(perception.tray, _COLOR_TRAY, f"tray {perception.tray.conf:.2f}")
     if perception.tray_inner:
-        _draw_bbox(perception.tray_inner, _COLOR_TRAY_INNER,
-                   f"inner {perception.tray_inner.conf:.2f}")
+        _draw_bbox(
+            perception.tray_inner, _COLOR_TRAY_INNER, f"inner {perception.tray_inner.conf:.2f}"
+        )
     if perception.roll_tray:
-        _draw_bbox(perception.roll_tray, _COLOR_ROLL_TRAY,
-                   f"roll_tray {perception.roll_tray.conf:.2f}")
+        _draw_bbox(
+            perception.roll_tray, _COLOR_ROLL_TRAY, f"roll_tray {perception.roll_tray.conf:.2f}"
+        )
 
     # 주사위
     for ds in perception.dice:
@@ -75,8 +75,16 @@ def draw_overlay(
         # 라벨
         pid = hand.player_id or "?"
         gest = hand.gesture or "neutral"
-        cv2.putText(frame_bgr, f"{hand.handedness[0]}:{pid}:{gest}",
-                    (wx + 8, wy), _FONT, 0.45, color, 1, cv2.LINE_AA)
+        cv2.putText(
+            frame_bgr,
+            f"{hand.handedness[0]}:{pid}:{gest}",
+            (wx + 8, wy),
+            _FONT,
+            0.45,
+            color,
+            1,
+            cv2.LINE_AA,
+        )
 
     # roll_actor + roll_state
     roll_state = perception.phase_hints.get("roll_state", "")
@@ -93,8 +101,7 @@ def draw_overlay(
         bx = (w - tw) // 2
         by = 70
         # 반투명 배경
-        cv2.rectangle(frame_bgr, (bx - 8, by - th - 8), (bx + tw + 8, by + 8),
-                      (0, 0, 0), -1)
+        cv2.rectangle(frame_bgr, (bx - 8, by - th - 8), (bx + tw + 8, by + 8), (0, 0, 0), -1)
         cv2.putText(frame_bgr, banner, (bx, by), _FONT, 1.0, (0, 255, 128), 2, cv2.LINE_AA)
 
     return frame_bgr

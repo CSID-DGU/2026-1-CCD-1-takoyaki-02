@@ -12,6 +12,7 @@ from vision.schemas import BBox, YoloDet
 
 try:
     import lap  # type: ignore[import]
+
     _HAS_LAP = True
 except ImportError:
     _HAS_LAP = False
@@ -22,13 +23,12 @@ def _iou_cost(a: BBox, b: BBox) -> float:
     return 1.0 - a.iou(b)
 
 
-
 @dataclass
 class _Track:
     track_id: int
     bbox: BBox
-    age: int = 0          # 마지막 매칭 이후 프레임 수
-    hit_streak: int = 1   # 연속 매칭 프레임 수
+    age: int = 0  # 마지막 매칭 이후 프레임 수
+    hit_streak: int = 1  # 연속 매칭 프레임 수
 
 
 class ByteTracker:
@@ -52,9 +52,7 @@ class ByteTracker:
         self._tracks: list[_Track] = []
         self._next_id = 1
 
-    def update(
-        self, dets: list[YoloDet], frame_id: int = 0
-    ) -> list[tuple[int, YoloDet]]:
+    def update(self, dets: list[YoloDet], frame_id: int = 0) -> list[tuple[int, YoloDet]]:
         """
         Returns
         -------
@@ -62,13 +60,14 @@ class ByteTracker:
         """
         if not self._tracks:
             for det in dets:
-                self._tracks.append(
-                    _Track(track_id=self._next_id, bbox=det.bbox)
-                )
+                self._tracks.append(_Track(track_id=self._next_id, bbox=det.bbox))
                 self._next_id += 1
             return [
-                (t.track_id, YoloDet(cls_name=det.cls_name, bbox=det.bbox, track_id=t.track_id))
-                for t, det in zip(self._tracks, dets)
+                (
+                    t.track_id,
+                    YoloDet(cls_name=det.cls_name, bbox=det.bbox, track_id=t.track_id),
+                )
+                for t, det in zip(self._tracks, dets, strict=False)
                 if t.hit_streak >= self._min_hits
             ]
 
@@ -82,9 +81,7 @@ class ByteTracker:
 
         # 신규 감지 → 새 트랙
         for det_idx in unmatched_dets:
-            self._tracks.append(
-                _Track(track_id=self._next_id, bbox=dets[det_idx].bbox)
-            )
+            self._tracks.append(_Track(track_id=self._next_id, bbox=dets[det_idx].bbox))
             self._next_id += 1
 
         # 매칭 실패 트랙 age 증가
@@ -102,14 +99,15 @@ class ByteTracker:
             if trk and trk.hit_streak >= self._min_hits:
                 det = dets[det_idx]
                 results.append(
-                    (trk.track_id, YoloDet(cls_name=det.cls_name, bbox=det.bbox, track_id=trk.track_id))
+                    (
+                        trk.track_id,
+                        YoloDet(cls_name=det.cls_name, bbox=det.bbox, track_id=trk.track_id),
+                    )
                 )
 
         return results
 
-    def _match(
-        self, dets: list[YoloDet]
-    ) -> tuple[list[tuple[int, int]], list[int], list[int]]:
+    def _match(self, dets: list[YoloDet]) -> tuple[list[tuple[int, int]], list[int], list[int]]:
         """Hungarian matching. 반환: (matched, unmatched_dets, unmatched_trks)."""
         n_det = len(dets)
         n_trk = len(self._tracks)

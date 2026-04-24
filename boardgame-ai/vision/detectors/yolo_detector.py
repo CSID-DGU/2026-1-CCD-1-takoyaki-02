@@ -32,9 +32,7 @@ class YoloDetector:
         self._iou = iou
         self._imgsz = imgsz
         # 클래스 이름 → index 역매핑 (모델에 없는 클래스 감지 방지)
-        self._cls_names: dict[int, str] = {
-            int(k): str(v) for k, v in self._model.names.items()
-        }
+        self._cls_names: dict[int, str] = {int(k): str(v) for k, v in self._model.names.items()}
 
     def detect(self, frame_bgr: Any) -> list[YoloDet]:
         """BGR 프레임 → YoloDet 리스트. 정규화 좌표."""

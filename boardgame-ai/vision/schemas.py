@@ -57,17 +57,23 @@ class BBox:
 
     def to_dict(self) -> dict[str, Any]:
         return {
-            "x1": self.x1, "y1": self.y1,
-            "x2": self.x2, "y2": self.y2,
-            "conf": self.conf, "cls_name": self.cls_name,
+            "x1": self.x1,
+            "y1": self.y1,
+            "x2": self.x2,
+            "y2": self.y2,
+            "conf": self.conf,
+            "cls_name": self.cls_name,
         }
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> BBox:
         return cls(
-            x1=float(d["x1"]), y1=float(d["y1"]),
-            x2=float(d["x2"]), y2=float(d["y2"]),
-            conf=float(d["conf"]), cls_name=str(d["cls_name"]),
+            x1=float(d["x1"]),
+            y1=float(d["y1"]),
+            x2=float(d["x2"]),
+            y2=float(d["y2"]),
+            conf=float(d["conf"]),
+            cls_name=str(d["cls_name"]),
         )
 
 

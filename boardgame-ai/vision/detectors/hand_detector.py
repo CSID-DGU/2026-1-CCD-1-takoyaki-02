@@ -61,13 +61,15 @@ class HandDetector:
             ]
             wrist_xy = landmarks_21[0]
 
-            dets.append(HandDet(
-                handedness=handedness,
-                wrist_xy=wrist_xy,
-                landmarks_21=landmarks_21,
-                gesture=None,
-                player_id=None,
-            ))
+            dets.append(
+                HandDet(
+                    handedness=handedness,
+                    wrist_xy=wrist_xy,
+                    landmarks_21=landmarks_21,
+                    gesture=None,
+                    player_id=None,
+                )
+            )
 
         return dets
 

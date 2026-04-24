@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 
-from core.constants import CommonEventType, CommonPhase, DEFAULT_PARAMS
+from core.constants import DEFAULT_PARAMS, CommonEventType, CommonPhase
 from core.events import FusionContext, GameEvent
 from vision.fusion.yacht_rules import YachtRules
 from vision.schemas import FramePerception, HandDet
@@ -46,9 +46,17 @@ class FusionEngine:
         """FramePerception을 소비해 통과한 GameEvent 리스트 반환."""
         ctx = self._context
         params = {**DEFAULT_PARAMS, **ctx.params}
-        stab_frames = int(params.get("stabilization_frames", DEFAULT_PARAMS["stabilization_frames"]))
-        gesture_stab = int(params.get("gesture_stabilization_frames", DEFAULT_PARAMS["gesture_stabilization_frames"]))
-        conf_threshold = float(params.get("confidence_threshold", DEFAULT_PARAMS["confidence_threshold"]))
+        stab_frames = int(
+            params.get("stabilization_frames", DEFAULT_PARAMS["stabilization_frames"])
+        )
+        gesture_stab = int(
+            params.get(
+                "gesture_stabilization_frames", DEFAULT_PARAMS["gesture_stabilization_frames"]
+            )
+        )
+        conf_threshold = float(
+            params.get("confidence_threshold", DEFAULT_PARAMS["confidence_threshold"])
+        )
 
         candidates: list[tuple[str, object, float]] = []  # (event_type, data_key, confidence)
 
@@ -81,7 +89,11 @@ class FusionEngine:
                 self._stab_candidates[event_type] = stab_key
 
             # 조건 3: N프레임 안정화
-            required = gesture_stab if "seat_hand" in event_type or "gesture" in event_type else stab_frames
+            required = (
+                gesture_stab
+                if "seat_hand" in event_type or "gesture" in event_type
+                else stab_frames
+            )
             self._stab_counters[event_type] += 1
             if self._stab_counters[event_type] < required:
                 continue
@@ -95,24 +107,30 @@ class FusionEngine:
 
             # allowed_actors 검증 (비어있으면 개발 모드 → 스킵)
             if ctx.allowed_actors and actor_id and actor_id not in ctx.allowed_actors:
-                events.append(GameEvent(
-                    event_type=CommonEventType.RULE_VIOLATION,
-                    actor_id=actor_id,
-                    confidence=1.0,
-                    frame_id=perception.frame_id,
-                    data={"violation_type": "WRONG_TURN",
-                          "detail": f"{actor_id} not in allowed_actors"},
-                ))
+                events.append(
+                    GameEvent(
+                        event_type=CommonEventType.RULE_VIOLATION,
+                        actor_id=actor_id,
+                        confidence=1.0,
+                        frame_id=perception.frame_id,
+                        data={
+                            "violation_type": "WRONG_TURN",
+                            "detail": f"{actor_id} not in allowed_actors",
+                        },
+                    )
+                )
                 self._stab_counters[event_type] = 0
                 continue
 
-            events.append(GameEvent(
-                event_type=event_type,
-                actor_id=actor_id,
-                confidence=conf,
-                frame_id=perception.frame_id,
-                data={k: v for k, v in event_data.items() if k != "actor_id"},
-            ))
+            events.append(
+                GameEvent(
+                    event_type=event_type,
+                    actor_id=actor_id,
+                    confidence=conf,
+                    frame_id=perception.frame_id,
+                    data={k: v for k, v in event_data.items() if k != "actor_id"},
+                )
+            )
             # 발화 후 카운터 리셋 (중복 발화 방지)
             self._stab_counters[event_type] = 0
 

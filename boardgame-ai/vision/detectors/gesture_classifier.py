@@ -72,8 +72,7 @@ class GestureClassifier:
         # ── grab: 검지~새끼 4손가락 굽힘 (엄지는 구조상 제외)
         four_tips = [_INDEX_TIP, _MIDDLE_TIP, _RING_TIP, _PINKY_TIP]
         four_curled = all(
-            _dist(lms[tip], lms[_WRIST]) < hand_length * self._grab_ratio
-            for tip in four_tips
+            _dist(lms[tip], lms[_WRIST]) < hand_length * self._grab_ratio for tip in four_tips
         )
         if four_curled:
             return "grab"

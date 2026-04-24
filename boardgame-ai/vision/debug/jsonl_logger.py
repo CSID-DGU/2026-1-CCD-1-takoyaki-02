@@ -16,7 +16,7 @@ class JsonlLogger:
     def __init__(self, path: Path | None) -> None:
         self._file: io.TextIOWrapper | None = None
         if path is not None:
-            self._file = open(path, "a", encoding="utf-8")
+            self._file = path.open("a", encoding="utf-8")
 
     def log(self, perception: FramePerception) -> None:
         if self._file is None:

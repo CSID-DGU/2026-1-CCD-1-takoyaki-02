@@ -45,6 +45,7 @@ def _make_frame() -> FramePerception:
 
 # ── BBox ──────────────────────────────────────────────────────────────────────
 
+
 def test_bbox_properties() -> None:
     b = BBox(x1=0.1, y1=0.2, x2=0.5, y2=0.8, conf=0.9, cls_name="tray")
     assert abs(b.cx - 0.3) < 1e-9
@@ -77,6 +78,7 @@ def test_bbox_roundtrip() -> None:
 
 # ── YoloDet ───────────────────────────────────────────────────────────────────
 
+
 def test_yolo_det_roundtrip() -> None:
     det = YoloDet(cls_name="dice", bbox=_make_bbox(), track_id=7)
     assert YoloDet.from_dict(det.to_dict()) == det
@@ -90,21 +92,28 @@ def test_yolo_det_no_track_id() -> None:
 
 # ── DiceState ─────────────────────────────────────────────────────────────────
 
+
 def test_dice_state_roundtrip() -> None:
     ds = DiceState(
-        track_id=3, bbox=_make_bbox(), center=(0.3, 0.4),
-        motion_score=0.001, stable_frames=25, pip_count=5,
+        track_id=3,
+        bbox=_make_bbox(),
+        center=(0.3, 0.4),
+        motion_score=0.001,
+        stable_frames=25,
+        pip_count=5,
     )
     assert DiceState.from_dict(ds.to_dict()) == ds
 
 
 def test_dice_state_no_pip() -> None:
-    ds = DiceState(track_id=1, bbox=_make_bbox(), center=(0.3, 0.4),
-                   motion_score=0.01, stable_frames=2)
+    ds = DiceState(
+        track_id=1, bbox=_make_bbox(), center=(0.3, 0.4), motion_score=0.01, stable_frames=2
+    )
     assert DiceState.from_dict(ds.to_dict()).pip_count is None
 
 
 # ── HandDet ───────────────────────────────────────────────────────────────────
+
 
 def test_hand_det_roundtrip() -> None:
     h = HandDet(
@@ -123,6 +132,7 @@ def test_hand_det_roundtrip() -> None:
 
 
 # ── FramePerception ───────────────────────────────────────────────────────────
+
 
 def test_frame_perception_roundtrip() -> None:
     fp = _make_frame()

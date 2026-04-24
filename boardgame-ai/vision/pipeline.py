@@ -97,16 +97,20 @@ class VisionPipeline:
         self._running = True
         skip_counter = 0
 
-        print(f"[pipeline] cap opened={cap.isOpened()}  "
-              f"w={cap.get(cv2.CAP_PROP_FRAME_WIDTH):.0f}  "
-              f"h={cap.get(cv2.CAP_PROP_FRAME_HEIGHT):.0f}  "
-              f"fps={cap.get(cv2.CAP_PROP_FPS):.0f}")
+        print(
+            f"[pipeline] cap opened={cap.isOpened()}  "
+            f"w={cap.get(cv2.CAP_PROP_FRAME_WIDTH):.0f}  "
+            f"h={cap.get(cv2.CAP_PROP_FRAME_HEIGHT):.0f}  "
+            f"fps={cap.get(cv2.CAP_PROP_FPS):.0f}"
+        )
 
         try:
             while self._running:
                 ret, frame = cap.read()
                 if not ret:
-                    print("[pipeline] cap.read() returned False — camera disconnected or end of file")
+                    print(
+                        "[pipeline] cap.read() returned False — camera disconnected or end of file"
+                    )
                     break
 
                 # frame_skip: 0=모든 프레임, N=N프레임 건너뜀
@@ -120,9 +124,8 @@ class VisionPipeline:
                 self._process_one(frame, self._frame_id, ts)
                 self._frame_id += 1
 
-                if self._config.debug_overlay:
-                    if cv2.waitKey(1) & 0xFF == ord("q"):
-                        break
+                if self._config.debug_overlay and cv2.waitKey(1) & 0xFF == ord("q"):
+                    break
         finally:
             cap.release()
             if self._config.debug_overlay:
@@ -160,13 +163,15 @@ class VisionPipeline:
             self._prev_gestures[i] = gesture
 
             player_id = self._seat_matcher.match(hand, self._players)
-            hands.append(HandDet(
-                handedness=hand.handedness,
-                wrist_xy=hand.wrist_xy,
-                landmarks_21=hand.landmarks_21,
-                gesture=gesture,
-                player_id=player_id,
-            ))
+            hands.append(
+                HandDet(
+                    handedness=hand.handedness,
+                    wrist_xy=hand.wrist_xy,
+                    landmarks_21=hand.landmarks_21,
+                    gesture=gesture,
+                    player_id=player_id,
+                )
+            )
 
         # 사라진 손 이력 정리
         for k in list(self._prev_gestures.keys()):
@@ -212,7 +217,8 @@ class VisionPipeline:
         # 9) 디버그 오버레이
         if self._config.debug_overlay:
             vis = draw_overlay(
-                frame_bgr.copy(), perception,
+                frame_bgr.copy(),
+                perception,
                 recent_event=self._last_event_data,
                 event_ttl_frames=self._event_banner_ttl,
             )

@@ -50,14 +50,14 @@ def main() -> None:
     def _tb(name: str, val: int, maxv: int) -> None:
         cv2.createTrackbar(name, WIN, val, maxv, lambda _: None)
 
-    _tb("dp x10",        int(params.dp * 10),              30)
-    _tb("min_dist%",     int(params.min_dist_ratio * 100), 80)
-    _tb("canny_upper",   params.canny_upper,               200)
-    _tb("accum_thresh",  params.accum_thresh,               50)
-    _tb("r_min%",        int(params.radius_min_ratio * 100), 20)
-    _tb("r_max%",        int(params.radius_max_ratio * 100), 40)
-    _tb("clahe_clip x10", int(params.clahe_clip * 10),     80)
-    _tb("stable_frames", 15,                               60)
+    _tb("dp x10", int(params.dp * 10), 30)
+    _tb("min_dist%", int(params.min_dist_ratio * 100), 80)
+    _tb("canny_upper", params.canny_upper, 200)
+    _tb("accum_thresh", params.accum_thresh, 50)
+    _tb("r_min%", int(params.radius_min_ratio * 100), 20)
+    _tb("r_max%", int(params.radius_max_ratio * 100), 40)
+    _tb("clahe_clip x10", int(params.clahe_clip * 10), 80)
+    _tb("stable_frames", 15, 60)
 
     cap = cv2.VideoCapture(source)
     print(f"[tune] source={source}  Press 's' to print params, 'q' to quit")
@@ -69,14 +69,14 @@ def main() -> None:
             continue
 
         # 트랙바 값 읽기
-        params.dp               = max(0.1, cv2.getTrackbarPos("dp x10", WIN) / 10)
-        params.min_dist_ratio   = max(0.01, cv2.getTrackbarPos("min_dist%", WIN) / 100)
-        params.canny_upper      = max(1, cv2.getTrackbarPos("canny_upper", WIN))
-        params.accum_thresh     = max(1, cv2.getTrackbarPos("accum_thresh", WIN))
+        params.dp = max(0.1, cv2.getTrackbarPos("dp x10", WIN) / 10)
+        params.min_dist_ratio = max(0.01, cv2.getTrackbarPos("min_dist%", WIN) / 100)
+        params.canny_upper = max(1, cv2.getTrackbarPos("canny_upper", WIN))
+        params.accum_thresh = max(1, cv2.getTrackbarPos("accum_thresh", WIN))
         params.radius_min_ratio = max(0.01, cv2.getTrackbarPos("r_min%", WIN) / 100)
         params.radius_max_ratio = max(0.02, cv2.getTrackbarPos("r_max%", WIN) / 100)
-        params.clahe_clip       = max(0.1, cv2.getTrackbarPos("clahe_clip x10", WIN) / 10)
-        stable_frames           = cv2.getTrackbarPos("stable_frames", WIN)
+        params.clahe_clip = max(0.1, cv2.getTrackbarPos("clahe_clip x10", WIN) / 10)
+        stable_frames = cv2.getTrackbarPos("stable_frames", WIN)
 
         # YOLO 감지
         dets = yolo.detect(frame)
@@ -99,38 +99,36 @@ def main() -> None:
             color = (0, 255, 0) if result is not None else (0, 0, 255)
             cv2.rectangle(vis, (x1, y1), (x2, y2), color, 2)
             label = str(result) if result is not None else "?"
-            cv2.putText(vis, label, (x1, y1 - 6),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.9, color, 2)
+            cv2.putText(vis, label, (x1, y1 - 6), cv2.FONT_HERSHEY_SIMPLEX, 0.9, color, 2)
 
         # 파라미터 정보 표시
-        info = (f"dp={params.dp:.1f} dist={params.min_dist_ratio:.2f} "
-                f"canny={params.canny_upper} acc={params.accum_thresh} "
-                f"r={params.radius_min_ratio:.2f}-{params.radius_max_ratio:.2f} "
-                f"stable={stable_frames}f")
-        cv2.putText(vis, info, (10, 30),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 1)
+        info = (
+            f"dp={params.dp:.1f} dist={params.min_dist_ratio:.2f} "
+            f"canny={params.canny_upper} acc={params.accum_thresh} "
+            f"r={params.radius_min_ratio:.2f}-{params.radius_max_ratio:.2f} "
+            f"stable={stable_frames}f"
+        )
+        cv2.putText(vis, info, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 1)
 
         # 크롭 이미지 우측에 타일로 표시
         if crops:
-            tile_h = 120
             tile_col = np.vstack(crops) if len(crops) <= 6 else np.vstack(crops[:6])
             # 높이 맞추기
             pad_h = max(0, vis.shape[0] - tile_col.shape[0])
             if pad_h > 0:
-                tile_col = np.vstack([tile_col,
-                    np.zeros((pad_h, 120, 3), dtype=np.uint8)])
+                tile_col = np.vstack([tile_col, np.zeros((pad_h, 120, 3), dtype=np.uint8)])
             else:
-                tile_col = tile_col[:vis.shape[0]]
+                tile_col = tile_col[: vis.shape[0]]
             vis = np.hstack([vis, tile_col])
 
         cv2.imshow(WIN, vis)
 
         key = cv2.waitKey(1) & 0xFF
-        if key == ord('q'):
+        if key == ord("q"):
             break
-        elif key == ord('s'):
+        elif key == ord("s"):
             print("\n=== DotCounterParams (copy to dot_counter.py) ===")
-            print(f"DotCounterParams(")
+            print("DotCounterParams(")
             print(f"    dp={params.dp},")
             print(f"    min_dist_ratio={params.min_dist_ratio},")
             print(f"    canny_upper={params.canny_upper},")
@@ -138,7 +136,7 @@ def main() -> None:
             print(f"    radius_min_ratio={params.radius_min_ratio},")
             print(f"    radius_max_ratio={params.radius_max_ratio},")
             print(f"    clahe_clip={params.clahe_clip},")
-            print(f")")
+            print(")")
             print(f"stable_frames = {stable_frames}")
             print("=================================================\n")
 

@@ -5,8 +5,6 @@ opencv-python 필요. 합성 이미지(흰 사각형 + 검은 원)로 1~6 검증
 
 from __future__ import annotations
 
-import math
-
 import cv2
 import numpy as np
 import pytest

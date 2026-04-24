@@ -17,10 +17,8 @@ def _parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="mp4 프레임 추출")
     p.add_argument("--src", required=True, help="입력 mp4 경로")
     p.add_argument("--out", required=True, help="출력 디렉토리")
-    p.add_argument("--step", type=int, default=1,
-                   help="추출 간격 (1=전체, 5=5프레임마다 1장)")
-    p.add_argument("--fmt", default="jpg", choices=["jpg", "png"],
-                   help="출력 이미지 포맷")
+    p.add_argument("--step", type=int, default=1, help="추출 간격 (1=전체, 5=5프레임마다 1장)")
+    p.add_argument("--fmt", default="jpg", choices=["jpg", "png"], help="출력 이미지 포맷")
     p.add_argument("--start", type=int, default=0, help="시작 프레임 인덱스")
     p.add_argument("--end", type=int, default=None, help="종료 프레임 인덱스")
     return p.parse_args()

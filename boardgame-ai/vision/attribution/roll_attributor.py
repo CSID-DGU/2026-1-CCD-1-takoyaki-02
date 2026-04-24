@@ -124,9 +124,7 @@ class RollAttributor:
 
     # ── state handlers ────────────────────────────────────────────────────────
 
-    def _handle_idle(
-        self, perception: FramePerception, roll_tray: BBox | None
-    ) -> str | None:
+    def _handle_idle(self, perception: FramePerception, roll_tray: BBox | None) -> str | None:
         grab_hand = self._find_grab_on_roll_tray(perception, roll_tray)
         if grab_hand is not None:
             self._candidate_actor = grab_hand.player_id
@@ -152,9 +150,7 @@ class RollAttributor:
             self._state = RollState.RELEASE_SEEN
         return None
 
-    def _handle_lifted(
-        self, perception: FramePerception, roll_tray: BBox | None
-    ) -> str | None:
+    def _handle_lifted(self, perception: FramePerception, roll_tray: BBox | None) -> str | None:
         # release 감지: grab→non-grab 전환
         release_hand = self._find_release_near_tray(perception, roll_tray)
         if release_hand is not None:
@@ -241,9 +237,7 @@ class RollAttributor:
     def _all_dice_stable(self, perception: FramePerception) -> bool:
         return perception.dice_all_stable(self._stab_frames)
 
-    def _nearest_player_to_roll_tray(
-        self, perception: FramePerception
-    ) -> str | None:
+    def _nearest_player_to_roll_tray(self, perception: FramePerception) -> str | None:
         if perception.roll_tray is None:
             return None
         cx, cy = perception.roll_tray.center()

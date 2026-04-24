@@ -17,12 +17,9 @@ from vision.schemas import DiceState, YoloDet
 @dataclass
 class _DiceHistory:
     """track_id별 이력."""
-    center_history: deque[tuple[float, float]] = field(
-        default_factory=lambda: deque(maxlen=10)
-    )
-    pip_buffer: deque[int] = field(
-        default_factory=lambda: deque(maxlen=5)
-    )
+
+    center_history: deque[tuple[float, float]] = field(default_factory=lambda: deque(maxlen=10))
+    pip_buffer: deque[int] = field(default_factory=lambda: deque(maxlen=5))
     stable_frames: int = 0
     last_pip: int | None = None
 
@@ -42,7 +39,7 @@ class DiceManager:
         motion_threshold: float = 0.002,
         stabilization_frames: int = 15,  # 30프레임(1초) → 15프레임(0.5초)으로 완화
         history_window: int = 10,
-        pip_buffer_size: int = 7,        # 다수결 버퍼 확대 (flicker 방어 강화)
+        pip_buffer_size: int = 7,  # 다수결 버퍼 확대 (flicker 방어 강화)
     ) -> None:
         self._motion_threshold = motion_threshold
         self._stabilization_frames = stabilization_frames
@@ -77,10 +74,13 @@ class DiceManager:
         states: list[DiceState] = []
 
         for track_id, det in tracked:
-            hist = self._histories.setdefault(track_id, _DiceHistory(
-                center_history=deque(maxlen=self._history_window),
-                pip_buffer=deque(maxlen=self._pip_buffer_size),
-            ))
+            hist = self._histories.setdefault(
+                track_id,
+                _DiceHistory(
+                    center_history=deque(maxlen=self._history_window),
+                    pip_buffer=deque(maxlen=self._pip_buffer_size),
+                ),
+            )
 
             center = det.bbox.center()
             hist.center_history.append(center)
@@ -108,14 +108,16 @@ class DiceManager:
                 # 흔들리는 프레임 → 직전 stable 값 유지
                 pass
 
-            states.append(DiceState(
-                track_id=track_id,
-                bbox=det.bbox,
-                center=center,
-                motion_score=motion_score,
-                stable_frames=hist.stable_frames,
-                pip_count=hist.last_pip,
-            ))
+            states.append(
+                DiceState(
+                    track_id=track_id,
+                    bbox=det.bbox,
+                    center=center,
+                    motion_score=motion_score,
+                    stable_frames=hist.stable_frames,
+                    pip_count=hist.last_pip,
+                )
+            )
 
         return states
 
@@ -135,7 +137,7 @@ def _compute_motion_score(history: deque[tuple[float, float]]) -> float:
         dists.append((dx * dx + dy * dy) ** 0.5)
     mean = sum(dists) / len(dists)
     variance = sum((d - mean) ** 2 for d in dists) / len(dists)
-    return variance ** 0.5
+    return variance**0.5
 
 
 def _majority_vote(buf: deque[int]) -> int | None:

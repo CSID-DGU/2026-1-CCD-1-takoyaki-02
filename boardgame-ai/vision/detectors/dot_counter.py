@@ -27,6 +27,7 @@ _CROP_PAD_RATIO = 0.05
 @dataclass
 class DotCounterParams:
     """튜닝 도구에서 조정 가능한 파라미터."""
+
     dp: float = 0.6
     min_dist_ratio: float = 0.06
     canny_upper: int = 120
@@ -131,10 +132,12 @@ def _count_with_blob(gray: Any, p: DotCounterParams) -> int | None:
 
     # 어두운 pip (흰 주사위)
     thresh_inv = cv2.adaptiveThreshold(
-        gray, 255,
+        gray,
+        255,
         cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
         cv2.THRESH_BINARY_INV,
-        blockSize=11, C=4,
+        blockSize=11,
+        C=4,
     )
     kp = detector.detect(thresh_inv)
     if 1 <= len(kp) <= 6:
@@ -142,10 +145,12 @@ def _count_with_blob(gray: Any, p: DotCounterParams) -> int | None:
 
     # 밝은 pip (어두운 주사위)
     thresh = cv2.adaptiveThreshold(
-        gray, 255,
+        gray,
+        255,
         cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
         cv2.THRESH_BINARY,
-        blockSize=11, C=4,
+        blockSize=11,
+        C=4,
     )
     kp2 = detector.detect(thresh)
     if 1 <= len(kp2) <= 6:
@@ -198,10 +203,14 @@ class DotCounter:
         max_r = max(min_r + 2, int(short_side * self.params.radius_max_ratio))
         min_dist = max(1, int(short_side * self.params.min_dist_ratio))
         circles = cv2.HoughCircles(
-            blurred, cv2.HOUGH_GRADIENT,
-            dp=self.params.dp, minDist=min_dist,
-            param1=self.params.canny_upper, param2=self.params.accum_thresh,
-            minRadius=min_r, maxRadius=max_r,
+            blurred,
+            cv2.HOUGH_GRADIENT,
+            dp=self.params.dp,
+            minDist=min_dist,
+            param1=self.params.canny_upper,
+            param2=self.params.accum_thresh,
+            minRadius=min_r,
+            maxRadius=max_r,
         )
         if circles is not None:
             for x, y, r in circles[0]:
@@ -209,8 +218,9 @@ class DotCounter:
                 cv2.circle(vis, (int(x), int(y)), 2, (0, 0, 255), -1)
 
         label = str(result) if result is not None else "?"
-        cv2.putText(vis, label, (4, vis.shape[0] - 4),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 200, 255), 2)
+        cv2.putText(
+            vis, label, (4, vis.shape[0] - 4), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 200, 255), 2
+        )
 
         if result is None:
             result = _count_with_blob(gray, self.params)

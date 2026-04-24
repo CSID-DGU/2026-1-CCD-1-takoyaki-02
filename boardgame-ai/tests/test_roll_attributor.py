@@ -8,8 +8,8 @@ from __future__ import annotations
 from vision.attribution.roll_attributor import RollAttributor, RollState
 from vision.schemas import BBox, DiceState, FramePerception, HandDet
 
-
 # ── 픽스처 헬퍼 ───────────────────────────────────────────────────────────────
+
 
 def _bbox(x1=0.3, y1=0.3, x2=0.7, y2=0.7) -> BBox:
     return BBox(x1=x1, y1=y1, x2=x2, y2=y2, conf=0.9, cls_name="roll_tray")
@@ -33,8 +33,14 @@ def _hand(
 def _stable_dice(n: int = 5, stable_frames: int = 35, pip: int = 3) -> list[DiceState]:
     bbox = BBox(0.1, 0.1, 0.2, 0.2, 0.9, "dice")
     return [
-        DiceState(track_id=i, bbox=bbox, center=(0.15, 0.15),
-                  motion_score=0.0001, stable_frames=stable_frames, pip_count=pip)
+        DiceState(
+            track_id=i,
+            bbox=bbox,
+            center=(0.15, 0.15),
+            motion_score=0.0001,
+            stable_frames=stable_frames,
+            pip_count=pip,
+        )
         for i in range(n)
     ]
 
@@ -42,8 +48,14 @@ def _stable_dice(n: int = 5, stable_frames: int = 35, pip: int = 3) -> list[Dice
 def _moving_dice(n: int = 5) -> list[DiceState]:
     bbox = BBox(0.1, 0.1, 0.2, 0.2, 0.9, "dice")
     return [
-        DiceState(track_id=i, bbox=bbox, center=(0.15, 0.15),
-                  motion_score=0.05, stable_frames=0, pip_count=None)
+        DiceState(
+            track_id=i,
+            bbox=bbox,
+            center=(0.15, 0.15),
+            motion_score=0.05,
+            stable_frames=0,
+            pip_count=None,
+        )
         for i in range(n)
     ]
 
@@ -69,6 +81,7 @@ def _frame(
 
 # ── 테스트 ────────────────────────────────────────────────────────────────────
 
+
 def test_normal_roll_player_a() -> None:
     """Player A 정상 굴림 → roll_actor_id == 'p_a'."""
     attr = RollAttributor(stabilization_frames=3)
@@ -85,7 +98,9 @@ def test_normal_roll_player_a() -> None:
 
     # ROLL_TRAY_LIFTED: roll_tray 위치 이동
     moved_rt = _bbox(0.32, 0.32, 0.72, 0.72)  # lift_speed > 0.01
-    result = attr.update(_frame(2, [_hand("p_a", "grab", (0.5, 0.5))], _moving_dice(), roll_tray=moved_rt))
+    result = attr.update(
+        _frame(2, [_hand("p_a", "grab", (0.5, 0.5))], _moving_dice(), roll_tray=moved_rt)
+    )
     assert result is None
     assert attr.state == RollState.ROLL_TRAY_LIFTED
 

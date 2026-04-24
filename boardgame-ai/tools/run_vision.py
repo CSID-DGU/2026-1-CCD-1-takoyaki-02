@@ -2,7 +2,8 @@
 
 Usage:
     python -m tools.run_vision --source 0 --weights weights/yacht_best.pt --debug
-    python -m tools.run_vision --source /tmp/session.mp4 --weights weights/yacht_best.pt --jsonl-log /tmp/out.jsonl
+    python -m tools.run_vision --source /tmp/session.mp4 --weights weights/yacht_best.pt \
+        --jsonl-log /tmp/out.jsonl
 """
 
 from __future__ import annotations
@@ -18,22 +19,20 @@ from vision.pipeline import VisionPipeline
 
 def _parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="BoardGame AI 비전 파이프라인 실행")
-    p.add_argument("--source", default="0",
-                   help="카메라 인덱스(정수) 또는 mp4 경로")
-    p.add_argument("--weights", default="weights/yacht_best.pt",
-                   help="YOLO 가중치 경로")
+    p.add_argument("--source", default="0", help="카메라 인덱스(정수) 또는 mp4 경로")
+    p.add_argument("--weights", default="weights/yacht_best.pt", help="YOLO 가중치 경로")
     p.add_argument("--conf", type=float, default=0.35)
     p.add_argument("--iou", type=float, default=0.5)
     p.add_argument("--imgsz", type=int, default=640)
-    p.add_argument("--debug", action="store_true",
-                   help="cv2.imshow 디버그 오버레이 표시")
-    p.add_argument("--jsonl-log", default=None,
-                   help="JSONL 로그 저장 경로")
-    p.add_argument("--frame-skip", type=int, default=0,
-                   help="건너뛸 프레임 수 (0=모든 프레임)")
-    p.add_argument("--mode", default="AWAITING_ROLL",
-                   choices=["AWAITING_ROLL", "seat_register_right", "seat_register_left"],
-                   help="테스트용 FSM 상태 (기본: AWAITING_ROLL)")
+    p.add_argument("--debug", action="store_true", help="cv2.imshow 디버그 오버레이 표시")
+    p.add_argument("--jsonl-log", default=None, help="JSONL 로그 저장 경로")
+    p.add_argument("--frame-skip", type=int, default=0, help="건너뛸 프레임 수 (0=모든 프레임)")
+    p.add_argument(
+        "--mode",
+        default="AWAITING_ROLL",
+        choices=["AWAITING_ROLL", "seat_register_right", "seat_register_left"],
+        help="테스트용 FSM 상태 (기본: AWAITING_ROLL)",
+    )
     return p.parse_args()
 
 

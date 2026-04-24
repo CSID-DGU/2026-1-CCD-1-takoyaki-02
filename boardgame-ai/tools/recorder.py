@@ -20,8 +20,9 @@ def _parse_args() -> argparse.Namespace:
     p.add_argument("--fps", type=float, default=30.0)
     p.add_argument("--width", type=int, default=1920)
     p.add_argument("--height", type=int, default=1080)
-    p.add_argument("--duration", type=float, default=None,
-                   help="녹화 시간(초). 미지정시 Ctrl+C까지")
+    p.add_argument(
+        "--duration", type=float, default=None, help="녹화 시간(초). 미지정시 Ctrl+C까지"
+    )
     return p.parse_args()
 
 
