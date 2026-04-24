@@ -1,6 +1,6 @@
 # BoardGame AI
 
-오버헤드 카메라로 테이블을 비춰 물리 보드게임(요트다이스, 한밤의 늑대인간)을 AI가 자동 진행하는 시스템.
+오버헤드 카메라 + YOLO/MediaPipe/ByteTrack으로 물리 보드게임을 자동 진행하는 시스템. **요트다이스**와 **한밤의 늑대인간** 지원. 사람은 실제 보드게임을 하고, AI가 뒤에서 조용히 진행·판정·해설 (Analog-first). 확장성 있는 구조로 설계(게임별 내용과 공용 내용 구분)
 
 ## 빠른 시작
 
@@ -24,6 +24,12 @@ pytest tests/test_contracts.py -v
 
 `PLAYER_SETUP` → (좌석 등록) → `GAME_SELECT` → `게임 FSM` → `게임 종료`  
 종료 후 3선택지: 플레이어 변경 / 게임 변경 / 재시작
+
+## 데이터 흐름
+
+- 비전: raw 프레임 → Fusion 3조건(FSM 기대 + 물리 변화 + N프레임 안정) 통과한 이벤트만 FSM에
+- FSM: 상태 전이 + TTS 트리거, 전이한 상태 정보 비전으로 전달
+- 통신: 개발 중 `LocalBridge` (인프로세스), 배포 시 `WebSocketBridge`
 
 ## 레포 구조
 
@@ -50,6 +56,20 @@ boardgame-ai/
 4. ID는 전부 문자열
 5. `state_version`: FSM 전이마다 +1, 불일치 메시지 drop
 6. FSM은 Fusion 통과한 `GameEvent`만 수신 — raw 프레임 수신 금지
+
+## Phase
+
+- **Phase 1**: 요트 + 늑대 병렬 구현. LocalBridge. 고정 TTS.
+- **Phase 2**: 멀티에이전트 LLM 진행자, 태블릿 UI, WebSocketBridge.
+
+## 작업 규칙
+
+- 브랜치: `feat/<영역>-<기능>`, `fix/...`, `chore/...`
+- PR 제목: `[영역] 설명` (영역: 요트-비전, 요트-FSM, 늑대-비전, 늑대-FSM, 코어, 브릿지)
+- CI: ruff + black + mypy(core/bridge) + pytest 계약 테스트 자동
+- `core/` 수정 시 계약 테스트도 같은 PR에서 업데이트
+- Weights는 Git 커밋 금지. Google Drive 공유 (`yacht_v{N}_{YYYYMMDD}.pt`)
+- 커뮤니케이션: GitHub(공식 기록), Discord(실시간), 카톡(긴급)
 
 ## 주요 문서
 
