@@ -43,7 +43,7 @@ class YachtRules:
         candidates: list[tuple[str, object, float]] = []
 
         if ctx.fsm_state == PHASE_WAITING_ROLL:
-            c = self._check_dice_rolled(perception)
+            c = self._check_dice_rolled(perception, ctx)
             if c:
                 candidates.append(c)
 
@@ -57,12 +57,16 @@ class YachtRules:
     # ── 내부 ─────────────────────────────────────────────────────────────────
 
     def _check_dice_rolled(
-        self, perception: FramePerception
+        self, perception: FramePerception, ctx: FusionContext | None = None
     ) -> tuple[str, object, float] | None:
         """roll_actor_id + 주사위 안정 → dice_rolled 후보.
         pip_count가 None인 주사위도 허용 (부분 인식 시에도 이벤트 발생).
+        roll_actor_id 없으면 ctx.active_player로 fallback (플레이어 미등록 환경).
         """
-        if perception.roll_actor_id is None:
+        actor_id = perception.roll_actor_id
+        if actor_id is None and ctx is not None:
+            actor_id = ctx.active_player
+        if actor_id is None:
             return None
         if not perception.dice:
             return None
@@ -76,12 +80,9 @@ class YachtRules:
         conf = 0.95 if len(known) == len(values) else 0.75
         # stab_key는 actor + 주사위 개수만 — pip 값이 프레임마다 미세하게 달라도
         # 안정화 카운터가 리셋되지 않게 하기 위함
-        data_key = (
-            perception.roll_actor_id,
-            len(perception.dice),
-        )
+        data_key = (actor_id, len(perception.dice))
         data = {
-            "actor_id": perception.roll_actor_id,
+            "actor_id": actor_id,
             "dice_values": values,
             "keep_mask": [False] * len(values),
         }

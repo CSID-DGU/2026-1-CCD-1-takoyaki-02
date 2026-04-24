@@ -69,14 +69,13 @@ class GestureClassifier:
 
         hand_length = _dist(lms[_WRIST], lms[_MIDDLE_MCP]) or 1e-6
 
-        # ── grab: 모든 손가락 굽힘 ──────────────────────────────────────
-        tips = [_THUMB_TIP, _INDEX_TIP, _MIDDLE_TIP, _RING_TIP, _PINKY_TIP]
-        mcps = [_THUMB_MCP, _INDEX_MCP, _MIDDLE_MCP, _RING_MCP, _PINKY_MCP]
-        all_curled = all(
+        # ── grab: 검지~새끼 4손가락 굽힘 (엄지는 구조상 제외)
+        four_tips = [_INDEX_TIP, _MIDDLE_TIP, _RING_TIP, _PINKY_TIP]
+        four_curled = all(
             _dist(lms[tip], lms[_WRIST]) < hand_length * self._grab_ratio
-            for tip in tips
+            for tip in four_tips
         )
-        if all_curled:
+        if four_curled:
             return "grab"
 
         # ── v_sign: 검지+중지 펴짐, 약지+새끼 굽힘 ────────────────────

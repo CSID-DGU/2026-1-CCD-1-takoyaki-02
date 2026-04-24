@@ -89,6 +89,9 @@ class RollAttributor:
         if self._state == RollState.IDLE:
             if self._idle_cooldown > 0:
                 self._idle_cooldown -= 1
+            # roll_tray가 충분히 움직이면 grab 없이도 ROLL_TRAY_LIFTED로 바로 전이
+            elif lift_speed > self._lift_threshold and roll_tray is not None:
+                self._state = RollState.ROLL_TRAY_LIFTED
             # fallback: grab 인식 없이 dice가 바로 stable이면 fallback으로 확정
             # 단, 쿨다운 중에는 재발화 금지 (정적 화면에서 무한루프 방지)
             elif self._all_dice_stable(perception) and perception.dice:

@@ -157,9 +157,17 @@ def test_dice_rolled_event_emitted() -> None:
 
 
 def test_dice_rolled_not_fired_without_actor() -> None:
-    """roll_actor_id 없으면 dice_rolled 이벤트 없음."""
+    """roll_actor_id도 없고 ctx.active_player도 없으면 dice_rolled 이벤트 없음."""
     engine = FusionEngine()
-    engine.update_context(_ctx_waiting_roll())
+    # active_player=None 인 ctx
+    ctx_no_actor = FusionContext(
+        fsm_state="waiting_roll",
+        game_type="yacht",
+        active_player=None,
+        allowed_actors=[],
+        expected_events=["dice_rolled", "dice_stable"],
+    )
+    engine.update_context(ctx_no_actor)
 
     dice = _stable_dice(n=5, pip=2)
     all_events = []
