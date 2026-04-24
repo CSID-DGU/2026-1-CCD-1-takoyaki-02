@@ -8,7 +8,7 @@ from __future__ import annotations
 from core.constants import CommonEventType, CommonPhase, DEFAULT_PARAMS
 from core.events import FusionContext
 from vision.fusion.engine import FusionEngine
-from vision.fusion.yacht_rules import DICE_ROLLED, DICE_STABLE, PHASE_WAITING_ROLL
+from vision.fusion.yacht_rules import ROLL_CONFIRMED, PHASE_AWAITING_ROLL
 from vision.schemas import BBox, DiceState, FramePerception, HandDet
 
 
@@ -25,13 +25,13 @@ def _ctx_seat_right(player_id: str = "p_1") -> FusionContext:
     )
 
 
-def _ctx_waiting_roll(player_id: str = "p_1") -> FusionContext:
+def _ctx_awaiting_roll(player_id: str = "p_1") -> FusionContext:
     return FusionContext(
-        fsm_state=PHASE_WAITING_ROLL,
+        fsm_state=PHASE_AWAITING_ROLL,
         game_type="yacht",
         active_player=player_id,
         allowed_actors=[player_id],
-        expected_events=[DICE_ROLLED, DICE_STABLE],
+        expected_events=[ROLL_CONFIRMED],
         params={"stabilization_frames": 3},
     )
 
@@ -137,19 +137,19 @@ def test_reject_event_not_fired() -> None:
     assert all_events == []
 
 
-# ── WAITING_ROLL (요트) 테스트 ────────────────────────────────────────────────
+# ── AWAITING_ROLL (요트) 테스트 ───────────────────────────────────────────────
 
 def test_dice_rolled_event_emitted() -> None:
-    """roll_actor_id + 5개 pip 확정 3프레임 → dice_rolled 이벤트."""
+    """roll_actor_id + 5개 pip 확정 3프레임 → ROLL_CONFIRMED 이벤트."""
     engine = FusionEngine()
-    engine.update_context(_ctx_waiting_roll())
+    engine.update_context(_ctx_awaiting_roll())
 
     dice = _stable_dice(n=5, pip=4)
     all_events = []
     for i in range(3):
         all_events.extend(engine.feed(_frame(i, dice=dice, roll_actor_id="p_1")))
 
-    rolled = [e for e in all_events if e.event_type == DICE_ROLLED]
+    rolled = [e for e in all_events if e.event_type == ROLL_CONFIRMED]
     assert len(rolled) == 1
     e = rolled[0]
     assert e.actor_id == "p_1"
@@ -157,15 +157,14 @@ def test_dice_rolled_event_emitted() -> None:
 
 
 def test_dice_rolled_not_fired_without_actor() -> None:
-    """roll_actor_id도 없고 ctx.active_player도 없으면 dice_rolled 이벤트 없음."""
+    """roll_actor_id도 없고 ctx.active_player도 없으면 ROLL_CONFIRMED 이벤트 없음."""
     engine = FusionEngine()
-    # active_player=None 인 ctx
     ctx_no_actor = FusionContext(
-        fsm_state="waiting_roll",
+        fsm_state=PHASE_AWAITING_ROLL,
         game_type="yacht",
         active_player=None,
         allowed_actors=[],
-        expected_events=["dice_rolled", "dice_stable"],
+        expected_events=[ROLL_CONFIRMED],
     )
     engine.update_context(ctx_no_actor)
 
@@ -174,40 +173,41 @@ def test_dice_rolled_not_fired_without_actor() -> None:
     for i in range(5):
         all_events.extend(engine.feed(_frame(i, dice=dice, roll_actor_id=None)))
 
-    rolled = [e for e in all_events if e.event_type == DICE_ROLLED]
+    rolled = [e for e in all_events if e.event_type == ROLL_CONFIRMED]
     assert rolled == []
 
 
 def test_dice_rolled_fired_with_partial_none_pip() -> None:
-    """pip_count가 일부 None이어도 나머지가 인식됐으면 dice_rolled 이벤트 발생 (낮은 confidence)."""
+    """pip_count가 일부 None이어도 나머지가 인식됐으면 ROLL_CONFIRMED 이벤트 발생 (낮은 confidence)."""
     engine = FusionEngine()
-    engine.update_context(_ctx_waiting_roll())
+    engine.update_context(_ctx_awaiting_roll())
 
     dice = _stable_dice(n=5, pip=3)
-    dice[2].pip_count = None  # 하나 미확정
+    dice[2].pip_count = None
 
     all_events = []
     for i in range(5):
         all_events.extend(engine.feed(_frame(i, dice=dice, roll_actor_id="p_1")))
 
-    rolled = [e for e in all_events if e.event_type == DICE_ROLLED]
+    rolled = [e for e in all_events if e.event_type == ROLL_CONFIRMED]
     assert len(rolled) == 1
-    assert rolled[0].confidence < 0.9  # 부분 인식이므로 낮은 confidence
+    assert rolled[0].confidence < 0.9
+
 
 def test_dice_rolled_not_fired_with_all_none_pip() -> None:
-    """pip_count가 전부 None이면 dice_rolled 이벤트 없음."""
+    """pip_count가 전부 None이면 ROLL_CONFIRMED 이벤트 없음."""
     engine = FusionEngine()
-    engine.update_context(_ctx_waiting_roll())
+    engine.update_context(_ctx_awaiting_roll())
 
     dice = _stable_dice(n=5, pip=3)
     for d in dice:
-        d.pip_count = None  # 전부 미확정
+        d.pip_count = None
 
     all_events = []
     for i in range(5):
         all_events.extend(engine.feed(_frame(i, dice=dice, roll_actor_id="p_1")))
 
-    rolled = [e for e in all_events if e.event_type == DICE_ROLLED]
+    rolled = [e for e in all_events if e.event_type == ROLL_CONFIRMED]
     assert rolled == []
 
 
@@ -217,14 +217,10 @@ def test_context_switch_resets_counter() -> None:
     engine.update_context(_ctx_seat_right())
 
     hand = _v_sign_hand()
-    # 2프레임 누적 후 context 전환
     engine.feed(_frame(0, hands=[hand]))
     engine.feed(_frame(1, hands=[hand]))
 
-    # context 전환 → 카운터 리셋
     engine.update_context(_ctx_seat_right(player_id="p_2"))
 
-    events = []
-    # 1프레임만 더 → 아직 3프레임 안 됨
     events = engine.feed(_frame(2, hands=[hand]))
     assert events == []

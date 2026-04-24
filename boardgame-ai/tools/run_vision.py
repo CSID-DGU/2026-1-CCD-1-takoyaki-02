@@ -31,9 +31,9 @@ def _parse_args() -> argparse.Namespace:
                    help="JSONL 로그 저장 경로")
     p.add_argument("--frame-skip", type=int, default=0,
                    help="건너뛸 프레임 수 (0=모든 프레임)")
-    p.add_argument("--mode", default="waiting_roll",
-                   choices=["waiting_roll", "seat_register_right", "seat_register_left"],
-                   help="테스트용 FSM 상태 (기본: waiting_roll)")
+    p.add_argument("--mode", default="AWAITING_ROLL",
+                   choices=["AWAITING_ROLL", "seat_register_right", "seat_register_left"],
+                   help="테스트용 FSM 상태 (기본: AWAITING_ROLL)")
     return p.parse_args()
 
 
@@ -66,12 +66,12 @@ def main() -> None:
 
     # 테스트용 FusionContext 주입 — 실제 FSM 없이 이벤트 발화 확인
     _MODE_CONTEXTS = {
-        "waiting_roll": FusionContext(
-            fsm_state="waiting_roll",
+        "AWAITING_ROLL": FusionContext(
+            fsm_state="AWAITING_ROLL",
             game_type="yacht",
             active_player="p_1",
             allowed_actors=["p_1", "p_2", "p_3", "p_4"],
-            expected_events=["dice_rolled", "dice_stable"],
+            expected_events=["ROLL_CONFIRMED"],
         ),
         "seat_register_right": FusionContext(
             fsm_state="seat_register_right",

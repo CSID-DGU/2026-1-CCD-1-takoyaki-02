@@ -201,8 +201,8 @@ class VisionPipeline:
         events = self._fusion.feed(perception)
         for event in events:
             self._bridge.send_game_event(event, 0)
-            # dice_rolled 이벤트면 배너 TTL 세팅 (90프레임 ≈ 3초)
-            if event.event_type == "dice_rolled":
+            # ROLL_CONFIRMED 이벤트면 배너 TTL 세팅 (90프레임 ≈ 3초)
+            if event.event_type == "ROLL_CONFIRMED":
                 self._last_event_data = event.data if isinstance(event.data, dict) else None
                 self._event_banner_ttl = 90
 

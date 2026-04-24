@@ -4,8 +4,7 @@ event_type 문자열 상수만 여기서 정의.
 실제 FSM enum은 FSM 팀(강병진) 영역이므로 import 하지 않음 (core 규칙).
 
 지원 이벤트:
-  dice_stable    : 주사위 5개 모두 안정 (중간 확인용, FSM이 무시 가능)
-  dice_rolled    : 굴림 완료 + actor 확정 (핵심 이벤트)
+  ROLL_CONFIRMED : 굴림 완료 + actor 확정 (핵심 이벤트)
 """
 
 from __future__ import annotations
@@ -14,16 +13,15 @@ from core.events import FusionContext
 from vision.schemas import FramePerception
 
 # ── 요트 전용 event_type 문자열 상수 ─────────────────────────────────────────
-DICE_STABLE = "dice_stable"
-DICE_ROLLED = "dice_rolled"
-DICE_KEEP_SELECTED = "dice_keep_selected"
-DICE_REROLL_REQUESTED = "dice_reroll_requested"
-SCORE_CATEGORY_SELECTED = "score_category_selected"
+ROLL_CONFIRMED = "ROLL_CONFIRMED"
+DICE_KEEP_SELECTED = "DICE_KEEP_SELECTED"
+DICE_REROLL_REQUESTED = "DICE_REROLL_REQUESTED"
+SCORE_CATEGORY_SELECTED = "SCORE_CATEGORY_SELECTED"
 
-# FSM 팀과 합의할 요트 Phase 문자열
-PHASE_WAITING_ROLL = "waiting_roll"
-PHASE_WAITING_KEEP = "waiting_keep"
-PHASE_WAITING_SCORE = "waiting_score"
+# FSM 팀과 합의된 요트 Phase 문자열
+PHASE_AWAITING_ROLL = "AWAITING_ROLL"
+PHASE_AWAITING_KEEP = "AWAITING_KEEP"
+PHASE_AWAITING_SCORE = "AWAITING_SCORE"
 
 
 class YachtRules:
@@ -42,24 +40,19 @@ class YachtRules:
         """
         candidates: list[tuple[str, object, float]] = []
 
-        if ctx.fsm_state == PHASE_WAITING_ROLL:
-            c = self._check_dice_rolled(perception, ctx)
+        if ctx.fsm_state == PHASE_AWAITING_ROLL:
+            c = self._check_roll_confirmed(perception, ctx)
             if c:
                 candidates.append(c)
-
-        # dice_stable은 모든 요트 phase에서 후보로 올림 (FSM이 expected에 넣을지 결정)
-        s = self._check_dice_stable(perception, ctx)
-        if s:
-            candidates.append(s)
 
         return candidates
 
     # ── 내부 ─────────────────────────────────────────────────────────────────
 
-    def _check_dice_rolled(
+    def _check_roll_confirmed(
         self, perception: FramePerception, ctx: FusionContext | None = None
     ) -> tuple[str, object, float] | None:
-        """roll_actor_id + 주사위 안정 → dice_rolled 후보.
+        """roll_actor_id + 주사위 안정 → ROLL_CONFIRMED 후보.
         pip_count가 None인 주사위도 허용 (부분 인식 시에도 이벤트 발생).
         roll_actor_id 없으면 ctx.active_player로 fallback (플레이어 미등록 환경).
         """
@@ -73,7 +66,6 @@ class YachtRules:
 
         values = [d.pip_count for d in perception.dice]
         known = [v for v in values if v is not None]
-        # 아무것도 인식 못 했으면 보류
         if not known:
             return None
 
@@ -86,22 +78,4 @@ class YachtRules:
             "dice_values": values,
             "keep_mask": [False] * len(values),
         }
-        return DICE_ROLLED, {"_key": data_key, **data}, conf
-
-    def _check_dice_stable(
-        self, perception: FramePerception, ctx: FusionContext
-    ) -> tuple[str, object, float] | None:
-        """주사위가 모두 안정이면 dice_stable 후보."""
-        from core.constants import DEFAULT_PARAMS
-        stab = int(ctx.params.get("stabilization_frames", DEFAULT_PARAMS["stabilization_frames"]))
-        if not perception.dice_all_stable(stab):
-            return None
-
-        values = [d.pip_count for d in perception.dice]
-        data_key = ("dice_stable", tuple(v or 0 for v in values))
-        data = {
-            "dice_values": values,
-            "dice_count": len(perception.dice),
-            "actor_id": perception.roll_actor_id,
-        }
-        return DICE_STABLE, {"_key": data_key, **data}, 0.85
+        return ROLL_CONFIRMED, {"_key": data_key, **data}, conf
