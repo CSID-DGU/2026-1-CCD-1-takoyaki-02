@@ -92,6 +92,20 @@ class FusionEngine:
             # 통과 → GameEvent 생성
             event_data = data_key if isinstance(data_key, dict) else {}
             actor_id = event_data.get("actor_id") or ctx.active_player
+
+            # allowed_actors 검증 (비어있으면 개발 모드 → 스킵)
+            if ctx.allowed_actors and actor_id and actor_id not in ctx.allowed_actors:
+                events.append(GameEvent(
+                    event_type=CommonEventType.RULE_VIOLATION,
+                    actor_id=actor_id,
+                    confidence=1.0,
+                    frame_id=perception.frame_id,
+                    data={"violation_type": "WRONG_TURN",
+                          "detail": f"{actor_id} not in allowed_actors"},
+                ))
+                self._stab_counters[event_type] = 0
+                continue
+
             events.append(GameEvent(
                 event_type=event_type,
                 actor_id=actor_id,
