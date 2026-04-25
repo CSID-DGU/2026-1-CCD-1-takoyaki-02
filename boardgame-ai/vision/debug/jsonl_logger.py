@@ -21,11 +21,12 @@ class JsonlLogger:
     def log(self, perception: FramePerception) -> None:
         if self._file is None:
             return
+        # 매 프레임 flush 금지 — 30fps 디스크 I/O 부담. close()에서 일괄 flush.
         self._file.write(perception.to_jsonl_line() + "\n")
-        self._file.flush()
 
     def close(self) -> None:
         if self._file is not None:
+            self._file.flush()
             self._file.close()
             self._file = None
 

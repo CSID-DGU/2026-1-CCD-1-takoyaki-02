@@ -128,7 +128,7 @@ class FusionEngine:
                     actor_id=actor_id,
                     confidence=conf,
                     frame_id=perception.frame_id,
-                    data={k: v for k, v in event_data.items() if k != "actor_id"},
+                    data={k: v for k, v in event_data.items() if k not in ("actor_id", "_key")},
                 )
             )
             # 발화 후 카운터 리셋 (중복 발화 방지)

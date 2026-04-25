@@ -6,7 +6,7 @@ VisionConfig 는 카메라·모델·디버그 등 하드웨어·IO 파라미터.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 
 
@@ -29,9 +29,6 @@ class VisionConfig:
     mp_min_detection_confidence: float = 0.5
     mp_min_tracking_confidence: float = 0.5
     mp_model_complexity: int = 0  # 0=경량, 1=표준
-
-    # Fusion 파라미터 오버라이드 (None=DEFAULT_PARAMS 사용)
-    fusion_params: dict = field(default_factory=dict)
 
     # RollAttributor
     roll_lift_threshold: float = 0.01  # roll_tray 들림 감지 (정규화 프레임간 이동)

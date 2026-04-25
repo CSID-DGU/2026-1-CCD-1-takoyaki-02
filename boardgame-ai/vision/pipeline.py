@@ -7,7 +7,10 @@
 
 from __future__ import annotations
 
+import math
 import time
+from collections import Counter, deque
+from dataclasses import dataclass, field
 from typing import Any
 
 import cv2
@@ -29,6 +32,21 @@ from vision.fusion.engine import FusionEngine
 from vision.schemas import BBox, FramePerception, HandDet, YoloDet
 from vision.tracking.byte_tracker import ByteTracker
 from vision.tracking.dice_manager import DiceManager
+
+# 한 프레임 사이 손 wrist가 움직일 수 있는 최대 정규화 거리.
+# 이 안에 들어오면 직전 프레임의 같은 손으로 간주해 handedness/제스처 이력을 이어 붙인다.
+_HAND_TRACK_MAX_DIST = 0.15
+# handedness 다수결 버퍼 크기 (5프레임 ≈ 약 0.16초). MediaPipe가 한 프레임 라벨을 뒤집어도 흡수.
+_HANDEDNESS_BUF_SIZE = 5
+
+
+@dataclass
+class _HandTrack:
+    """프레임 간 손 추적 — handedness/gesture 시간적 안정화용."""
+
+    wrist_xy: tuple[float, float]
+    handedness_buf: deque[str] = field(default_factory=lambda: deque(maxlen=_HANDEDNESS_BUF_SIZE))
+    prev_gesture: str | None = None
 
 
 class VisionPipeline:
@@ -75,12 +93,16 @@ class VisionPipeline:
         self._fusion = FusionEngine()
         self._jsonl_logger = JsonlLogger(config.jsonl_log_path)
 
-        # 직전 제스처 (release 감지용)
-        self._prev_gestures: dict[int, str] = {}  # hand index → gesture
+        # 손 시간적 추적 — handedness 다수결 + 직전 제스처 보관
+        # MediaPipe는 매 프레임 인덱스가 안정적이지 않으므로 wrist 좌표 근접도로 매칭
+        self._hand_tracks: list[_HandTrack] = []
 
         # 오버레이용 최근 이벤트 배너
         self._last_event_data: dict | None = None
         self._event_banner_ttl: int = 0  # 남은 표시 프레임 수
+
+        # FSM에서 받은 최신 state_version (이벤트 송신 시 동일 버전 사용 — 계약 정합)
+        self._fsm_state_version: int = 0
 
         # Bridge에서 FusionContext 수신 핸들러 등록
         self._bridge.on_fusion_context(self._on_fusion_context)
@@ -130,7 +152,10 @@ class VisionPipeline:
             cap.release()
             if self._config.debug_overlay:
                 cv2.destroyAllWindows()
-            self._hand_detector.close()
+            try:
+                self._hand_detector.close()
+            finally:
+                self._jsonl_logger.close()
 
     def stop(self) -> None:
         self._running = False
@@ -155,28 +180,9 @@ class VisionPipeline:
         frame_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
         raw_hands = self._hand_detector.detect(frame_rgb)
 
-        # 4) 제스처 분류 + SeatMatcher
-        hands: list[HandDet] = []
-        for i, hand in enumerate(raw_hands):
-            prev_g = self._prev_gestures.get(i)
-            gesture = self._gesture_clf.classify_with_prev(hand, prev_g)
-            self._prev_gestures[i] = gesture
-
-            player_id = self._seat_matcher.match(hand, self._players)
-            hands.append(
-                HandDet(
-                    handedness=hand.handedness,
-                    wrist_xy=hand.wrist_xy,
-                    landmarks_21=hand.landmarks_21,
-                    gesture=gesture,
-                    player_id=player_id,
-                )
-            )
-
-        # 사라진 손 이력 정리
-        for k in list(self._prev_gestures.keys()):
-            if k >= len(raw_hands):
-                del self._prev_gestures[k]
+        # 4) 손 시간적 매칭 → handedness 다수결 + 제스처 분류 + SeatMatcher
+        # MediaPipe 손 인덱스는 프레임 간 안정적이지 않으므로 wrist 거리로 매칭한다.
+        hands, self._hand_tracks = self._stabilize_hands(raw_hands)
 
         # 5) 임시 perception 조립 (RollAttributor 입력용)
         perception = FramePerception(
@@ -202,10 +208,10 @@ class VisionPipeline:
             "roll_state": self._roll_attributor.state.name,
         }
 
-        # 7) FusionEngine
+        # 7) FusionEngine — 송신 시 FSM에서 받은 최신 state_version 사용
         events = self._fusion.feed(perception)
         for event in events:
-            self._bridge.send_game_event(event, 0)
+            self._bridge.send_game_event(event, self._fsm_state_version)
             # ROLL_CONFIRMED 이벤트면 배너 TTL 세팅 (90프레임 ≈ 3초)
             if event.event_type == "ROLL_CONFIRMED":
                 self._last_event_data = event.data if isinstance(event.data, dict) else None
@@ -228,6 +234,69 @@ class VisionPipeline:
 
     def _on_fusion_context(self, ctx: FusionContext, state_version: int) -> None:
         self._fusion.update_context(ctx)
+        self._fsm_state_version = state_version
+
+    # ── 손 안정화 ─────────────────────────────────────────────────────────────
+
+    def _stabilize_hands(self, raw_hands: list[HandDet]) -> tuple[list[HandDet], list[_HandTrack]]:
+        """
+        wrist 좌표 근접도로 직전 프레임의 손과 매칭한 뒤,
+        최근 N프레임 handedness 다수결로 라벨을 안정화한다.
+
+        반환: (안정화된 HandDet 리스트, 갱신된 _HandTrack 리스트)
+        """
+        prev_tracks = list(self._hand_tracks)
+        used_prev: set[int] = set()
+        new_tracks: list[_HandTrack] = []
+        stabilized: list[HandDet] = []
+
+        for raw in raw_hands:
+            best_idx: int | None = None
+            best_dist = float("inf")
+            for i, prev in enumerate(prev_tracks):
+                if i in used_prev:
+                    continue
+                d = math.hypot(
+                    raw.wrist_xy[0] - prev.wrist_xy[0],
+                    raw.wrist_xy[1] - prev.wrist_xy[1],
+                )
+                if d < best_dist:
+                    best_dist = d
+                    best_idx = i
+
+            if best_idx is not None and best_dist < _HAND_TRACK_MAX_DIST:
+                track = prev_tracks[best_idx]
+                used_prev.add(best_idx)
+            else:
+                track = _HandTrack(wrist_xy=raw.wrist_xy)
+
+            track.wrist_xy = raw.wrist_xy
+            track.handedness_buf.append(raw.handedness)
+            stable_handedness = Counter(track.handedness_buf).most_common(1)[0][0]
+
+            # gesture 분류는 안정화된 handedness로 + 직전 제스처 참고 (release 감지)
+            stable_hand = HandDet(
+                handedness=stable_handedness,
+                wrist_xy=raw.wrist_xy,
+                landmarks_21=raw.landmarks_21,
+            )
+            gesture = self._gesture_clf.classify_with_prev(stable_hand, track.prev_gesture)
+            track.prev_gesture = gesture
+
+            player_id = self._seat_matcher.match(stable_hand, self._players)
+
+            stabilized.append(
+                HandDet(
+                    handedness=stable_handedness,
+                    wrist_xy=raw.wrist_xy,
+                    landmarks_21=raw.landmarks_21,
+                    gesture=gesture,
+                    player_id=player_id,
+                )
+            )
+            new_tracks.append(track)
+
+        return stabilized, new_tracks
 
 
 def _split_dets(
