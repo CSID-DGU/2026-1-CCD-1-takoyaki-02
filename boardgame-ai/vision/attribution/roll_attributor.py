@@ -58,11 +58,13 @@ class RollAttributor:
         stabilization_frames: int = 30,
         grab_fallback_window_frames: int = 60,
         expected_dice_count: int = 5,
-        change_score_threshold: float = 0.4,
+        change_score_threshold: float = 0.2,
         center_shift_ratio: float = 0.2,
         tray_pad: float = 0.02,
         enter_debounce_frames: int = 3,
         exit_debounce_frames: int = 3,
+        roll_tray_overlap_ratio: float = 0.05,
+        roll_tray_in_tray_required: int = 3,
         # 호환용 — 더 이상 사용하지 않지만 기존 호출자 깨지지 않도록 유지
         roll_lift_threshold: float = 0.02,
         motion_threshold: float = 0.002,
@@ -75,6 +77,8 @@ class RollAttributor:
         self._tray_pad = tray_pad
         self._enter_debounce = enter_debounce_frames
         self._exit_debounce = exit_debounce_frames
+        self._roll_tray_overlap_ratio = roll_tray_overlap_ratio
+        self._roll_tray_in_tray_required = roll_tray_in_tray_required
         # 미사용 (인터페이스 호환만 유지)
         _ = roll_lift_threshold
         _ = motion_threshold
@@ -92,6 +96,10 @@ class RollAttributor:
         # 디바운스 카운터: 손 안에 있는 연속 프레임, 밖에 있는 연속 프레임
         self._in_streak: int = 0
         self._out_streak: int = 0
+
+        # roll_tray가 tray 안에 진입한 프레임 누적 — HAND_IN_TRAY 동안에만 카운트.
+        # 이 누적이 임계 이상일 때만 ROLL_CONFIRMED 발화. "굴림통이 실제로 사용됨"의 신호.
+        self._roll_tray_in_tray_streak: int = 0
 
         # nearest player 누적 — fallback actor 산정용
         self._fallback_buf: deque[str | None] = deque(maxlen=grab_fallback_window_frames)
@@ -157,8 +165,22 @@ class RollAttributor:
         if nearest is not None:
             self._candidate_actor = nearest
 
+        # roll_tray가 tray 안에 충분히 들어와 있는 프레임 누적
+        if self._is_roll_tray_in_tray(perception):
+            self._roll_tray_in_tray_streak += 1
+
         # 진출 디바운스 — 연속 N프레임 밖이어야 진짜 빠진 걸로 인정
         if self._out_streak < self._exit_debounce:
+            return None
+
+        # roll_tray 미진입 — 굴림통 안 썼다고 판정 (킵존 옮김 등)
+        if self._roll_tray_in_tray_streak < self._roll_tray_in_tray_required:
+            print(
+                f"[roll] hand_out: roll_tray 진입 부족 — "
+                f"streak={self._roll_tray_in_tray_streak} "
+                f"need={self._roll_tray_in_tray_required} → WAITING (굴림 아님)"
+            )
+            self._reset_to_waiting()
             return None
 
         # 손이 빠짐 — 굴림 종료 조건 체크
@@ -189,7 +211,8 @@ class RollAttributor:
         score = _compute_change_score(self._snapshot, target_dice, self._center_shift_ratio)
         print(
             f"[roll] hand_out: score={score:.2f} threshold={self._change_threshold:.2f} "
-            f"snap_size={len(self._snapshot.items)} cur_size={len(target_dice)}"
+            f"snap_size={len(self._snapshot.items)} cur_size={len(target_dice)} "
+            f"rt_streak={self._roll_tray_in_tray_streak}"
         )
         if score >= self._change_threshold:
             actor = self._candidate_actor or self._fallback_actor()
@@ -229,6 +252,7 @@ class RollAttributor:
         self._state = RollState.WAITING
         self._snapshot = None
         self._candidate_actor = None
+        self._roll_tray_in_tray_streak = 0
 
     # ── 헬퍼 ─────────────────────────────────────────────────────────────────
 
@@ -256,6 +280,26 @@ class RollAttributor:
                 if x1 <= lx <= x2 and y1 <= ly <= y2:
                     return True
         return False
+
+    def _is_roll_tray_in_tray(self, perception: FramePerception) -> bool:
+        """roll_tray bbox가 tray bbox와 충분히 겹치는가.
+
+        겹침 비율 = (교집합 면적) / (roll_tray 면적). 이 비율이 임계 이상이면 굴림통이
+        tray 영역에 들어와 있다고 본다. 일부만 들어가도 인정.
+        """
+        rt = perception.roll_tray
+        tray = perception.tray
+        if rt is None or tray is None:
+            return False
+        ix1 = max(rt.x1, tray.x1)
+        iy1 = max(rt.y1, tray.y1)
+        ix2 = min(rt.x2, tray.x2)
+        iy2 = min(rt.y2, tray.y2)
+        inter = max(0.0, ix2 - ix1) * max(0.0, iy2 - iy1)
+        rt_area = rt.w * rt.h
+        if rt_area <= 0:
+            return False
+        return (inter / rt_area) >= self._roll_tray_overlap_ratio
 
     def _dice_outside_keep(self, perception: FramePerception) -> list[DiceState]:
         """굴림 대상 dice — 현재는 tray_inner를 무시하고 모든 dice를 굴림 대상으로 본다.

@@ -55,14 +55,24 @@ def _frame(
     hands: list[HandDet],
     dice: list[DiceState],
     tray_inner: BBox | None = None,
+    roll_tray_in: bool = True,
 ) -> FramePerception:
+    """기본적으로 roll_tray가 tray 안에 있다고 가정.
+
+    roll_tray 진입 게이트 테스트를 위해 roll_tray_in=False로 설정 가능.
+    """
+    rt = (
+        BBox(0.4, 0.4, 0.55, 0.55, 0.9, "roll_tray")
+        if roll_tray_in
+        else BBox(0.0, 0.0, 0.05, 0.05, 0.9, "roll_tray")
+    )
     return FramePerception(
         frame_id=frame_id,
         ts=float(frame_id) / 30.0,
         image_hw=(1080, 1920),
         tray=_tray(),
         tray_inner=tray_inner,
-        roll_tray=None,
+        roll_tray=rt,
         dice=dice,
         hands=hands,
     )
@@ -74,7 +84,10 @@ def _frame(
 def test_normal_roll_player_a() -> None:
     """A 손이 tray 진입 → 빠진 후 dice 변화 + 안정 → ROLL_CONFIRMED."""
     attr = RollAttributor(
-        stabilization_frames=3, enter_debounce_frames=1, exit_debounce_frames=1
+        stabilization_frames=3,
+        enter_debounce_frames=1,
+        exit_debounce_frames=1,
+        roll_tray_in_tray_required=1,
     )
 
     # WAITING — 초기 상태
@@ -98,7 +111,10 @@ def test_normal_roll_player_a() -> None:
 def test_brief_touch_does_not_fire() -> None:
     """손은 들어왔다 나갔지만 dice 변화 없음 → 발화 안 함."""
     attr = RollAttributor(
-        stabilization_frames=3, enter_debounce_frames=1, exit_debounce_frames=1
+        stabilization_frames=3,
+        enter_debounce_frames=1,
+        exit_debounce_frames=1,
+        roll_tray_in_tray_required=1,
     )
     initial = _initial_dice()
 
@@ -115,7 +131,10 @@ def test_brief_touch_does_not_fire() -> None:
 def test_two_consecutive_rolls() -> None:
     """연속 2회 굴림 — 각각 ROLL_CONFIRMED 발화."""
     attr = RollAttributor(
-        stabilization_frames=3, enter_debounce_frames=1, exit_debounce_frames=1
+        stabilization_frames=3,
+        enter_debounce_frames=1,
+        exit_debounce_frames=1,
+        roll_tray_in_tray_required=1,
     )
 
     # 1차 굴림
@@ -134,7 +153,10 @@ def test_two_consecutive_rolls() -> None:
 def test_kept_dice_excluded_from_comparison() -> None:
     """tray_inner(킵존) 안에 있는 dice는 굴림 대상에서 제외 — 일부 굴림 시나리오."""
     attr = RollAttributor(
-        stabilization_frames=3, enter_debounce_frames=1, exit_debounce_frames=1
+        stabilization_frames=3,
+        enter_debounce_frames=1,
+        exit_debounce_frames=1,
+        roll_tray_in_tray_required=1,
     )
 
     # 5개 중 2개는 킵존(x>=0.6), 3개는 굴림 영역(x<0.6)
@@ -166,7 +188,10 @@ def test_kept_dice_excluded_from_comparison() -> None:
 def test_finger_in_tray_triggers_occupation() -> None:
     """wrist는 밖이지만 손가락 끝이 tray 안이어도 점유로 인정."""
     attr = RollAttributor(
-        stabilization_frames=3, enter_debounce_frames=1, exit_debounce_frames=1
+        stabilization_frames=3,
+        enter_debounce_frames=1,
+        exit_debounce_frames=1,
+        roll_tray_in_tray_required=1,
     )
     attr.update(_frame(0, [], _initial_dice()))
 
@@ -185,7 +210,10 @@ def test_finger_in_tray_triggers_occupation() -> None:
 def test_no_tray_no_occupation() -> None:
     """tray 미감지면 점유 판정 안 함."""
     attr = RollAttributor(
-        stabilization_frames=3, enter_debounce_frames=1, exit_debounce_frames=1
+        stabilization_frames=3,
+        enter_debounce_frames=1,
+        exit_debounce_frames=1,
+        roll_tray_in_tray_required=1,
     )
     perception = FramePerception(
         frame_id=0,
@@ -203,7 +231,10 @@ def test_no_tray_no_occupation() -> None:
 def test_static_scene_no_fire() -> None:
     """손도 없고 dice 변화도 없으면 영원히 WAITING — 발화 없음."""
     attr = RollAttributor(
-        stabilization_frames=3, enter_debounce_frames=1, exit_debounce_frames=1
+        stabilization_frames=3,
+        enter_debounce_frames=1,
+        exit_debounce_frames=1,
+        roll_tray_in_tray_required=1,
     )
     for i in range(20):
         result = attr.update(_frame(i, [], _initial_dice()))
