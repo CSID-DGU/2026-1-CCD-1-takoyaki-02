@@ -1,31 +1,36 @@
-"""굴린 플레이어 결정 (RollAttributor) — 손 점유 기반.
+"""굴린 플레이어 결정 (RollAttributor) — 손 점유 + roll_tray 진입 게이트 기반.
 
 상태머신:
   WAITING
-   │  손(wrist 또는 21 landmark 중 하나)이 tray bbox 안에 들어옴 → HAND_IN_TRAY
-   │  진입 시점에 snapshot 저장 (tray_inner 밖 dice만, 즉 굴림 대상)
+   │  손(wrist 또는 5 fingertip 중 하나)이 tray bbox에 들어옴 → HAND_IN_TRAY
+   │  진입 시점에 snapshot 저장 (직전 마지막 stable dice 좌표/pip)
    ↓
   HAND_IN_TRAY (점유 중)
-   │  매 프레임 nearest player_id 누적
-   │  종료 조건: 모든 손이 tray 밖 + dice 5개 모두 인식 + 모두 stable + 변화 점수 ≥ 임계
+   │  매 프레임 nearest player_id 누적, roll_tray가 tray 안에 진입한 프레임 카운트
+   │  종료 조건: 손 모두 tray 밖 + dice 모두 stable + snapshot 대비 변화 점수 임계 통과
+   │             + roll_tray 진입 누적 ≥ 임계 (= 굴림통이 실제로 사용됨)
    │    → ROLL_CONFIRMED 발화 → WAITING
-   │  손 빠졌는데 변화 없음 → 그냥 WAITING (손만 댄 케이스, 발화 없음)
+   │  하나라도 미달 → 발화 없이 WAITING (손만 댄 / 킵존 옮김 등)
    ↓
   WAITING
 
-킵존 인지:
-  - snapshot에 들어가는 건 tray_inner 밖 dice (= 다시 굴리는 dice)
-  - 비교도 tray_inner 밖 dice만
-  - ROLL_CONFIRMED data에는 전체 dice_values 포함, keep_mask에 tray_inner 안 dice = True
+킵존 처리:
+  현재는 tray_inner를 직접 참조하지 않고, roll_tray 진입 게이트로 굴림/킵존 옮김을 구분.
+  ROLL_CONFIRMED data의 keep_mask는 전부 False (모든 dice가 굴림 대상).
 """
 
 from __future__ import annotations
 
+import logging
 from collections import Counter, deque
 from dataclasses import dataclass
 from enum import Enum, auto
 
 from vision.schemas import BBox, DiceState, FramePerception, HandDet
+
+# 디버그 로그용 — pipeline에서 logging.basicConfig(level=DEBUG)로 켤 수 있음.
+# 기본 INFO/WARNING 환경에선 조용히 동작.
+_log = logging.getLogger(__name__)
 
 
 class RollState(Enum):
@@ -149,7 +154,7 @@ class RollAttributor:
                 if self._last_stable_snapshot is None or len(target) != len(
                     self._last_stable_snapshot.items
                 ):
-                    print(
+                    _log.debug(
                         f"[roll] last_stable_snapshot 갱신 "
                         f"size={len(target)} kept={self._n_kept(perception)}"
                     )
@@ -175,7 +180,7 @@ class RollAttributor:
 
         # roll_tray 미진입 — 굴림통 안 썼다고 판정 (킵존 옮김 등)
         if self._roll_tray_in_tray_streak < self._roll_tray_in_tray_required:
-            print(
+            _log.debug(
                 f"[roll] hand_out: roll_tray 진입 부족 — "
                 f"streak={self._roll_tray_in_tray_streak} "
                 f"need={self._roll_tray_in_tray_required} → WAITING (굴림 아님)"
@@ -189,7 +194,7 @@ class RollAttributor:
         need = self._expected_dice - n_kept
         # 1) 모든 굴림 대상 dice가 보여야 함 (개수 일치)
         if len(target_dice) < need:
-            print(
+            _log.debug(
                 f"[roll] hand_out: dice 부족 — got={len(target_dice)} need={need} "
                 f"kept={n_kept} (state 유지)"
             )
@@ -201,15 +206,15 @@ class RollAttributor:
             if d.stable_frames < self._stab_frames
         ]
         if unstable:
-            print(f"[roll] hand_out: dice 불안정 — {unstable} (state 유지)")
+            _log.debug(f"[roll] hand_out: dice 불안정 — {unstable} (state 유지)")
             return None
         # 3) snapshot 대비 변화 점수
         if self._snapshot is None:
-            print("[roll] hand_out: snapshot 없음 → WAITING 복귀 (발화 없음)")
+            _log.debug("[roll] hand_out: snapshot 없음 → WAITING 복귀 (발화 없음)")
             self._reset_to_waiting()
             return None
         score = _compute_change_score(self._snapshot, target_dice, self._center_shift_ratio)
-        print(
+        _log.debug(
             f"[roll] hand_out: score={score:.2f} threshold={self._change_threshold:.2f} "
             f"snap_size={len(self._snapshot.items)} cur_size={len(target_dice)} "
             f"rt_streak={self._roll_tray_in_tray_streak}"
@@ -217,11 +222,11 @@ class RollAttributor:
         if score >= self._change_threshold:
             actor = self._candidate_actor or self._fallback_actor()
             self._just_finalized = True
-            print(f"[roll] ROLL_CONFIRMED actor={actor}")
+            _log.info("[roll] ROLL_CONFIRMED actor=%s", actor)
             self._reset_to_waiting()
             return actor
         # 변화 없음 — 손만 댄 케이스
-        print("[roll] 변화 부족 → WAITING (손만 댐)")
+        _log.debug("[roll] 변화 부족 → WAITING (손만 댐)")
         self._reset_to_waiting()
         return None
 
@@ -240,7 +245,7 @@ class RollAttributor:
             self._candidate_actor = nearest
         n_kept = self._n_kept(perception)
         n_outside = len(self._dice_outside_keep(perception))
-        print(
+        _log.debug(
             f"[roll] WAITING → HAND_IN_TRAY "
             f"snap_size={len(self._snapshot.items) if self._snapshot else 0} "
             f"dice_total={len(perception.dice)} kept={n_kept} outside={n_outside} "

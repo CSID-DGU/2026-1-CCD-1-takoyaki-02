@@ -87,7 +87,7 @@ class VisionPipeline:
         )
         self._seat_matcher = SeatMatcher()
         self._roll_attributor = RollAttributor(
-            stabilization_frames=15,  # dice_manager와 동일 — 안정 후 곧바로 비교 가능
+            stabilization_frames=15,  # 굴림 종료 판정용 — dice_manager의 pip 측정 임계와는 별개
             grab_fallback_window_frames=config.grab_fallback_window_frames,
             roll_lift_threshold=config.roll_lift_threshold,
             motion_threshold=float(DEFAULT_PARAMS["motion_threshold_norm"]),

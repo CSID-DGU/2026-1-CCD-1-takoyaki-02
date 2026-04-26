@@ -150,8 +150,11 @@ def test_two_consecutive_rolls() -> None:
     assert r2 == "p_a"
 
 
-def test_kept_dice_excluded_from_comparison() -> None:
-    """tray_inner(킵존) 안에 있는 dice는 굴림 대상에서 제외 — 일부 굴림 시나리오."""
+def test_partial_change_above_threshold_fires() -> None:
+    """5개 중 일부만 변해도 변화 점수가 임계(0.2) 이상이면 ROLL_CONFIRMED.
+
+    1~2개 빠져나갔다 다시 굴리는 케이스 — 나머지는 그대로여도 발화돼야 함.
+    """
     attr = RollAttributor(
         stabilization_frames=3,
         enter_debounce_frames=1,
@@ -159,29 +162,27 @@ def test_kept_dice_excluded_from_comparison() -> None:
         roll_tray_in_tray_required=1,
     )
 
-    # 5개 중 2개는 킵존(x>=0.6), 3개는 굴림 영역(x<0.6)
     initial = [
         _dice(0, (0.3, 0.4), pip=1),
         _dice(1, (0.4, 0.4), pip=2),
         _dice(2, (0.5, 0.4), pip=3),
-        _dice(3, (0.7, 0.4), pip=4),  # 킵존
-        _dice(4, (0.75, 0.5), pip=5),  # 킵존
+        _dice(3, (0.55, 0.4), pip=4),
+        _dice(4, (0.6, 0.4), pip=5),
     ]
-    keep = _tray_inner()
 
-    attr.update(_frame(0, [], initial, tray_inner=keep))
-    attr.update(_frame(1, [_hand("p_a", (0.4, 0.5))], initial, tray_inner=keep))
+    attr.update(_frame(0, [], initial))
+    attr.update(_frame(1, [_hand("p_a", (0.4, 0.5))], initial))
     assert attr.state == RollState.HAND_IN_TRAY
 
-    # 굴림 후 — 킵존 외 3개만 변경, 킵존 2개는 그대로
+    # 5개 중 2개만 변화 (재굴림된 dice) — 변화 점수 0.4 ≥ 임계 0.2 → 발화
     rolled = [
-        _dice(0, (0.32, 0.5), pip=6),  # 변화
-        _dice(1, (0.42, 0.5), pip=5),  # 변화
-        _dice(2, (0.52, 0.5), pip=4),  # 변화
-        _dice(3, (0.7, 0.4), pip=4),  # 그대로 (킵존)
-        _dice(4, (0.75, 0.5), pip=5),  # 그대로 (킵존)
+        _dice(0, (0.3, 0.4), pip=1),  # 그대로
+        _dice(1, (0.4, 0.4), pip=2),  # 그대로
+        _dice(2, (0.5, 0.4), pip=3),  # 그대로
+        _dice(3, (0.32, 0.55), pip=6),  # 변화 (재굴림)
+        _dice(4, (0.42, 0.55), pip=1),  # 변화 (재굴림)
     ]
-    result = attr.update(_frame(2, [], rolled, tray_inner=keep))
+    result = attr.update(_frame(2, [], rolled))
     assert result == "p_a"
 
 

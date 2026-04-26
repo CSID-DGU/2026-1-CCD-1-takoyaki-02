@@ -9,6 +9,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import logging
 from pathlib import Path
 
 from bridge.local_bridge import LocalBridge
@@ -25,6 +26,11 @@ def _parse_args() -> argparse.Namespace:
     p.add_argument("--iou", type=float, default=0.5)
     p.add_argument("--imgsz", type=int, default=640)
     p.add_argument("--debug", action="store_true", help="cv2.imshow 디버그 오버레이 표시")
+    p.add_argument(
+        "--verbose",
+        action="store_true",
+        help="DEBUG 레벨 로그 출력 (RollAttributor 상태 전이 등)",
+    )
     p.add_argument("--jsonl-log", default=None, help="JSONL 로그 저장 경로")
     p.add_argument("--frame-skip", type=int, default=0, help="건너뛸 프레임 수 (0=모든 프레임)")
     p.add_argument(
@@ -38,6 +44,12 @@ def _parse_args() -> argparse.Namespace:
 
 def main() -> None:
     args = _parse_args()
+
+    # 기본 INFO — ROLL_CONFIRMED 같은 핵심 이벤트만. --verbose 시 DEBUG (상태 전이까지).
+    logging.basicConfig(
+        level=logging.DEBUG if args.verbose else logging.INFO,
+        format="%(message)s",
+    )
 
     # source: 숫자면 카메라 인덱스, 아니면 파일 경로
     source: int | str

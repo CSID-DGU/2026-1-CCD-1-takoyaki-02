@@ -35,6 +35,8 @@ class YachtRules:
         # tray 안에 있던 적이 있는 dice track_id 집합.
         # DICE_ESCAPED는 "안 → 밖" 전이일 때만 발화 — 처음부터 밖이면 가짜 detection 가능성.
         self._seen_inside: set[int] = set()
+        # 이미 escaped 발화한 track_id — 다시 안으로 들어왔다 나가야 재발화 (반복 발화 차단).
+        self._reported_escaped: set[int] = set()
 
     def build_candidates(
         self,
@@ -127,16 +129,22 @@ class YachtRules:
         if actor_id is None and ctx is not None:
             actor_id = ctx.active_player
 
-        # 안에 있는 dice의 track_id를 _seen_inside에 누적
+        # 안에 있는 dice의 track_id를 _seen_inside에 누적.
+        # 다시 안으로 들어온 track_id는 reported 집합에서 제거해 재발화 가능하게 만든다.
         escaped_track_ids: list[int] = []
         for d in perception.dice:
             if _bbox_contains(tray, d.center):
                 self._seen_inside.add(d.track_id)
-            elif d.track_id in self._seen_inside:
+                self._reported_escaped.discard(d.track_id)
+            elif d.track_id in self._seen_inside and d.track_id not in self._reported_escaped:
                 escaped_track_ids.append(d.track_id)
 
         if not escaped_track_ids:
             return None
+
+        # 발화 직전 reported 집합에 등록 — 다음 프레임부터는 재발화 안 함
+        for tid in escaped_track_ids:
+            self._reported_escaped.add(tid)
 
         data_key = ("escaped", tuple(sorted(escaped_track_ids)))
         data = {

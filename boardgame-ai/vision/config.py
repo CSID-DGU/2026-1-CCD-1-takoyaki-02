@@ -35,7 +35,7 @@ class VisionConfig:
     grab_fallback_window_frames: int = 60  # grab 실패 시 fallback K프레임
 
     # DiceManager
-    dice_count_buffer: int = 5  # pip_count 다수결 버퍼 크기
+    dice_count_buffer: int = 11  # pip_count 다수결 버퍼 크기 (YOLO/Hough 끊김 흡수)
     dice_history_window: int = 10  # motion_score 계산용 이력 윈도우
 
     # 시작 시 카메라 자동노출/색온도 적응 흡수용 워밍업 프레임 수.
