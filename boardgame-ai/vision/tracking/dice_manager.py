@@ -42,7 +42,7 @@ class DiceManager:
         motion_threshold: float = 0.002,
         stabilization_frames: int = 15,
         history_window: int = 10,
-        pip_buffer_size: int = 7,
+        pip_buffer_size: int = 11,  # 더 큰 버퍼로 YOLO/Hough 끊김 흡수
         history_max_miss: int = 30,
     ) -> None:
         self._motion_threshold = motion_threshold

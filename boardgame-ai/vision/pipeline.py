@@ -77,17 +77,19 @@ class VisionPipeline:
         self._gesture_clf = GestureClassifier()
         self._byte_tracker = ByteTracker()
         self._dot_counter = DotCounter()
+        # DiceManager는 pip 측정 시작 임계를 짧게 — 굴림 직후 빠르게 pip 잡히도록.
+        # RollAttributor의 stabilization과는 별개 (RollAttributor는 굴림 종료 판정용)
         self._dice_manager = DiceManager(
             motion_threshold=float(DEFAULT_PARAMS["motion_threshold_norm"]),
-            stabilization_frames=int(DEFAULT_PARAMS["stabilization_frames"]),
+            stabilization_frames=10,
             history_window=config.dice_history_window,
             pip_buffer_size=config.dice_count_buffer,
         )
         self._seat_matcher = SeatMatcher()
         self._roll_attributor = RollAttributor(
-            roll_lift_threshold=config.roll_lift_threshold,
+            stabilization_frames=15,  # dice_manager와 동일 — 안정 후 곧바로 비교 가능
             grab_fallback_window_frames=config.grab_fallback_window_frames,
-            stabilization_frames=int(DEFAULT_PARAMS["stabilization_frames"]),
+            roll_lift_threshold=config.roll_lift_threshold,
             motion_threshold=float(DEFAULT_PARAMS["motion_threshold_norm"]),
         )
         self._fusion = FusionEngine()
@@ -172,9 +174,17 @@ class VisionPipeline:
         yolo_dets = self._yolo.detect(frame_bgr)
         tray, tray_inner, roll_tray, dice_dets = _split_dets(yolo_dets)
 
+        # tray 감지 시 dice center가 tray + 패딩 밖이면 무시 (각도 흔들림으로 잡히는 가짜 dice 차단)
+        if tray is not None and self._config.tray_mask_padding > 0:
+            dice_dets = _filter_dice_inside_tray(
+                dice_dets, tray, padding=self._config.tray_mask_padding
+            )
+
         # 2) ByteTrack + DiceManager
         tracked = self._byte_tracker.update(dice_dets, frame_id)
         dice_states = self._dice_manager.update(tracked, frame_bgr, self._dot_counter)
+        # track_id 오름차순 정렬 — dice_values 출력 순서를 프레임 간 일관되게 유지
+        dice_states.sort(key=lambda d: d.track_id)
 
         # 3) MediaPipe 손 감지 (RGB 변환)
         frame_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
@@ -196,10 +206,14 @@ class VisionPipeline:
             hands=hands,
         )
 
-        # 6) RollAttributor
+        # 6) RollAttributor — finalize된 프레임만 roll_just_confirmed=True.
+        # YachtRules가 이 게이트로 ROLL_CONFIRMED/ROLL_UNREADABLE 1회 발화만 허용.
+        # actor가 None이어도 finalize 자체는 인정 (FSM ctx.active_player fallback 사용)
         roll_actor = self._roll_attributor.update(perception)
         if roll_actor is not None:
             perception.roll_actor_id = roll_actor
+        if self._roll_attributor.just_finalized:
+            perception.roll_just_confirmed = True
         perception.phase_hints = {
             "dice_all_stable": perception.dice_all_stable(
                 int(DEFAULT_PARAMS["stabilization_frames"])
@@ -208,25 +222,29 @@ class VisionPipeline:
             "roll_state": self._roll_attributor.state.name,
         }
 
-        # 7) FusionEngine — 송신 시 FSM에서 받은 최신 state_version 사용
+        # 7) FusionEngine — 송신 시 FSM에서 받은 최신 state_version 사용.
+        # 워밍업 동안에는 FusionEngine은 호출(안정화 카운터는 굴려야 함)하되 송신만 skip.
         events = self._fusion.feed(perception)
-        for event in events:
-            self._bridge.send_game_event(event, self._fsm_state_version)
-            # ROLL_CONFIRMED 이벤트면 배너 TTL 세팅 (90프레임 ≈ 3초)
-            if event.event_type == "ROLL_CONFIRMED":
-                self._last_event_data = event.data if isinstance(event.data, dict) else None
-                self._event_banner_ttl = 90
+        if frame_id >= self._config.warmup_frames:
+            for event in events:
+                self._bridge.send_game_event(event, self._fsm_state_version)
+                # ROLL_CONFIRMED 이벤트면 배너 TTL 세팅 (90프레임 ≈ 3초)
+                if event.event_type == "ROLL_CONFIRMED":
+                    self._last_event_data = event.data if isinstance(event.data, dict) else None
+                    self._event_banner_ttl = 90
 
         # 8) 로깅
         self._jsonl_logger.log(perception)
 
         # 9) 디버그 오버레이
         if self._config.debug_overlay:
+            warmup_remaining = max(0, self._config.warmup_frames - frame_id)
             vis = draw_overlay(
                 frame_bgr.copy(),
                 perception,
                 recent_event=self._last_event_data,
                 event_ttl_frames=self._event_banner_ttl,
+                warmup_remaining=warmup_remaining,
             )
             if self._event_banner_ttl > 0:
                 self._event_banner_ttl -= 1
@@ -315,3 +333,17 @@ def _split_dets(
         elif d.cls_name == "dice":
             dice_dets.append(d)
     return tray, tray_inner, roll_tray, dice_dets
+
+
+def _filter_dice_inside_tray(dice_dets: list[YoloDet], tray: BBox, padding: float) -> list[YoloDet]:
+    """tray bbox + 패딩 밖에 중심이 있는 dice 제거. tray 외부 가짜 detection 차단."""
+    pad_x = tray.w * padding
+    pad_y = tray.h * padding
+    x1, y1 = tray.x1 - pad_x, tray.y1 - pad_y
+    x2, y2 = tray.x2 + pad_x, tray.y2 + pad_y
+    inside: list[YoloDet] = []
+    for d in dice_dets:
+        cx, cy = d.bbox.center()
+        if x1 <= cx <= x2 and y1 <= cy <= y2:
+            inside.append(d)
+    return inside

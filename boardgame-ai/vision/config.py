@@ -31,12 +31,20 @@ class VisionConfig:
     mp_model_complexity: int = 0  # 0=경량, 1=표준
 
     # RollAttributor
-    roll_lift_threshold: float = 0.01  # roll_tray 들림 감지 (정규화 프레임간 이동)
+    roll_lift_threshold: float = 0.02  # roll_tray 들림 감지 (정규화 프레임간 이동)
     grab_fallback_window_frames: int = 60  # grab 실패 시 fallback K프레임
 
     # DiceManager
     dice_count_buffer: int = 5  # pip_count 다수결 버퍼 크기
     dice_history_window: int = 10  # motion_score 계산용 이력 윈도우
+
+    # 시작 시 카메라 자동노출/색온도 적응 흡수용 워밍업 프레임 수.
+    # 이 동안은 GameEvent 송신을 skip (감지·overlay·로깅은 정상).
+    warmup_frames: int = 60
+
+    # tray 감지 시 dice center가 tray bbox + 패딩 밖이면 무시 (각도 흔들림 가짜 detection 차단).
+    # 0.0~1.0, 0.1 = bbox 변 길이의 10% 패딩.
+    tray_mask_padding: float = 0.1
 
     # 디버그·로깅
     debug_overlay: bool = False

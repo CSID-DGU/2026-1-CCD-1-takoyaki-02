@@ -70,7 +70,7 @@ def main() -> None:
             game_type="yacht",
             active_player="p_1",
             allowed_actors=["p_1", "p_2", "p_3", "p_4"],
-            expected_events=["ROLL_CONFIRMED"],
+            expected_events=["ROLL_CONFIRMED", "ROLL_UNREADABLE", "DICE_ESCAPED"],
         ),
         "seat_register_right": FusionContext(
             fsm_state="seat_register_right",

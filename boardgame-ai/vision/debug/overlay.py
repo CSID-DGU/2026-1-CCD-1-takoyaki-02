@@ -28,11 +28,13 @@ def draw_overlay(
     perception: FramePerception,
     recent_event: dict | None = None,
     event_ttl_frames: int = 0,
+    warmup_remaining: int = 0,
 ) -> Any:
     """FramePerception을 frame_bgr 위에 그려서 반환 (원본 수정).
 
     recent_event : 최근 발생한 GameEvent.data (dice_rolled 등)
     event_ttl_frames : 남은 표시 프레임 수 (>0이면 배너 표시)
+    warmup_remaining : 워밍업 중 남은 프레임 수 (>0이면 WARMUP 배지 표시)
     """
     h, w = frame_bgr.shape[:2]
 
@@ -86,11 +88,23 @@ def draw_overlay(
             cv2.LINE_AA,
         )
 
-    # roll_actor + roll_state
+    # roll_state — 좌상단에 큼지막하게 (디버그 시 한눈에 보이게)
     roll_state = perception.phase_hints.get("roll_state", "")
     actor = perception.roll_actor_id or "-"
-    info = f"actor:{actor}  state:{roll_state}  f{perception.frame_id}"
-    cv2.putText(frame_bgr, info, (10, 24), _FONT, 0.6, _COLOR_TEXT, 1, cv2.LINE_AA)
+    cv2.putText(
+        frame_bgr, f"STATE: {roll_state}", (10, 36), _FONT, 0.9, (0, 255, 255), 2, cv2.LINE_AA
+    )
+    info = f"actor:{actor}  f{perception.frame_id}"
+    cv2.putText(frame_bgr, info, (10, 60), _FONT, 0.55, _COLOR_TEXT, 1, cv2.LINE_AA)
+
+    # warmup 배지 — 우상단
+    if warmup_remaining > 0:
+        warm = f"WARMUP {warmup_remaining}"
+        (tw, th), _ = cv2.getTextSize(warm, _FONT, 0.7, 2)
+        bx = w - tw - 16
+        by = 36
+        cv2.rectangle(frame_bgr, (bx - 8, by - th - 6), (bx + tw + 8, by + 6), (0, 0, 0), -1)
+        cv2.putText(frame_bgr, warm, (bx, by), _FONT, 0.7, (0, 200, 255), 2, cv2.LINE_AA)
 
     # dice_rolled 이벤트 배너 (화면 중앙 상단)
     if event_ttl_frames > 0 and recent_event is not None:

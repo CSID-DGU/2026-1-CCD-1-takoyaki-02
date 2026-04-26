@@ -88,12 +88,15 @@ class FusionEngine:
                 self._stab_counters[event_type] = 0
                 self._stab_candidates[event_type] = stab_key
 
-            # 조건 3: N프레임 안정화
-            required = (
-                gesture_stab
-                if "seat_hand" in event_type or "gesture" in event_type
-                else stab_frames
-            )
+            # 조건 3: N프레임 안정화.
+            # ROLL_CONFIRMED/ROLL_UNREADABLE은 RollAttributor가 이미 게이트 통과시킨
+            # 1회성 신호이므로 즉시 발화 (안정화 우회).
+            if event_type in ("ROLL_CONFIRMED", "ROLL_UNREADABLE"):
+                required = 1
+            elif "seat_hand" in event_type or "gesture" in event_type:
+                required = gesture_stab
+            else:
+                required = stab_frames
             self._stab_counters[event_type] += 1
             if self._stab_counters[event_type] < required:
                 continue
