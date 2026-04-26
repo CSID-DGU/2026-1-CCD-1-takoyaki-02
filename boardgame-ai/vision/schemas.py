@@ -178,6 +178,9 @@ class FramePerception:
     dice: list[DiceState] = field(default_factory=list)
     hands: list[HandDet] = field(default_factory=list)
     roll_actor_id: str | None = None
+    # RollAttributor가 이번 프레임에 굴림을 finalize했는지 (1회성 신호).
+    # YachtRules가 ROLL_CONFIRMED/ROLL_UNREADABLE 후보 게이트로 사용. 정적 화면 발화 루프 차단.
+    roll_just_confirmed: bool = False
 
     # RollAttributor 내부 상태 힌트 (Fusion이 참조)
     phase_hints: dict[str, Any] = field(default_factory=dict)
@@ -202,6 +205,7 @@ class FramePerception:
             "dice": [d.to_dict() for d in self.dice],
             "hands": [h.to_dict() for h in self.hands],
             "roll_actor_id": self.roll_actor_id,
+            "roll_just_confirmed": self.roll_just_confirmed,
             "phase_hints": self.phase_hints,
         }
 
@@ -220,5 +224,6 @@ class FramePerception:
             dice=[DiceState.from_dict(x) for x in d.get("dice", [])],
             hands=[HandDet.from_dict(x) for x in d.get("hands", [])],
             roll_actor_id=d.get("roll_actor_id"),
+            roll_just_confirmed=bool(d.get("roll_just_confirmed", False)),
             phase_hints=dict(d.get("phase_hints", {})),
         )

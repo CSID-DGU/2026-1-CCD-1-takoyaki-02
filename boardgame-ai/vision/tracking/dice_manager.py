@@ -22,6 +22,7 @@ class _DiceHistory:
     pip_buffer: deque[int] = field(default_factory=lambda: deque(maxlen=5))
     stable_frames: int = 0
     last_pip: int | None = None
+    miss_count: int = 0  # tracked에서 빠진 연속 프레임 수 (가림 시 history 보존용)
 
 
 class DiceManager:
@@ -32,19 +33,23 @@ class DiceManager:
     stabilization_frames : stable로 확정하기 위한 최소 프레임 수
     history_window : motion_score 계산용 이력 윈도우 크기
     pip_buffer_size : pip_count 다수결 버퍼 크기
+    history_max_miss : tracked에서 사라진 후 history를 유지할 최대 프레임 수
+                       (ByteTracker.max_age와 동일 정책 — 일시 가림 후 재매칭 시 pip 유지)
     """
 
     def __init__(
         self,
         motion_threshold: float = 0.002,
-        stabilization_frames: int = 15,  # 30프레임(1초) → 15프레임(0.5초)으로 완화
+        stabilization_frames: int = 15,
         history_window: int = 10,
-        pip_buffer_size: int = 7,  # 다수결 버퍼 확대 (flicker 방어 강화)
+        pip_buffer_size: int = 11,  # 더 큰 버퍼로 YOLO/Hough 끊김 흡수
+        history_max_miss: int = 30,
     ) -> None:
         self._motion_threshold = motion_threshold
         self._stabilization_frames = stabilization_frames
         self._history_window = history_window
         self._pip_buffer_size = pip_buffer_size
+        self._history_max_miss = history_max_miss
         self._histories: dict[int, _DiceHistory] = {}
 
     def update(
@@ -66,10 +71,13 @@ class DiceManager:
         """
         active_ids = {tid for tid, _ in tracked}
 
-        # 더 이상 추적 안 되는 트랙 정리
-        stale = [tid for tid in self._histories if tid not in active_ids]
-        for tid in stale:
-            del self._histories[tid]
+        # tracked에 없는 history는 즉시 지우지 않고 miss_count 누적.
+        # 손에 가려졌다가 같은 track_id로 돌아올 수 있으므로 max_miss 동안 유지.
+        for tid, hist in list(self._histories.items()):
+            if tid not in active_ids:
+                hist.miss_count += 1
+                if hist.miss_count > self._history_max_miss:
+                    del self._histories[tid]
 
         states: list[DiceState] = []
 
@@ -81,6 +89,8 @@ class DiceManager:
                     pip_buffer=deque(maxlen=self._pip_buffer_size),
                 ),
             )
+
+            hist.miss_count = 0  # 다시 잡힘 — 가림 카운터 리셋
 
             center = det.bbox.center()
             hist.center_history.append(center)
@@ -126,9 +136,13 @@ class DiceManager:
 
 
 def _compute_motion_score(history: deque[tuple[float, float]]) -> float:
-    """최근 N프레임 center 이동의 표준편차 (정규화)."""
-    if len(history) < 2:
-        return 0.0
+    """최근 N프레임 center 이동의 표준편차 (정규화).
+
+    샘플이 부족하면 큰 값을 반환해 가짜 stable 판정을 막는다.
+    (variance 계산상 작은 표본은 0에 가까워 motion_threshold 미만으로 떨어짐)
+    """
+    if len(history) < 5:
+        return float("inf")
     dists: list[float] = []
     pts = list(history)
     for i in range(1, len(pts)):

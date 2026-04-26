@@ -88,12 +88,15 @@ class FusionEngine:
                 self._stab_counters[event_type] = 0
                 self._stab_candidates[event_type] = stab_key
 
-            # 조건 3: N프레임 안정화
-            required = (
-                gesture_stab
-                if "seat_hand" in event_type or "gesture" in event_type
-                else stab_frames
-            )
+            # 조건 3: N프레임 안정화.
+            # ROLL_CONFIRMED/ROLL_UNREADABLE/DICE_ESCAPED는 yacht_rules가 자체적으로
+            # 1회성 게이트(roll_just_confirmed / _reported_escaped)를 적용하므로 즉시 발화.
+            if event_type in ("ROLL_CONFIRMED", "ROLL_UNREADABLE", "DICE_ESCAPED"):
+                required = 1
+            elif "seat_hand" in event_type or "gesture" in event_type:
+                required = gesture_stab
+            else:
+                required = stab_frames
             self._stab_counters[event_type] += 1
             if self._stab_counters[event_type] < required:
                 continue
@@ -128,7 +131,7 @@ class FusionEngine:
                     actor_id=actor_id,
                     confidence=conf,
                     frame_id=perception.frame_id,
-                    data={k: v for k, v in event_data.items() if k != "actor_id"},
+                    data={k: v for k, v in event_data.items() if k not in ("actor_id", "_key")},
                 )
             )
             # 발화 후 카운터 리셋 (중복 발화 방지)

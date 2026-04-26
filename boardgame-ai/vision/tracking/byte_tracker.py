@@ -73,11 +73,22 @@ class ByteTracker:
 
         matched, unmatched_dets, unmatched_trks = self._match(dets)
 
-        # 매칭된 트랙 업데이트
+        # 매칭된 트랙 업데이트 + 결과를 객체 레퍼런스 기준으로 즉시 수집
+        # (아래에서 self._tracks를 재구성하므로 trk_idx에 의존하면 안 됨)
+        results: list[tuple[int, YoloDet]] = []
         for det_idx, trk_idx in matched:
-            self._tracks[trk_idx].bbox = dets[det_idx].bbox
-            self._tracks[trk_idx].age = 0
-            self._tracks[trk_idx].hit_streak += 1
+            trk = self._tracks[trk_idx]
+            trk.bbox = dets[det_idx].bbox
+            trk.age = 0
+            trk.hit_streak += 1
+            if trk.hit_streak >= self._min_hits:
+                det = dets[det_idx]
+                results.append(
+                    (
+                        trk.track_id,
+                        YoloDet(cls_name=det.cls_name, bbox=det.bbox, track_id=trk.track_id),
+                    )
+                )
 
         # 신규 감지 → 새 트랙
         for det_idx in unmatched_dets:
@@ -89,21 +100,8 @@ class ByteTracker:
             self._tracks[trk_idx].age += 1
             self._tracks[trk_idx].hit_streak = 0
 
-        # 오래된 트랙 제거
+        # 오래된 트랙 제거 (results 빌드 후 — 인덱스 무효화 회피)
         self._tracks = [t for t in self._tracks if t.age <= self._max_age]
-
-        # 확정 트랙 + 대응 det 반환
-        results: list[tuple[int, YoloDet]] = []
-        for det_idx, trk_idx in matched:
-            trk = self._tracks[trk_idx] if trk_idx < len(self._tracks) else None
-            if trk and trk.hit_streak >= self._min_hits:
-                det = dets[det_idx]
-                results.append(
-                    (
-                        trk.track_id,
-                        YoloDet(cls_name=det.cls_name, bbox=det.bbox, track_id=trk.track_id),
-                    )
-                )
 
         return results
 

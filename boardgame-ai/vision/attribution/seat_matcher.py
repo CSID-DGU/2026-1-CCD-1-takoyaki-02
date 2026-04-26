@@ -17,16 +17,13 @@ class SeatMatcher:
     """
     Parameters
     ----------
-    wrist_distance_min_norm : 허용 최소 거리 (이보다 가까우면 같은 손으로 간주해 skip)
-    wrist_distance_max_norm : 허용 최대 거리 (이보다 멀면 매칭 실패)
+    wrist_distance_max_norm : 매칭 허용 최대 거리 (초과 시 후보 제외)
     """
 
     def __init__(
         self,
-        wrist_distance_min_norm: float | None = None,
         wrist_distance_max_norm: float | None = None,
     ) -> None:
-        self._min = wrist_distance_min_norm or float(DEFAULT_PARAMS["wrist_distance_min_norm"])
         self._max = wrist_distance_max_norm or float(DEFAULT_PARAMS["wrist_distance_max_norm"])
 
     def match(self, hand: HandDet, players: list[Player]) -> str | None:
@@ -48,7 +45,7 @@ class SeatMatcher:
                 ref = player.seat_zone.left_hand_wrist
 
             d = _euclidean(hand.wrist_xy, ref)
-            if d < self._min or d > self._max:
+            if d > self._max:
                 continue
             if d < best_dist:
                 best_dist = d
