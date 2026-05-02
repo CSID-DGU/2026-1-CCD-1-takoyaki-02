@@ -14,7 +14,9 @@ from collections import defaultdict
 
 from core.constants import DEFAULT_PARAMS, CommonEventType, CommonPhase
 from core.events import FusionContext, GameEvent
+from core.models import ArmAnchor, SeatZone
 from vision.fusion.yacht_rules import YachtRules
+from vision.geometry.arm_vector import compute_arm_angle, estimate_body_xy
 from vision.schemas import FramePerception, HandDet
 
 
@@ -32,6 +34,11 @@ class FusionEngine:
         self._stab_counters: dict[str, int] = defaultdict(int)
         # event_type → 직전 프레임 후보 데이터 (안정화 중 동일 데이터 유지 확인)
         self._stab_candidates: dict[str, object] = {}
+        # SEAT_REGISTER 순차 등록 상태: 오른손 V사인 확인 후 왼손 OK사인 대기
+        # actor_id → (wrist_xy, arm_angle)
+        self._seat_right_confirmed: dict[str, tuple[tuple[float, float], float]] = {}
+        # 중간 이벤트 SEAT_RIGHT_REGISTERED 1회 발화 가드
+        self._seat_right_event_emitted: set[str] = set()
 
     # ── 외부 인터페이스 ────────────────────────────────────────────────────────
 
@@ -40,6 +47,8 @@ class FusionEngine:
         if context.fsm_state != self._context.fsm_state:
             self._stab_counters.clear()
             self._stab_candidates.clear()
+            self._seat_right_confirmed.clear()
+            self._seat_right_event_emitted.clear()
         self._context = context
 
     def feed(self, perception: FramePerception) -> list[GameEvent]:
@@ -60,8 +69,21 @@ class FusionEngine:
 
         candidates: list[tuple[str, object, float]] = []  # (event_type, data_key, confidence)
 
-        # ── SEAT_REGISTER_RIGHT / LEFT ────────────────────────────────────────
-        if ctx.fsm_state in (CommonPhase.SEAT_REGISTER_RIGHT, CommonPhase.SEAT_REGISTER_LEFT):
+        # ── SEAT_REGISTER (오른손 V사인 → 왼손 OK사인 순차) ─────────────────
+        if ctx.fsm_state == CommonPhase.SEAT_REGISTER:
+            # 중간 이벤트: 오른손 V사인만 보이면 1회 발화
+            evt_r, data_r, conf_r = self._build_seat_right_registered_candidate(
+                ctx, perception
+            )
+            if evt_r:
+                candidates.append((evt_r, data_r, conf_r))
+            # 완료 이벤트: 양손 모두 캡처되면 발화
+            evt, data, conf = self._build_seat_registered_candidate(ctx, perception)
+            if evt:
+                candidates.append((evt, data, conf))
+
+        # ── SEAT_REGISTER_RIGHT / LEFT (하위 호환) ────────────────────────────
+        elif ctx.fsm_state in (CommonPhase.SEAT_REGISTER_RIGHT, CommonPhase.SEAT_REGISTER_LEFT):
             for hand in perception.hands:
                 evt, data, conf = self._build_seat_hand_candidate(ctx, hand)
                 if evt:
@@ -93,6 +115,11 @@ class FusionEngine:
             # 1회성 게이트(roll_just_confirmed / _reported_escaped)를 적용하므로 즉시 발화.
             if event_type in ("ROLL_CONFIRMED", "ROLL_UNREADABLE", "DICE_ESCAPED"):
                 required = 1
+            elif event_type in (
+                CommonEventType.SEAT_REGISTERED,
+                CommonEventType.SEAT_RIGHT_REGISTERED,
+            ):
+                required = gesture_stab
             elif "seat_hand" in event_type or "gesture" in event_type:
                 required = gesture_stab
             else:
@@ -134,6 +161,9 @@ class FusionEngine:
                     data={k: v for k, v in event_data.items() if k not in ("actor_id", "_key")},
                 )
             )
+            # 중간 이벤트 1회 발화 가드
+            if event_type == CommonEventType.SEAT_RIGHT_REGISTERED and actor_id:
+                self._seat_right_event_emitted.add(actor_id)
             # 발화 후 카운터 리셋 (중복 발화 방지)
             self._stab_counters[event_type] = 0
 
@@ -141,12 +171,108 @@ class FusionEngine:
 
     # ── 내부 헬퍼 ─────────────────────────────────────────────────────────────
 
+    def _build_seat_registered_candidate(
+        self,
+        ctx: FusionContext,
+        perception: FramePerception,
+    ) -> tuple[str | None, dict, float]:
+        """SEAT_REGISTER phase: 오른손 V사인 확인 후 왼손 OK사인 순차 인식.
+
+        Step 1: 오른손 V사인 감지 → _seat_right_confirmed에 (wrist, arm_angle) 저장
+        Step 2: 왼손 OK사인 감지 → seat_registered 후보 반환
+        두 손이 동시에 보일 필요 없음. arm_angle은 21 landmark에서 직접 계산.
+        """
+        actor = ctx.active_player or ""
+
+        right_hand: HandDet | None = None
+        left_hand: HandDet | None = None
+        for hand in perception.hands:
+            if hand.gesture == "v_sign" and hand.handedness == "Right":
+                right_hand = hand
+            elif hand.gesture == "ok_sign" and hand.handedness == "Left":
+                left_hand = hand
+
+        # Step 1: 오른손 V사인 → 기억
+        if right_hand is not None:
+            r_angle = (
+                right_hand.arm_angle
+                if right_hand.arm_angle is not None
+                else compute_arm_angle(right_hand.landmarks_21)
+            )
+            self._seat_right_confirmed[actor] = (right_hand.wrist_xy, r_angle)
+
+        # Step 2: 왼손 OK사인 + 오른손 이미 확인됨 → 발화
+        if left_hand is not None and actor in self._seat_right_confirmed:
+            right_wrist, right_angle = self._seat_right_confirmed[actor]
+            left_wrist = left_hand.wrist_xy
+            left_angle = (
+                left_hand.arm_angle
+                if left_hand.arm_angle is not None
+                else compute_arm_angle(left_hand.landmarks_21)
+            )
+
+            right_anchor = ArmAnchor(
+                handedness="Right",
+                wrist_xy=right_wrist,
+                arm_angle=right_angle,
+            )
+            left_anchor = ArmAnchor(
+                handedness="Left",
+                wrist_xy=left_wrist,
+                arm_angle=left_angle,
+            )
+            body_xy, posture = estimate_body_xy(
+                right_wrist, right_angle, left_wrist, left_angle
+            )
+            seat_zone = SeatZone(
+                right_arm=right_anchor,
+                left_arm=left_anchor,
+                body_xy=body_xy,
+                posture=posture,
+            )
+
+            data_key = {
+                "seat_zone": seat_zone.to_dict(),
+                "actor_id": actor,
+                "_key": (
+                    round(left_wrist[0], 1),
+                    round(left_wrist[1], 1),
+                    actor,
+                ),
+            }
+            return CommonEventType.SEAT_REGISTERED, data_key, 0.9
+
+        return None, {}, 0.0
+
+    def _build_seat_right_registered_candidate(
+        self,
+        ctx: FusionContext,
+        perception: FramePerception,
+    ) -> tuple[str | None, dict, float]:
+        """SEAT_REGISTER phase 중간 이벤트: 오른손 V사인 1회만 발화.
+
+        한 actor당 1회만 발화하도록 _seat_right_event_emitted로 가드.
+        """
+        actor = ctx.active_player or ""
+        if actor in self._seat_right_event_emitted:
+            return None, {}, 0.0
+
+        for hand in perception.hands:
+            if hand.gesture == "v_sign" and hand.handedness == "Right":
+                data_key = {
+                    "actor_id": actor,
+                    "hand": "Right",
+                    "_key": ("right", actor),
+                }
+                return CommonEventType.SEAT_RIGHT_REGISTERED, data_key, 0.9
+        return None, {}, 0.0
+
     def _build_seat_hand_candidate(
         self,
         ctx: FusionContext,
         hand: HandDet,
     ) -> tuple[str | None, dict, float]:
-        """SEAT_REGISTER_RIGHT/LEFT 단계에서 seat_hand_registered 후보 생성."""
+        """SEAT_REGISTER_RIGHT/LEFT 단계에서 seat_hand_registered 후보 생성 (하위 호환)."""
         if ctx.fsm_state == CommonPhase.SEAT_REGISTER_RIGHT:
             expected_hand = "Right"
             expected_gesture = "v_sign"
@@ -159,8 +285,6 @@ class FusionEngine:
         if hand.gesture != expected_gesture:
             return None, {}, 0.0
 
-        # data_key: wrist를 0.01 단위로 양자화해 안정화 판정 (dict로 통일)
-        # active_player를 _key에 포함 → context 전환 시 카운터 리셋
         data_key = {
             "hand": hand.handedness,
             "wrist": list(hand.wrist_xy),
