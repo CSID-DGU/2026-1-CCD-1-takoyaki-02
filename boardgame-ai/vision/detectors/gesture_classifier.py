@@ -80,8 +80,9 @@ class GestureClassifier:
         # ── v_sign: 검지+중지 펴짐, 약지+새끼 굽힘 ────────────────────
         index_ext = _finger_extended(lms, _INDEX_TIP, _INDEX_PIP, _INDEX_MCP)
         middle_ext = _finger_extended(lms, _MIDDLE_TIP, _MIDDLE_PIP, _MIDDLE_MCP)
-        ring_curl = _finger_curled(lms, _RING_TIP, _RING_MCP)
-        pinky_curl = _finger_curled(lms, _PINKY_TIP, _PINKY_MCP)
+        # pip 기준으로 판정 — mcp보다 더 엄격해서 오버헤드에서도 안정적
+        ring_curl = _finger_curled(lms, _RING_TIP, _RING_PIP)
+        pinky_curl = _finger_curled(lms, _PINKY_TIP, _PINKY_PIP)
         if index_ext and middle_ext and ring_curl and pinky_curl:
             return "v_sign"
 
