@@ -9,6 +9,12 @@ export default function App() {
 
   if (page === 'seat') return <SeatRegistration players={players} setPlayers={setPlayers} onStart={() => setPage('lobby')} />
   if (page === 'lobby') return <Lobby players={players} onSelectWerewolf={() => setPage('werewolf')} />
-  if (page === 'werewolf') return <WerewolfGame players={players} />
+  if (page === 'werewolf') return (
+    <WerewolfGame
+      players={players}
+      onLobby={() => setPage('seat')}
+      onRestart={() => setPage('lobby')}
+    />
+  )
   return null
 }
