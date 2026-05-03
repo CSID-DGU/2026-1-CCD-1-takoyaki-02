@@ -197,8 +197,6 @@ function OkHandIcon() {
 }
 
 function HandIcon({ side, active }) {
-  // side: "left" | "right"
-  // 왼쪽 슬롯 = 왼손 OK사인, 오른쪽 슬롯 = 오른손 V사인
   const Icon = side === 'right' ? VictoryHandIcon : OkHandIcon
   const label = side === 'right' ? '오른손 V사인' : '왼손 OK사인'
   return (
@@ -214,7 +212,6 @@ function HandIcon({ side, active }) {
 function RegistrationModal({ seatStep, registeringId, defaultName, onCancel, onFinalize }) {
   const [name, setName] = useState('')
 
-  // step별 안내
   const rightActive = seatStep === 'right_done' || seatStep === 'completed'
   const leftActive = seatStep === 'completed'
 
@@ -229,7 +226,6 @@ function RegistrationModal({ seatStep, registeringId, defaultName, onCancel, onF
 
   const handleConfirm = () => {
     if (!registeringId) return
-    // 빈 입력이면 디폴트 이름(플레이어N)으로 자동 등록
     const n = name.trim() || defaultName
     onFinalize(registeringId, n)
     setName('')
@@ -280,18 +276,14 @@ export default function SeatRegistration({
   const [editingId, setEditingId] = useState(null)
   const [editName, setEditName] = useState('')
 
-  // 등록 모달 표시: registeringId가 있으면 자동으로 모달 노출
   const showModal = !!registeringId
 
-  // 등록 시작: 임시 player_id 발급 + 즉시 카메라 인식 시작
   const startRegistration = () => {
     send('start_registration', {})
   }
 
   const cancelRegistration = () => {
     if (!registeringId) return
-    // 임시 등록(playername 없음): 플레이어 자체를 삭제
-    // 기존 플레이어 재등록(playername 있음): 등록만 중단하고 플레이어 보존
     const target = players.find((p) => p.player_id === registeringId)
     const isTemp = !target || !target.playername
     if (isTemp) {
@@ -330,11 +322,8 @@ export default function SeatRegistration({
     send('start_seat_registration', { player_id })
   }
 
-  // 등록 완료된 플레이어만 게임 시작 가능
   const named = players.filter((p) => p.playername)
   const canStart = named.length > 0 && named.every((p) => p.registered)
-
-  // 디폴트 이름: 등록 중 임시 player_id를 제외한 named.length 기준 다음 번호
   const defaultName = `플레이어${named.length + 1}`
 
   return (

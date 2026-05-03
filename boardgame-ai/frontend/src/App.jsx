@@ -36,6 +36,12 @@ export default function App() {
     )
   }
   if (page === 'lobby') return <Lobby players={players} onSelectWerewolf={() => setPage('werewolf')} />
-  if (page === 'werewolf') return <WerewolfGame players={players} />
+  if (page === 'werewolf') return (
+    <WerewolfGame
+      players={players}
+      onLobby={() => setPage('seat')}
+      onRestart={() => setPage('lobby')}
+    />
+  )
   return null
 }
