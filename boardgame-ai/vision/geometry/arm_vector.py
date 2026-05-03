@@ -42,11 +42,17 @@ def angular_diff(a: float, b: float) -> float:
     return d
 
 
-def _circular_mean(angles: list[float]) -> float:
-    """단위원 위 평균(원형 평균)."""
+def _circular_mean(angles: list[float]) -> tuple[float, float]:
+    """단위원 위 평균(원형 평균)과 합벡터의 크기를 함께 반환.
+
+    크기가 0에 가까우면(거의 antipodal) 평균 각도 자체가 무의미하므로
+    호출자가 fallback을 선택할 수 있도록 magnitude도 같이 노출한다.
+    """
     sx = sum(math.cos(a) for a in angles)
     sy = sum(math.sin(a) for a in angles)
-    return math.atan2(sy, sx)
+    mean = math.atan2(sy, sx)
+    magnitude = math.hypot(sx, sy) / max(len(angles), 1)
+    return mean, magnitude
 
 
 def estimate_body_xy(
@@ -73,12 +79,13 @@ def estimate_body_xy(
     mid_x = (right_wrist[0] + left_wrist[0]) / 2.0
     mid_y = (right_wrist[1] + left_wrist[1]) / 2.0
 
-    if posture == "stretched":
-        # 양팔이 일직선이면 평균 각도가 그대로 몸 방향
-        body_angle = _circular_mean([right_angle, left_angle])
-    else:
-        # V자 꺾임: 두 팔이 모이는 합벡터 방향
-        body_angle = _circular_mean([right_angle, left_angle])
+    body_angle, magnitude = _circular_mean([right_angle, left_angle])
+
+    # stretched(두 각도 거의 반대) 경우 합벡터 크기가 0에 수렴해 평균 각도가
+    # 수치적으로 불안정. magnitude가 임계 미만이면 right_angle을 그대로 사용
+    # (양팔 일직선이면 어느 한쪽 각도가 그대로 몸 방향과 같음).
+    if magnitude < 0.1:
+        body_angle = right_angle
 
     body_x = mid_x + extrapolation * math.cos(body_angle)
     body_y = mid_y + extrapolation * math.sin(body_angle)

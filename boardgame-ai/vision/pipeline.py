@@ -302,8 +302,10 @@ class VisionPipeline:
             )
 
         # 소멸된 track의 prev_gesture 정리 (메모리 누수 방지)
-        active_ids = {t.track_id for t in tracks}
-        stale = [tid for tid in self._prev_gestures if tid not in active_ids]
+        # 이번 프레임에 unmatched였지만 age 안에서 유지되는 트랙도 살아있는 것으로 보고
+        # gesture 상태를 보존해야 release 감지가 트랙 끊김 직후 손이 다시 잡혀도 이어진다.
+        live_ids = {t.track_id for t in self._hand_tracker.active_tracks()}
+        stale = [tid for tid in self._prev_gestures if tid not in live_ids]
         for tid in stale:
             del self._prev_gestures[tid]
 

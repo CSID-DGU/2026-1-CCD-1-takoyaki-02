@@ -6,10 +6,17 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
+import logging
 from typing import Any
 
 from fastapi import WebSocket, WebSocketDisconnect
+
+logger = logging.getLogger(__name__)
+
+# 처리 오류가 이 횟수만큼 연속 발생하면 연결을 종료해 폭주 방지.
+_MAX_CONSECUTIVE_ERRORS = 5
 
 
 class ConnectionManager:
@@ -45,17 +52,49 @@ async def tablet_ws_handler(websocket: WebSocket, orchestrator: Any) -> None:
         snapshot = orchestrator.current_snapshot()
         await websocket.send_text(json.dumps({"msg_type": "state_update", "state": snapshot}))
 
+        consecutive_errors = 0
         while True:
             raw = await websocket.receive_text()
+
+            # 1) JSON 파싱 — 실패 시 클라이언트에 에러 응답
             try:
                 msg = json.loads(raw)
-                if msg.get("msg_type") == "input":
-                    orchestrator.handle_input(
-                        msg.get("input_type", ""),
-                        msg.get("data", {}),
+            except json.JSONDecodeError as e:
+                logger.warning("ws/tablet: invalid JSON from client: %s", e)
+                with contextlib.suppress(Exception):
+                    await websocket.send_text(
+                        json.dumps({"msg_type": "error", "error": "invalid_json"})
                     )
-            except (json.JSONDecodeError, Exception):
-                pass
+                continue
+
+            if msg.get("msg_type") != "input":
+                # 미지원 msg_type은 무시 (확장 여지)
+                continue
+
+            # 2) 처리 — 연속 실패 카운트, 임계 초과 시 연결 종료
+            try:
+                orchestrator.handle_input(
+                    msg.get("input_type", ""),
+                    msg.get("data", {}),
+                )
+                consecutive_errors = 0
+            except Exception:
+                consecutive_errors += 1
+                logger.exception(
+                    "ws/tablet: handle_input failed (input_type=%s, count=%d)",
+                    msg.get("input_type"),
+                    consecutive_errors,
+                )
+                with contextlib.suppress(Exception):
+                    await websocket.send_text(
+                        json.dumps({"msg_type": "error", "error": "handler_failed"})
+                    )
+                if consecutive_errors >= _MAX_CONSECUTIVE_ERRORS:
+                    logger.error(
+                        "ws/tablet: closing connection after %d consecutive errors",
+                        consecutive_errors,
+                    )
+                    break
     except WebSocketDisconnect:
         pass
     finally:

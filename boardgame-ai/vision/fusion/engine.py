@@ -10,6 +10,7 @@
 
 from __future__ import annotations
 
+import threading
 from collections import defaultdict
 
 from core.constants import DEFAULT_PARAMS, CommonEventType, CommonPhase
@@ -39,20 +40,28 @@ class FusionEngine:
         self._seat_right_confirmed: dict[str, tuple[tuple[float, float], float]] = {}
         # 중간 이벤트 SEAT_RIGHT_REGISTERED 1회 발화 가드
         self._seat_right_event_emitted: set[str] = set()
+        # update_context()는 백엔드(FastAPI/WS) 스레드에서, feed()는 비전 캡처 스레드에서
+        # 호출될 수 있어 내부 상태 보호용 lock 필요. RLock으로 동일 스레드 재진입 허용.
+        self._lock = threading.RLock()
 
     # ── 외부 인터페이스 ────────────────────────────────────────────────────────
 
     def update_context(self, context: FusionContext) -> None:
         """FSM에서 들어오는 FusionContext 갱신. 상태 전이 시 카운터 리셋."""
-        if context.fsm_state != self._context.fsm_state:
-            self._stab_counters.clear()
-            self._stab_candidates.clear()
-            self._seat_right_confirmed.clear()
-            self._seat_right_event_emitted.clear()
-        self._context = context
+        with self._lock:
+            if context.fsm_state != self._context.fsm_state:
+                self._stab_counters.clear()
+                self._stab_candidates.clear()
+                self._seat_right_confirmed.clear()
+                self._seat_right_event_emitted.clear()
+            self._context = context
 
     def feed(self, perception: FramePerception) -> list[GameEvent]:
         """FramePerception을 소비해 통과한 GameEvent 리스트 반환."""
+        with self._lock:
+            return self._feed_locked(perception)
+
+    def _feed_locked(self, perception: FramePerception) -> list[GameEvent]:
         ctx = self._context
         params = {**DEFAULT_PARAMS, **ctx.params}
         stab_frames = int(

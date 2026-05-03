@@ -289,8 +289,15 @@ export default function SeatRegistration({
   }
 
   const cancelRegistration = () => {
-    if (registeringId) {
+    if (!registeringId) return
+    // 임시 등록(playername 없음): 플레이어 자체를 삭제
+    // 기존 플레이어 재등록(playername 있음): 등록만 중단하고 플레이어 보존
+    const target = players.find((p) => p.player_id === registeringId)
+    const isTemp = !target || !target.playername
+    if (isTemp) {
       send('player_remove', { player_id: registeringId })
+    } else {
+      send('cancel_seat_registration', {})
     }
   }
 

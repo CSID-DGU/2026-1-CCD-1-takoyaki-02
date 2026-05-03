@@ -2,7 +2,8 @@
 
 MediaPipe HandLandmarker는 프레임마다 손 인덱스가 재배정되고
 가림·빠른 움직임에 track이 끊기기 쉬움. 이를 보완하기 위해:
-  - wrist 좌표 근접도로 frame-to-frame Hungarian matching
+  - wrist 좌표 근접도(Euclidean) 기반 greedy 1:1 매칭으로
+    frame-to-frame 트랙 유지 (최대 4명 손이라 greedy로 충분)
   - handedness/player_id는 deque 버퍼 다수결로 안정화
   - 신규 track 발생 시 entry_wrist_xy + entry_arm_angle 영구 저장
   - pending_match=True → pipeline이 매칭 1회 수행

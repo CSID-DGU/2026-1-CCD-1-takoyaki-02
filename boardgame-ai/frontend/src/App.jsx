@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import { useWebSocket } from './hooks/useWebSocket'
 import SeatRegistration from './components/common/SeatRegistration'
 import Lobby from './pages/Lobby'
@@ -7,7 +7,6 @@ import WerewolfGame from './pages/WerewolfGame'
 export default function App() {
   const [page, setPage] = useState('seat')
   const { state, connected, send } = useWebSocket('/ws/tablet')
-  const soundRef = useRef(null)
 
   // 사운드 트리거 처리
   useEffect(() => {
@@ -18,7 +17,9 @@ export default function App() {
   }, [state?.sound])
 
   const players = state?.players ?? []
-  const phase = state?.phase ?? 'player_setup'
+  // TODO(yacht/werewolf FSM 합류 시): state.phase로 게임 단계별 라우팅 (PLAYER_SETUP/GAME_SELECT/IN_GAME 등)
+  // 현재는 page state로 직접 라우팅 중이어서 phase는 미사용. 백엔드 → FSM 통합 후 사용 예정.
+  // const phase = state?.phase ?? 'player_setup'
   const registeringId = state?.registering_player_id ?? null
   const seatStep = state?.seat_step ?? 'idle'
 

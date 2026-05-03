@@ -38,6 +38,9 @@ async def lifespan(app: FastAPI):
     bridge.on_game_event(orchestrator.handle_game_event)
 
     vision_runner = VisionRunner(config=config, bridge=bridge)
+    # PlayerManager 변경 시 비전 파이프라인의 players 리스트 자동 갱신.
+    # (좌석 등록 완료/이름 수정/삭제 직후 호출 — 매칭 후보 동기화용)
+    orchestrator.set_players_listener(vision_runner.update_players)
     vision_runner.start()
 
     app.state.orchestrator = orchestrator

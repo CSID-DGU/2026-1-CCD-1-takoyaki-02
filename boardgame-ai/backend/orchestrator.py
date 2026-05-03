@@ -7,6 +7,7 @@ PlayerManager를 보유하고 비전 이벤트(seat_right_registered, seat_regis
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import threading
 from collections.abc import Callable
 
@@ -28,11 +29,12 @@ class Orchestrator:
         self._state_version = 0
         # 좌석 등록 단계: idle | right_pending | right_done | completed
         self._seat_step = "idle"
-        # 마지막 1회성 sound trigger (broadcast 시 한 번만 실어 보냄)
-        self._pending_sound: str | None = None
         # 등록 흐름 상의 player_id (record_seat 후 PlayerManager.registering_player_id가
         # 비워져도 finalize/cancel 전까지 프론트가 모달을 유지하도록 별도 추적).
         self._pending_register_id: str | None = None
+        # PlayerManager 변경 시 비전 파이프라인에 새 players 리스트 전달용 콜백.
+        # 좌석 등록 완료 / 플레이어 추가·삭제·이름수정 직후마다 호출.
+        self._players_listener: Callable[[list], None] | None = None
 
     def set_broadcast(
         self,
@@ -41,6 +43,26 @@ class Orchestrator:
     ) -> None:
         self._broadcast_cb = cb
         self._loop = loop
+
+    def set_players_listener(self, cb: Callable[[list], None]) -> None:
+        """PlayerManager 변경 시 비전 파이프라인 등 외부 컴포넌트에 전달할 콜백 등록.
+
+        콜백 인자: 현재 등록된(또는 전체) Player 리스트.
+        """
+        self._players_listener = cb
+
+    def _notify_players(self) -> None:
+        """좌석 등록 완료/삭제/수정 직후 비전 파이프라인에 새 players 전달.
+
+        seat_zone이 채워진 플레이어만 매칭 후보로 의미가 있으므로 필터링.
+        호출자는 이미 self._lock을 잡고 있다고 가정하지 않음 (스냅샷만 읽음).
+        """
+        if self._players_listener is None:
+            return
+        registered = [p for p in self._pm.state.players if p.seat_zone is not None]
+        # 비전 스레드 갱신 실패가 백엔드 흐름을 끊지 않도록 흡수
+        with contextlib.suppress(Exception):
+            self._players_listener(registered)
 
     # ── 비전 이벤트 소비 ───────────────────────────────────────────────────────
 
@@ -82,6 +104,8 @@ class Orchestrator:
 
         # 비전에는 다시 PLAYER_SETUP phase로 알림 (등록 종료)
         self._push_context(CommonPhase.PLAYER_SETUP)
+        # 좌석 등록 완료 → 비전 파이프라인의 players 리스트 갱신
+        self._notify_players()
         self._broadcast(snapshot)
 
     # ── HTTP 핸들러 (routes/players.py에서 호출) ───────────────────────────────
@@ -117,12 +141,14 @@ class Orchestrator:
             if self._pending_register_id == player_id:
                 self._pending_register_id = None
             snapshot = self._snapshot()
+        self._notify_players()
         self._broadcast(snapshot)
 
     def edit_player(self, player_id: str, playername: str) -> None:
         with self._lock:
             self._pm.edit_playername(player_id, playername)
             snapshot = self._snapshot()
+        self._notify_players()
         self._broadcast(snapshot)
 
     def remove_player(self, player_id: str) -> None:
@@ -141,20 +167,40 @@ class Orchestrator:
         # 등록 phase 빠져나갔으면 비전에도 알림
         if self._phase == CommonPhase.PLAYER_SETUP:
             self._push_context(CommonPhase.PLAYER_SETUP)
+        self._notify_players()
         self._broadcast(snapshot)
 
     def get_players_list(self) -> list[dict]:
         with self._lock:
             return [p.to_dict() for p in self._pm.state.players]
 
+    def cancel_seat_registration(self) -> None:
+        """등록 모달 "취소" 처리 — 좌석 등록만 중단하고 플레이어는 유지.
+
+        임시 등록(이름 없음) 중인 경우 호출자가 player_remove로 직접 삭제.
+        기존 플레이어 재등록 중에는 이 함수를 사용해 플레이어 보존.
+        """
+        with self._lock:
+            self._pm.state.registering_player_id = None
+            self._pm.state.pending_wrists = {}
+            self._pending_register_id = None
+            if self._phase == CommonPhase.SEAT_REGISTER:
+                self._phase = CommonPhase.PLAYER_SETUP
+                self._seat_step = "idle"
+            snapshot = self._snapshot()
+        self._push_context(CommonPhase.PLAYER_SETUP)
+        self._broadcast(snapshot)
+
     def start_seat_registration(self, player_id: str) -> None:
-        """기존 플레이어의 좌석 재등록."""
+        """기존 플레이어의 좌석 재등록 (seat_zone 초기화 → 비전 후보에서 일시 제외)."""
         with self._lock:
             self._pm.restart_seat_registration(player_id)
             self._phase = CommonPhase.SEAT_REGISTER
             self._seat_step = "right_pending"
             snapshot = self._snapshot()
         self._push_context(CommonPhase.SEAT_REGISTER, active_player=player_id)
+        # seat_zone=None이 되었으므로 매칭 후보 리스트도 즉시 갱신
+        self._notify_players()
         self._broadcast(snapshot)
 
     def current_snapshot(self) -> dict:
@@ -175,6 +221,8 @@ class Orchestrator:
             pid = data.get("player_id")
             if pid:
                 self.start_seat_registration(pid)
+        elif input_type == "cancel_seat_registration":
+            self.cancel_seat_registration()
         elif input_type == "player_add":
             name = data.get("playername", "")
             if name:
