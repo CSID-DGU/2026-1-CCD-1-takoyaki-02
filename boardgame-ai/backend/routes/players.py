@@ -36,7 +36,7 @@ def finalize_player(player_id: str, body: PlayerCreate, request: Request) -> dic
     try:
         orch.finalize_player(player_id, body.playername)
     except KeyError:
-        raise HTTPException(status_code=404, detail="Player not found")
+        raise HTTPException(status_code=404, detail="Player not found") from None
     return {"ok": True}
 
 
@@ -46,7 +46,7 @@ def update_player(player_id: str, body: PlayerUpdate, request: Request) -> dict:
     try:
         orch.edit_player(player_id, body.playername)
     except KeyError:
-        raise HTTPException(status_code=404, detail="Player not found")
+        raise HTTPException(status_code=404, detail="Player not found") from None
     return {"ok": True}
 
 
@@ -56,7 +56,7 @@ def delete_player(player_id: str, request: Request) -> dict:
     try:
         orch.remove_player(player_id)
     except KeyError:
-        raise HTTPException(status_code=404, detail="Player not found")
+        raise HTTPException(status_code=404, detail="Player not found") from None
     return {"ok": True}
 
 

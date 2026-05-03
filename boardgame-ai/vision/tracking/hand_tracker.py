@@ -16,7 +16,6 @@ import math
 from collections import Counter, deque
 from dataclasses import dataclass, field
 
-
 # 한 프레임 사이 wrist가 이동할 수 있는 최대 정규화 거리.
 # 초과 시 다른 사람 손으로 판정.
 _MAX_WRIST_DIST = 0.15
@@ -35,19 +34,15 @@ class HandTrack:
 
     track_id: int
     wrist_xy: tuple[float, float]
-    arm_angle: float                          # 매 프레임 갱신되는 현재 각도
+    arm_angle: float  # 매 프레임 갱신되는 현재 각도
 
     # 트랙 시작 시점 정보 (영구) — 매칭에 사용
     entry_wrist_xy: tuple[float, float] = (0.0, 0.0)
     entry_arm_angle: float = 0.0
 
     # 다수결 버퍼
-    handedness_buf: deque[str] = field(
-        default_factory=lambda: deque(maxlen=_HANDEDNESS_BUF)
-    )
-    player_id_buf: deque[str | None] = field(
-        default_factory=lambda: deque(maxlen=_PLAYER_ID_BUF)
-    )
+    handedness_buf: deque[str] = field(default_factory=lambda: deque(maxlen=_HANDEDNESS_BUF))
+    player_id_buf: deque[str | None] = field(default_factory=lambda: deque(maxlen=_PLAYER_ID_BUF))
 
     age: int = 0  # 마지막 매칭 이후 프레임 수
     frames_since_entry: int = 0  # 트랙 생성 이후 매칭된 프레임 수
@@ -112,10 +107,7 @@ class HandTracker:
 
         if n_trk > 0 and n_det > 0:
             cost = [
-                [
-                    _euclidean(wrist_positions[i], self._tracks[j].wrist_xy)
-                    for j in range(n_trk)
-                ]
+                [_euclidean(wrist_positions[i], self._tracks[j].wrist_xy) for j in range(n_trk)]
                 for i in range(n_det)
             ]
             matched_pairs, unmatched_dets, unmatched_trks = _greedy_match(

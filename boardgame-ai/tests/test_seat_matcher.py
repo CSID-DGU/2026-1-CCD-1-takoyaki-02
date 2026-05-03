@@ -1,7 +1,6 @@
 """seat_matcher 단위 테스트 — arm 방향 기반 매칭."""
 
 import math
-from collections import deque
 
 import pytest
 
@@ -33,9 +32,7 @@ def four_players():
 
 
 def test_match_top_player(four_players):
-    pid, _ = match_player_by_arm(
-        "Right", (0.55, 0.15), -math.pi / 2 + 0.05, four_players
-    )
+    pid, _ = match_player_by_arm("Right", (0.55, 0.15), -math.pi / 2 + 0.05, four_players)
     assert pid == "p_top"
 
 

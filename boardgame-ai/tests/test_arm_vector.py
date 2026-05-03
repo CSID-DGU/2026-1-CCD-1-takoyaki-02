@@ -84,9 +84,7 @@ def test_estimate_body_xy_stretched():
 
 def test_estimate_body_xy_bent():
     """양팔 V자 꺾임 (둘 다 비슷한 방향) → bent."""
-    body, posture = estimate_body_xy(
-        (0.6, 0.5), math.pi / 2 + 0.3, (0.4, 0.5), math.pi / 2 - 0.3
-    )
+    body, posture = estimate_body_xy((0.6, 0.5), math.pi / 2 + 0.3, (0.4, 0.5), math.pi / 2 - 0.3)
     assert posture == "bent"
     # 두 팔이 아래쪽으로 모이므로 body는 아래쪽 (y > 0.5)
     assert body[1] > 0.5

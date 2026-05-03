@@ -261,17 +261,13 @@ class VisionPipeline:
         excluded = players_with_both_hands_tracked(self._hand_tracker.active_tracks())
 
         stabilized: list[HandDet] = []
-        for raw, track in zip(raw_hands, tracks):
+        for raw, track in zip(raw_hands, tracks, strict=True):
             # handedness 버퍼 갱신
             track.handedness_buf.append(raw.handedness)
             stable_handedness = track.confirmed_handedness or raw.handedness
 
             # 신규 트랙: 진입 후 N프레임 안정 + 등록자 있으면 1회 매칭
-            if (
-                track.pending_match
-                and track.frames_since_entry >= 3
-                and self._players
-            ):
+            if track.pending_match and track.frames_since_entry >= 3 and self._players:
                 pid, _score = match_player_by_arm(
                     handedness=stable_handedness,
                     entry_wrist_xy=track.entry_wrist_xy,

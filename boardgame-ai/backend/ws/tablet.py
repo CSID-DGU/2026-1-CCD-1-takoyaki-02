@@ -6,7 +6,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import json
 from typing import Any
 
@@ -44,9 +43,7 @@ async def tablet_ws_handler(websocket: WebSocket, orchestrator: Any) -> None:
     try:
         # 연결 즉시 현재 state push
         snapshot = orchestrator.current_snapshot()
-        await websocket.send_text(
-            json.dumps({"msg_type": "state_update", "state": snapshot})
-        )
+        await websocket.send_text(json.dumps({"msg_type": "state_update", "state": snapshot}))
 
         while True:
             raw = await websocket.receive_text()

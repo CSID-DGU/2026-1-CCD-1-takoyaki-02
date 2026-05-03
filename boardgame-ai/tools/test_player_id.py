@@ -33,14 +33,13 @@ from vision.detectors.hand_detector import HandDetector
 from vision.geometry.arm_vector import compute_arm_angle
 from vision.tracking.hand_tracker import HandTracker
 
-
 # 등록된 플레이어 색상(BGR) — 오버레이용
 _COLORS = [
-    (0, 255, 0),     # green
-    (255, 128, 0),   # cyan-blue
-    (0, 128, 255),   # orange
-    (255, 0, 255),   # magenta
-    (255, 255, 0),   # yellow
+    (0, 255, 0),  # green
+    (255, 128, 0),  # cyan-blue
+    (0, 128, 255),  # orange
+    (255, 0, 255),  # magenta
+    (255, 255, 0),  # yellow
 ]
 
 
@@ -121,14 +120,12 @@ def main() -> None:
             frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             raw_hands = hand_detector.detect(frame_rgb)
 
-            detections = [
-                (h.wrist_xy, compute_arm_angle(h.landmarks_21)) for h in raw_hands
-            ]
+            detections = [(h.wrist_xy, compute_arm_angle(h.landmarks_21)) for h in raw_hands]
             tracks = hand_tracker.update(detections)
 
             excluded = players_with_both_hands_tracked(hand_tracker.active_tracks())
 
-            for raw, track in zip(raw_hands, tracks):
+            for raw, track in zip(raw_hands, tracks, strict=True):
                 track.handedness_buf.append(raw.handedness)
                 handedness = track.confirmed_handedness or raw.handedness
                 gesture = gesture_clf.classify(raw)
@@ -144,9 +141,7 @@ def main() -> None:
                     )
                     track.player_id_buf.append(pid)
                     track.pending_match = False
-                    pname = next(
-                        (p.playername for p in players if p.player_id == pid), "?"
-                    )
+                    pname = next((p.playername for p in players if p.player_id == pid), "?")
                     print(
                         f"  track#{track.track_id}  {handedness:5s}  {gesture:8s}  "
                         f"angle={math.degrees(track.entry_arm_angle):.0f}°  "
@@ -154,9 +149,7 @@ def main() -> None:
                     )
 
                 player_id = track.confirmed_player_id
-                player_name = next(
-                    (p.playername for p in players if p.player_id == player_id), "?"
-                )
+                player_name = next((p.playername for p in players if p.player_id == player_id), "?")
                 if prev_results.get(track.track_id) != player_name:
                     prev_results[track.track_id] = player_name
 
@@ -182,7 +175,7 @@ def main() -> None:
                     )
 
             # 활성 트랙 오버레이
-            for raw, track in zip(raw_hands, tracks):
+            for raw, track in zip(raw_hands, tracks, strict=True):
                 h, w = frame.shape[:2]
                 wx = int(raw.wrist_xy[0] * w)
                 wy = int(raw.wrist_xy[1] * h)
@@ -195,8 +188,13 @@ def main() -> None:
                 cv2.circle(frame, (wx, wy), 8, col, -1)
                 _draw_arrow(frame, raw.wrist_xy, track.arm_angle, col, 0.1, 2)
                 cv2.putText(
-                    frame, label, (wx + 12, wy),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.55, col, 2,
+                    frame,
+                    label,
+                    (wx + 12, wy),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.55,
+                    col,
+                    2,
                 )
 
             cv2.imshow("test_player_id", frame)

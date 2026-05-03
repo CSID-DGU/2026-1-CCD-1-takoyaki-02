@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import threading
-from typing import Callable
+from collections.abc import Callable
 
 from backend.state import build_state_snapshot
 from core.constants import CommonEventType, CommonPhase
@@ -131,10 +131,12 @@ class Orchestrator:
             # 등록 도중/완료 후 취소된 경우 모든 등록 상태 복귀
             if self._pending_register_id == player_id:
                 self._pending_register_id = None
-            if self._pm.state.registering_player_id is None:
-                if self._phase == CommonPhase.SEAT_REGISTER:
-                    self._phase = CommonPhase.PLAYER_SETUP
-                    self._seat_step = "idle"
+            if (
+                self._pm.state.registering_player_id is None
+                and self._phase == CommonPhase.SEAT_REGISTER
+            ):
+                self._phase = CommonPhase.PLAYER_SETUP
+                self._seat_step = "idle"
             snapshot = self._snapshot()
         # 등록 phase 빠져나갔으면 비전에도 알림
         if self._phase == CommonPhase.PLAYER_SETUP:
@@ -192,9 +194,7 @@ class Orchestrator:
     def _snapshot(self, sound: str | None = None) -> dict:
         # pending_register_id가 있으면 우선 사용 (record_seat 후 PM dict는 비워지지만
         # finalize 전까지 프론트가 모달을 유지해야 함)
-        registering = (
-            self._pending_register_id or self._pm.state.registering_player_id
-        )
+        registering = self._pending_register_id or self._pm.state.registering_player_id
         return build_state_snapshot(
             players=self._pm.state.players,
             phase=self._phase,
@@ -225,9 +225,7 @@ class Orchestrator:
         if self._broadcast_cb is None or self._loop is None:
             return
         cb = self._broadcast_cb
-        asyncio.run_coroutine_threadsafe(
-            _call_async(cb, snapshot), self._loop
-        )
+        asyncio.run_coroutine_threadsafe(_call_async(cb, snapshot), self._loop)
 
 
 async def _call_async(cb: Callable[[dict], None], snapshot: dict) -> None:

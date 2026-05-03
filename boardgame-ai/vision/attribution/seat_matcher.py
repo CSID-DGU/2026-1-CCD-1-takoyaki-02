@@ -20,11 +20,10 @@ import math
 from core.models import Player
 from vision.geometry.arm_vector import angular_diff, extrapolate_body_from_hand
 
-
 # 가중치
-_W_ANGLE = 0.5     # arm_angle 차이 (정규화 0~1, π 나눔)
-_W_ENTRY = 0.3     # entry wrist 위치 거리 (정규화)
-_W_BODY = 0.2      # body_xy 외삽 거리 (정규화)
+_W_ANGLE = 0.5  # arm_angle 차이 (정규화 0~1, π 나눔)
+_W_ENTRY = 0.3  # entry wrist 위치 거리 (정규화)
+_W_BODY = 0.2  # body_xy 외삽 거리 (정규화)
 
 
 def match_player_by_arm(
@@ -59,11 +58,7 @@ def match_player_by_arm(
             continue
         if player.seat_zone is None:
             continue
-        anchor = (
-            player.seat_zone.right_arm
-            if handedness == "Right"
-            else player.seat_zone.left_arm
-        )
+        anchor = player.seat_zone.right_arm if handedness == "Right" else player.seat_zone.left_arm
         body_xy = player.seat_zone.body_xy
 
         # 1. 각도 차이 정규화 (0~π → 0~1)

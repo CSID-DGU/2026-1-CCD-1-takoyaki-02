@@ -72,9 +72,7 @@ class FusionEngine:
         # ── SEAT_REGISTER (오른손 V사인 → 왼손 OK사인 순차) ─────────────────
         if ctx.fsm_state == CommonPhase.SEAT_REGISTER:
             # 중간 이벤트: 오른손 V사인만 보이면 1회 발화
-            evt_r, data_r, conf_r = self._build_seat_right_registered_candidate(
-                ctx, perception
-            )
+            evt_r, data_r, conf_r = self._build_seat_right_registered_candidate(ctx, perception)
             if evt_r:
                 candidates.append((evt_r, data_r, conf_r))
             # 완료 이벤트: 양손 모두 캡처되면 발화
@@ -115,12 +113,15 @@ class FusionEngine:
             # 1회성 게이트(roll_just_confirmed / _reported_escaped)를 적용하므로 즉시 발화.
             if event_type in ("ROLL_CONFIRMED", "ROLL_UNREADABLE", "DICE_ESCAPED"):
                 required = 1
-            elif event_type in (
-                CommonEventType.SEAT_REGISTERED,
-                CommonEventType.SEAT_RIGHT_REGISTERED,
+            elif (
+                event_type
+                in (
+                    CommonEventType.SEAT_REGISTERED,
+                    CommonEventType.SEAT_RIGHT_REGISTERED,
+                )
+                or "seat_hand" in event_type
+                or "gesture" in event_type
             ):
-                required = gesture_stab
-            elif "seat_hand" in event_type or "gesture" in event_type:
                 required = gesture_stab
             else:
                 required = stab_frames
@@ -221,9 +222,7 @@ class FusionEngine:
                 wrist_xy=left_wrist,
                 arm_angle=left_angle,
             )
-            body_xy, posture = estimate_body_xy(
-                right_wrist, right_angle, left_wrist, left_angle
-            )
+            body_xy, posture = estimate_body_xy(right_wrist, right_angle, left_wrist, left_angle)
             seat_zone = SeatZone(
                 right_arm=right_anchor,
                 left_arm=left_anchor,

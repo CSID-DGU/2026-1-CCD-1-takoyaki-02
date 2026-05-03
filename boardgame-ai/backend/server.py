@@ -18,7 +18,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from backend.orchestrator import Orchestrator
 from backend.routes.players import router as players_router
 from backend.vision_runner import VisionRunner
-from backend.ws.tablet import manager as ws_manager, tablet_ws_handler
+from backend.ws.tablet import manager as ws_manager
+from backend.ws.tablet import tablet_ws_handler
 from bridge.local_bridge import LocalBridge
 from vision.config import VisionConfig
 

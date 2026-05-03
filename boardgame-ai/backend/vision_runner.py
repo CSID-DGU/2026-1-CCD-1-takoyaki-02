@@ -21,7 +21,8 @@ class VisionRunner:
         weights = Path(self._config.weights_path)
         if not weights.exists():
             print(
-                f"[vision_runner] 가중치 파일 없음: {weights} — 비전 파이프라인 없이 백엔드만 시작합니다."
+                f"[vision_runner] 가중치 파일 없음: {weights} — "
+                "비전 파이프라인 없이 백엔드만 시작합니다."
             )
             return
 
