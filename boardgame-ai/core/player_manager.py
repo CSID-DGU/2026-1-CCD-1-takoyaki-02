@@ -42,6 +42,19 @@ class PlayerManager:
         )
         return player_id
 
+    def add_pending_player(self) -> str:
+        """이름 없는 임시 플레이어를 추가. 등록 흐름에서 등록 먼저 → 이름 나중."""
+        player_id = f"p_{uuid.uuid4().hex[:8]}"
+        self.state.players.append(
+            Player(
+                player_id=player_id,
+                playername=None,
+                seat_zone=None,
+                registered_at=time.time(),
+            )
+        )
+        return player_id
+
     def edit_playername(self, player_id: str, new_name: str) -> None:
         player = self._get_or_raise(player_id)
         player.playername = new_name
@@ -66,28 +79,17 @@ class PlayerManager:
         self.state.registering_player_id = player_id
         self.state.pending_wrists = {}
 
-    def record_hand(self, hand: str, wrist: tuple[float, float]) -> bool:
-        """한 손의 wrist 좌표를 기록한다. 양손(Right+Left)이 모두 기록되면 True."""
-        if self.state.registering_player_id is None:
-            raise RuntimeError("No seat registration in progress")
-        self.state.pending_wrists[hand] = wrist
-        return "Right" in self.state.pending_wrists and "Left" in self.state.pending_wrists
+    def record_seat(self, player_id: str, seat_zone: SeatZone) -> Player:
+        """완성된 SeatZone을 플레이어에 등록하고 Player를 반환한다.
 
-    def finalize_seat(self) -> Player:
-        """pending_wrists로 SeatZone을 조립해 플레이어에 등록하고 Player를 반환한다."""
-        player_id = self.state.registering_player_id
-        if player_id is None:
-            raise RuntimeError("No seat registration in progress")
-        if "Right" not in self.state.pending_wrists or "Left" not in self.state.pending_wrists:
-            raise RuntimeError("Both hands must be recorded before finalizing")
-
+        SeatZone은 양팔 ArmAnchor + body_xy + posture를 모두 포함.
+        등록 완료 후 registering_player_id를 초기화한다.
+        """
         player = self._get_or_raise(player_id)
-        player.seat_zone = SeatZone(
-            right_hand_wrist=self.state.pending_wrists["Right"],
-            left_hand_wrist=self.state.pending_wrists["Left"],
-        )
-        self.state.registering_player_id = None
-        self.state.pending_wrists = {}
+        player.seat_zone = seat_zone
+        if self.state.registering_player_id == player_id:
+            self.state.registering_player_id = None
+            self.state.pending_wrists = {}
         return player
 
     def restart_seat_registration(self, player_id: str) -> None:

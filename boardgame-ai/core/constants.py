@@ -31,8 +31,9 @@ class CommonPhase(StrEnum):
     """코어 공통 phase. 게임별 Phase는 각 게임 팀 영역에서 정의."""
 
     PLAYER_SETUP = "player_setup"
-    SEAT_REGISTER_RIGHT = "seat_register_right"
-    SEAT_REGISTER_LEFT = "seat_register_left"
+    SEAT_REGISTER = "seat_register"  # 양손 동시 V+OK 등록 (단일 phase)
+    SEAT_REGISTER_RIGHT = "seat_register_right"  # 하위 호환 유지
+    SEAT_REGISTER_LEFT = "seat_register_left"  # 하위 호환 유지
     GAME_SELECT = "game_select"
 
 
@@ -49,6 +50,7 @@ class CommonEventType(StrEnum):
     """
 
     SEAT_HAND_REGISTERED = "seat_hand_registered"
+    SEAT_RIGHT_REGISTERED = "seat_right_registered"  # 오른손 V사인 stab 통과 (중간 단계)
     SEAT_REGISTERED = "seat_registered"
     GESTURE_CONFIRMED = "gesture_confirmed"
     RULE_VIOLATION = "rule_violation"
@@ -83,7 +85,7 @@ DEFAULT_PARAMS: dict[str, float | int] = {
     "motion_threshold_norm": 0.002,
     "motion_start_frames": 3,
     "stabilization_frames": 30,
-    "gesture_stabilization_frames": 10,
+    "gesture_stabilization_frames": 5,
     "handedness_confirm_frames": 5,
     "wrist_distance_min_norm": 0.05,
     "wrist_distance_max_norm": 0.30,

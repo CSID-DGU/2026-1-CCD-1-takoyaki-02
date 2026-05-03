@@ -19,12 +19,12 @@ class VisionConfig:
     frame_skip: int = 0  # 0=모든 프레임, 1=격프레임, ...
 
     # YOLO
-    weights_path: str | Path = "weights/yacht_best.pt"
+    weights_path: str | Path = "weights/yacht_v4.pt"
     yolo_conf: float = 0.35
     yolo_iou: float = 0.5
     yolo_imgsz: int = 640  # 추론 해상도 (1080p 다운스케일)
 
-    # MediaPipe
+    # MediaPipe Hand
     mp_max_num_hands: int = 8
     mp_min_detection_confidence: float = 0.5
     mp_min_tracking_confidence: float = 0.5

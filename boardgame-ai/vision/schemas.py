@@ -143,6 +143,7 @@ class HandDet:
     landmarks_21: list[tuple[float, float]]  # 21개 landmark (x, y), 정규화
     gesture: str | None = None  # "v_sign"|"ok_sign"|"grab"|"release"|"neutral"
     player_id: str | None = None  # SeatMatcher 결과
+    arm_angle: float | None = None  # wrist - middle_mcp(9) 벡터 각도 (radians)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -151,6 +152,7 @@ class HandDet:
             "landmarks_21": [list(lm) for lm in self.landmarks_21],
             "gesture": self.gesture,
             "player_id": self.player_id,
+            "arm_angle": self.arm_angle,
         }
 
     @classmethod
@@ -161,6 +163,7 @@ class HandDet:
             landmarks_21=[tuple(lm) for lm in d["landmarks_21"]],
             gesture=d.get("gesture"),
             player_id=d.get("player_id"),
+            arm_angle=d.get("arm_angle"),
         )
 
 
