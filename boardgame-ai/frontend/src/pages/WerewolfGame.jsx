@@ -6,6 +6,9 @@ import NightStart from '../components/werewolf/NightStart'
 import NightRoleAnnounce from '../components/werewolf/NightRoleAnnounce'
 import NightEnd from '../components/werewolf/NightEnd'
 import DayDiscussion from '../components/werewolf/DayDiscussion'
+import VoteCountdown from '../components/werewolf/VoteCountdown'
+import VoteResult from '../components/werewolf/VoteResult'
+import GameEndWW from '../components/werewolf/GameEndWW'
 
 // 밤 행동 순서 (One Night Werewolf 기준)
 const NIGHT_ORDER = [
@@ -22,13 +25,14 @@ const buildNightQueue = (roles) => {
   return NIGHT_ORDER.filter(r => present.has(r))
 }
 
-export default function WerewolfGame({ players }) {
+export default function WerewolfGame({ players, onLobby, onRestart }) {
   const [phase, setPhase] = useState('role_registration')
   const [selectedRoles, setSelectedRoles] = useState([])
   const [playerIndex, setPlayerIndex] = useState(0)
   const [detectedRoleId, setDetectedRoleId] = useState(null)
   const [nightQueue, setNightQueue] = useState([])
   const [nightQueueIndex, setNightQueueIndex] = useState(0)
+  const [votes, setVotes] = useState({})
 
   if (phase === 'role_registration') {
     return (
@@ -114,6 +118,41 @@ export default function WerewolfGame({ players }) {
       <DayDiscussion
         onVote={() => setPhase('vote')}
         onComplete={() => setPhase('vote')}
+      />
+    )
+  }
+
+  if (phase === 'vote') {
+    return (
+      <VoteCountdown
+        players={players}
+        votes={votes}
+        onComplete={() => setPhase('vote_result')}
+      />
+    )
+  }
+
+  if (phase === 'vote_result') {
+    return (
+      <VoteResult
+        players={players}
+        votes={votes}
+        onComplete={() => setPhase('game_end')}
+      />
+    )
+  }
+
+  if (phase === 'game_end') {
+    const finalRoles = Object.fromEntries(
+      players.map((p, i) => [p.player_id, selectedRoles[i] ?? 'villager_1'])
+    )
+    return (
+      <GameEndWW
+        players={players}
+        finalRoles={finalRoles}
+        winner="village"
+        onLobby={onLobby}
+        onRestart={onRestart}
       />
     )
   }
