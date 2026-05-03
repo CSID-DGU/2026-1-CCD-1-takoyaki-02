@@ -12,7 +12,7 @@ from core.audio import AudioPriority, AudioType, TTSRequest
 from core.constants import CommonEventType, CommonPhase
 from core.envelope import WSMessage
 from core.events import FusionContext, GameEvent
-from core.models import Player, SeatZone
+from core.models import ArmAnchor, Player, SeatZone
 from core.player_manager import PlayerManager
 
 # ---------------------------------------------------------------------------
@@ -20,17 +20,31 @@ from core.player_manager import PlayerManager
 # ---------------------------------------------------------------------------
 
 
+def _make_anchor(handedness: str, wrist=(0.3, 0.4), arm_angle=1.57) -> ArmAnchor:
+    return ArmAnchor(handedness=handedness, wrist_xy=wrist, arm_angle=arm_angle)
+
+
 def test_seat_zone_roundtrip():
-    sz = SeatZone(right_hand_wrist=(0.3, 0.4), left_hand_wrist=(0.6, 0.7))
+    sz = SeatZone(
+        right_arm=_make_anchor("Right", wrist=(0.3, 0.4), arm_angle=1.0),
+        left_arm=_make_anchor("Left", wrist=(0.6, 0.4), arm_angle=2.0),
+        body_xy=(0.45, 0.9),
+        posture="stretched",
+    )
     restored = SeatZone.from_dict(json.loads(json.dumps(sz.to_dict())))
-    assert restored.right_hand_wrist == pytest.approx((0.3, 0.4))
-    assert restored.left_hand_wrist == pytest.approx((0.6, 0.7))
+    assert restored.right_arm.wrist_xy == pytest.approx((0.3, 0.4))
+    assert restored.right_arm.arm_angle == pytest.approx(1.0)
+    assert restored.left_arm.arm_angle == pytest.approx(2.0)
+    assert restored.body_xy == pytest.approx((0.45, 0.9))
+    assert restored.posture == "stretched"
 
 
-def test_seat_zone_wrists_in_unit_range():
-    sz = SeatZone(right_hand_wrist=(0.0, 1.0), left_hand_wrist=(0.5, 0.5))
-    for coord in [*sz.right_hand_wrist, *sz.left_hand_wrist]:
-        assert 0.0 <= coord <= 1.0
+def test_arm_anchor_roundtrip():
+    anchor = ArmAnchor(handedness="Right", wrist_xy=(0.3, 0.4), arm_angle=-1.5)
+    restored = ArmAnchor.from_dict(json.loads(json.dumps(anchor.to_dict())))
+    assert restored.handedness == "Right"
+    assert restored.wrist_xy == pytest.approx((0.3, 0.4))
+    assert restored.arm_angle == pytest.approx(-1.5)
 
 
 # ---------------------------------------------------------------------------
@@ -39,13 +53,18 @@ def test_seat_zone_wrists_in_unit_range():
 
 
 def test_player_roundtrip_with_seat_zone():
-    sz = SeatZone(right_hand_wrist=(0.1, 0.2), left_hand_wrist=(0.8, 0.9))
+    sz = SeatZone(
+        right_arm=_make_anchor("Right", wrist=(0.1, 0.2), arm_angle=1.0),
+        left_arm=_make_anchor("Left", wrist=(0.8, 0.2), arm_angle=2.0),
+        body_xy=(0.45, 0.9),
+        posture="stretched",
+    )
     p = Player(player_id="p_abc", playername="Alice", seat_zone=sz, registered_at=1000.0)
     restored = Player.from_dict(json.loads(json.dumps(p.to_dict())))
     assert restored.player_id == "p_abc"
     assert restored.playername == "Alice"
     assert restored.seat_zone is not None
-    assert restored.seat_zone.right_hand_wrist == pytest.approx((0.1, 0.2))
+    assert restored.seat_zone.right_arm.wrist_xy == pytest.approx((0.1, 0.2))
     assert restored.registered_at == pytest.approx(1000.0)
 
 
@@ -221,16 +240,17 @@ def test_player_manager_seat_registration_flow():
     pid = pm.add_player("Bob")
 
     pm.start_seat_registration(pid)
-    done = pm.record_hand("Right", (0.3, 0.4))
-    assert not done, "양손 모두 기록해야 True"
 
-    done = pm.record_hand("Left", (0.7, 0.6))
-    assert done, "양손 기록 완료 시 True"
+    right_arm = ArmAnchor(handedness="Right", wrist_xy=(0.3, 0.4), arm_angle=1.0)
+    left_arm = ArmAnchor(handedness="Left", wrist_xy=(0.7, 0.4), arm_angle=2.0)
+    seat_zone = SeatZone(
+        right_arm=right_arm, left_arm=left_arm, body_xy=(0.5, 0.9), posture="stretched"
+    )
+    player = pm.record_seat(pid, seat_zone)
 
-    player = pm.finalize_seat()
     assert player.seat_zone is not None
-    assert player.seat_zone.right_hand_wrist == pytest.approx((0.3, 0.4))
-    assert player.seat_zone.left_hand_wrist == pytest.approx((0.7, 0.6))
+    assert player.seat_zone.right_arm.wrist_xy == pytest.approx((0.3, 0.4))
+    assert player.seat_zone.left_arm.wrist_xy == pytest.approx((0.7, 0.4))
 
     # 이제 get_players() 정상 반환
     players = pm.get_players()

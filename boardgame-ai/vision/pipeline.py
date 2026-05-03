@@ -2,15 +2,13 @@
 
 단일 스레드 동기 루프:
   cv2.VideoCapture → YOLO → ByteTrack → DotCounter → MediaPipe → Gesture
-  → SeatMatcher → RollAttributor → FramePerception → FusionEngine → Bridge
+  → HandTracker(player_id 버퍼) → [on-demand Pose] → RollAttributor
+  → FramePerception → FusionEngine → Bridge
 """
 
 from __future__ import annotations
 
-import math
 import time
-from collections import Counter, deque
-from dataclasses import dataclass, field
 from typing import Any
 
 import cv2
@@ -20,7 +18,10 @@ from core.constants import DEFAULT_PARAMS
 from core.events import FusionContext
 from core.models import Player
 from vision.attribution.roll_attributor import RollAttributor
-from vision.attribution.seat_matcher import SeatMatcher
+from vision.attribution.seat_matcher import (
+    match_player_by_arm,
+    players_with_both_hands_tracked,
+)
 from vision.config import VisionConfig
 from vision.debug.jsonl_logger import JsonlLogger
 from vision.debug.overlay import draw_overlay
@@ -29,24 +30,11 @@ from vision.detectors.gesture_classifier import GestureClassifier
 from vision.detectors.hand_detector import HandDetector
 from vision.detectors.yolo_detector import YoloDetector
 from vision.fusion.engine import FusionEngine
+from vision.geometry.arm_vector import compute_arm_angle
 from vision.schemas import BBox, FramePerception, HandDet, YoloDet
 from vision.tracking.byte_tracker import ByteTracker
 from vision.tracking.dice_manager import DiceManager
-
-# 한 프레임 사이 손 wrist가 움직일 수 있는 최대 정규화 거리.
-# 이 안에 들어오면 직전 프레임의 같은 손으로 간주해 handedness/제스처 이력을 이어 붙인다.
-_HAND_TRACK_MAX_DIST = 0.15
-# handedness 다수결 버퍼 크기 (5프레임 ≈ 약 0.16초). MediaPipe가 한 프레임 라벨을 뒤집어도 흡수.
-_HANDEDNESS_BUF_SIZE = 5
-
-
-@dataclass
-class _HandTrack:
-    """프레임 간 손 추적 — handedness/gesture 시간적 안정화용."""
-
-    wrist_xy: tuple[float, float]
-    handedness_buf: deque[str] = field(default_factory=lambda: deque(maxlen=_HANDEDNESS_BUF_SIZE))
-    prev_gesture: str | None = None
+from vision.tracking.hand_tracker import HandTracker
 
 
 class VisionPipeline:
@@ -75,6 +63,9 @@ class VisionPipeline:
             min_tracking_confidence=config.mp_min_tracking_confidence,
         )
         self._gesture_clf = GestureClassifier()
+        self._hand_tracker = HandTracker()
+        # prev_gesture 보관: track_id → 직전 제스처 (release 감지용)
+        self._prev_gestures: dict[int, str | None] = {}
         self._byte_tracker = ByteTracker()
         self._dot_counter = DotCounter()
         # DiceManager는 pip 측정 시작 임계를 짧게 — 굴림 직후 빠르게 pip 잡히도록.
@@ -85,7 +76,6 @@ class VisionPipeline:
             history_window=config.dice_history_window,
             pip_buffer_size=config.dice_count_buffer,
         )
-        self._seat_matcher = SeatMatcher()
         self._roll_attributor = RollAttributor(
             stabilization_frames=15,  # 굴림 종료 판정용 — dice_manager의 pip 측정 임계와는 별개
             grab_fallback_window_frames=config.grab_fallback_window_frames,
@@ -94,10 +84,6 @@ class VisionPipeline:
         )
         self._fusion = FusionEngine()
         self._jsonl_logger = JsonlLogger(config.jsonl_log_path)
-
-        # 손 시간적 추적 — handedness 다수결 + 직전 제스처 보관
-        # MediaPipe는 매 프레임 인덱스가 안정적이지 않으므로 wrist 좌표 근접도로 매칭
-        self._hand_tracks: list[_HandTrack] = []
 
         # 오버레이용 최근 이벤트 배너
         self._last_event_data: dict | None = None
@@ -190,9 +176,9 @@ class VisionPipeline:
         frame_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
         raw_hands = self._hand_detector.detect(frame_rgb)
 
-        # 4) 손 시간적 매칭 → handedness 다수결 + 제스처 분류 + SeatMatcher
-        # MediaPipe 손 인덱스는 프레임 간 안정적이지 않으므로 wrist 거리로 매칭한다.
-        hands, self._hand_tracks = self._stabilize_hands(raw_hands)
+        # 4) 손 시간적 매칭 → handedness 다수결 + 제스처 분류 + on-demand Pose 매칭
+        # HandTracker가 wrist 거리로 frame-to-frame track 유지, 신규 track엔 Pose 호출.
+        hands = self._stabilize_hands(raw_hands)
 
         # 5) 임시 perception 조립 (RollAttributor 입력용)
         perception = FramePerception(
@@ -256,52 +242,53 @@ class VisionPipeline:
 
     # ── 손 안정화 ─────────────────────────────────────────────────────────────
 
-    def _stabilize_hands(self, raw_hands: list[HandDet]) -> tuple[list[HandDet], list[_HandTrack]]:
-        """
-        wrist 좌표 근접도로 직전 프레임의 손과 매칭한 뒤,
-        최근 N프레임 handedness 다수결로 라벨을 안정화한다.
+    def _stabilize_hands(self, raw_hands: list[HandDet]) -> list[HandDet]:
+        """HandTracker로 frame-to-frame track을 유지하고 player_id를 안정화한다.
 
-        반환: (안정화된 HandDet 리스트, 갱신된 _HandTrack 리스트)
+        신규 track은 frames_since_entry >= 3 이후 1회만 arm 매칭으로 player_id 결정.
+        이후 track이 유지되는 한 같은 player_id 유지(트랙 단위 1회 매칭).
+        매칭 시 양손 모두 다른 활성 트랙에 잡힌 플레이어는 후보에서 제외.
         """
-        prev_tracks = list(self._hand_tracks)
-        used_prev: set[int] = set()
-        new_tracks: list[_HandTrack] = []
+        # 매 프레임 arm_angle 계산
+        detections: list[tuple[tuple[float, float], float]] = []
+        for h in raw_hands:
+            angle = compute_arm_angle(h.landmarks_21)
+            detections.append((h.wrist_xy, angle))
+
+        tracks = self._hand_tracker.update(detections)
+
+        # 양손 모두 다른 활성 트랙에 잡힌 플레이어 (이번 프레임 매칭에서 제외 대상)
+        excluded = players_with_both_hands_tracked(self._hand_tracker.active_tracks())
+
         stabilized: list[HandDet] = []
-
-        for raw in raw_hands:
-            best_idx: int | None = None
-            best_dist = float("inf")
-            for i, prev in enumerate(prev_tracks):
-                if i in used_prev:
-                    continue
-                d = math.hypot(
-                    raw.wrist_xy[0] - prev.wrist_xy[0],
-                    raw.wrist_xy[1] - prev.wrist_xy[1],
-                )
-                if d < best_dist:
-                    best_dist = d
-                    best_idx = i
-
-            if best_idx is not None and best_dist < _HAND_TRACK_MAX_DIST:
-                track = prev_tracks[best_idx]
-                used_prev.add(best_idx)
-            else:
-                track = _HandTrack(wrist_xy=raw.wrist_xy)
-
-            track.wrist_xy = raw.wrist_xy
+        for raw, track in zip(raw_hands, tracks, strict=True):
+            # handedness 버퍼 갱신
             track.handedness_buf.append(raw.handedness)
-            stable_handedness = Counter(track.handedness_buf).most_common(1)[0][0]
+            stable_handedness = track.confirmed_handedness or raw.handedness
 
-            # gesture 분류는 안정화된 handedness로 + 직전 제스처 참고 (release 감지)
+            # 신규 트랙: 진입 후 N프레임 안정 + 등록자 있으면 1회 매칭
+            if track.pending_match and track.frames_since_entry >= 3 and self._players:
+                pid, _score = match_player_by_arm(
+                    handedness=stable_handedness,
+                    entry_wrist_xy=track.entry_wrist_xy,
+                    entry_arm_angle=track.entry_arm_angle,
+                    players=self._players,
+                    excluded_player_ids=excluded,
+                )
+                track.player_id_buf.append(pid)
+                track.pending_match = False
+
+            player_id = track.confirmed_player_id
+
+            # gesture 분류: 안정화된 handedness로 + track별 직전 제스처 (release 감지)
+            prev_gesture = self._prev_gestures.get(track.track_id)
             stable_hand = HandDet(
                 handedness=stable_handedness,
                 wrist_xy=raw.wrist_xy,
                 landmarks_21=raw.landmarks_21,
             )
-            gesture = self._gesture_clf.classify_with_prev(stable_hand, track.prev_gesture)
-            track.prev_gesture = gesture
-
-            player_id = self._seat_matcher.match(stable_hand, self._players)
+            gesture = self._gesture_clf.classify_with_prev(stable_hand, prev_gesture)
+            self._prev_gestures[track.track_id] = gesture
 
             stabilized.append(
                 HandDet(
@@ -310,11 +297,19 @@ class VisionPipeline:
                     landmarks_21=raw.landmarks_21,
                     gesture=gesture,
                     player_id=player_id,
+                    arm_angle=track.arm_angle,
                 )
             )
-            new_tracks.append(track)
 
-        return stabilized, new_tracks
+        # 소멸된 track의 prev_gesture 정리 (메모리 누수 방지)
+        # 이번 프레임에 unmatched였지만 age 안에서 유지되는 트랙도 살아있는 것으로 보고
+        # gesture 상태를 보존해야 release 감지가 트랙 끊김 직후 손이 다시 잡혀도 이어진다.
+        live_ids = {t.track_id for t in self._hand_tracker.active_tracks()}
+        stale = [tid for tid in self._prev_gestures if tid not in live_ids]
+        for tid in stale:
+            del self._prev_gestures[tid]
+
+        return stabilized
 
 
 def _split_dets(

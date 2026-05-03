@@ -9,7 +9,7 @@ from core.constants import (
 )
 from core.envelope import WSMessage
 from core.events import FusionContext, GameEvent
-from core.models import Player, SeatZone
+from core.models import ArmAnchor, Player, SeatZone
 from core.player_manager import PlayerManager, PlayerManagerState
 
 __all__ = [
@@ -22,6 +22,7 @@ __all__ = [
     "WSMessage",
     "GameEvent",
     "FusionContext",
+    "ArmAnchor",
     "Player",
     "SeatZone",
     "TTSRequest",
