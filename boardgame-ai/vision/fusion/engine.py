@@ -31,6 +31,8 @@ class FusionEngine:
             expected_events=[],
         )
         self._yacht_rules = YachtRules()
+        # WerewolfVisionPipeline 이 register_werewolf_rules() 로 주입
+        self._werewolf_rules: object | None = None
         # event_type → 연속 안정화 프레임 카운터
         self._stab_counters: dict[str, int] = defaultdict(int)
         # event_type → 직전 프레임 후보 데이터 (안정화 중 동일 데이터 유지 확인)
@@ -55,6 +57,11 @@ class FusionEngine:
                 self._seat_right_confirmed.clear()
                 self._seat_right_event_emitted.clear()
             self._context = context
+
+    def register_werewolf_rules(self, rules: object) -> None:
+        """WerewolfVisionPipeline 에서 WerewolfRules 인스턴스를 주입한다."""
+        with self._lock:
+            self._werewolf_rules = rules
 
     def feed(self, perception: FramePerception) -> list[GameEvent]:
         """FramePerception을 소비해 통과한 GameEvent 리스트 반환."""
@@ -100,6 +107,10 @@ class FusionEngine:
         if ctx.game_type == "yacht":
             yacht_candidates = self._yacht_rules.build_candidates(ctx, perception)
             candidates.extend(yacht_candidates)
+
+        # ── 늑대인간 전용 ─────────────────────────────────────────────────────
+        if ctx.game_type == "werewolf" and self._werewolf_rules is not None:
+            candidates.extend(self._werewolf_rules.build_candidates(ctx, perception))
 
         # ── 3조건 필터 → GameEvent 생성 ───────────────────────────────────────
         events: list[GameEvent] = []
