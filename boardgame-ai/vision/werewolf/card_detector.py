@@ -7,10 +7,11 @@ YOLO 학습 완료 후:
   1. best.pt 를 vision/weights/werewolf_cards.pt 로 복사
   2. 코드 변경 없음 — WerewolfCardDetector 가 자동으로 모델 로드
 
-YOLO 학습 클래스:
-  역할(앞면): werewolf, seer, robber, troublemaker, drunk,
-              insomniac, villager, hunter, tanner
-  뒷면: card_back
+YOLO 학습 클래스 (13종):
+  역할(앞면): Werewolf, Seer, Robber, Troublemaker, Drunk,
+              Insomniac, Villager, Hunter, Tanner,
+              Minion, Doppelganger, Mason
+  뒷면: Card_Back
 """
 
 from __future__ import annotations
