@@ -10,19 +10,22 @@ from typing import Any
 
 from vision.schemas import BBox
 
-# YOLO 모델이 감지할 클래스 이름 집합
+# YOLO 모델이 감지할 클래스 이름 집합 (학습 클래스명과 대소문자 일치)
 ROLE_CLASSES: frozenset[str] = frozenset({
-    "werewolf",
-    "seer",
-    "robber",
-    "troublemaker",
-    "drunk",
-    "insomniac",
-    "villager",
-    "hunter",
-    "tanner",
+    "Werewolf",
+    "Seer",
+    "Robber",
+    "Troublemaker",
+    "Drunk",
+    "Insomniac",
+    "Villager",
+    "Hunter",
+    "Tanner",
+    "Minion",
+    "Doppelganger",
+    "Mason",
 })
-BACK_CLASS: str = "card_back"
+BACK_CLASS: str = "Card_Back"
 ALL_CARD_CLASSES: frozenset[str] = ROLE_CLASSES | {BACK_CLASS}
 
 
