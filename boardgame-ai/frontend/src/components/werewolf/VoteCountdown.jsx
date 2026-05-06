@@ -111,6 +111,7 @@ export default function VoteCountdown({ players = [], votes = {}, onComplete }) 
           })}
         </div>
 
+
       </div>
     </>
   )
