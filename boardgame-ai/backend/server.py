@@ -1,4 +1,3 @@
-<<<<<<< Updated upstream
 """FastAPI 앱 진입점.
 
 실행:
@@ -11,9 +10,11 @@ LocalBridge로 같은 프로세스 내 orchestrator와 통신.
 from __future__ import annotations
 
 import asyncio
+import random
 from contextlib import asynccontextmanager
+from typing import Any
 
-from fastapi import FastAPI, WebSocket
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
 from backend.orchestrator import Orchestrator
@@ -22,6 +23,9 @@ from backend.vision_runner import VisionRunner
 from backend.ws.tablet import manager as ws_manager
 from backend.ws.tablet import tablet_ws_handler
 from bridge.local_bridge import LocalBridge
+from core.envelope import WSMessage
+from core.events import GameEvent
+from games.yacht import YachtEventType, YachtFSM, YachtInputType
 from vision.config import VisionConfig
 
 
@@ -39,8 +43,8 @@ async def lifespan(app: FastAPI):
     bridge.on_game_event(orchestrator.handle_game_event)
 
     vision_runner = VisionRunner(config=config, bridge=bridge)
+
     # PlayerManager 변경 시 비전 파이프라인의 players 리스트 자동 갱신.
-    # (좌석 등록 완료/이름 수정/삭제 직후 호출 — 매칭 후보 동기화용)
     orchestrator.set_players_listener(vision_runner.update_players)
     vision_runner.start()
 
@@ -53,47 +57,26 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Boardgame AI Backend", lifespan=lifespan)
-=======
-"""FastAPI backend for the tablet UI."""
-
-from __future__ import annotations
-
-import random
-from typing import Any
-
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
-from fastapi.middleware.cors import CORSMiddleware
-
-from core.envelope import WSMessage
-from core.events import GameEvent
-from games.yacht import YachtEventType, YachtFSM, YachtInputType
-
-app = FastAPI(title="BoardGame AI")
->>>>>>> Stashed changes
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-<<<<<<< Updated upstream
-=======
     allow_credentials=True,
->>>>>>> Stashed changes
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-<<<<<<< Updated upstream
 app.include_router(players_router)
+
+
+@app.get("/health")
+def health() -> dict[str, str]:
+    return {"status": "ok"}
 
 
 @app.websocket("/ws/tablet")
 async def ws_tablet(websocket: WebSocket) -> None:
     await tablet_ws_handler(websocket, app.state.orchestrator)
-=======
-
-@app.get("/health")
-def health() -> dict[str, str]:
-    return {"status": "ok"}
 
 
 @app.websocket("/ws/yacht")
@@ -200,8 +183,10 @@ def normalize_players(players: Any) -> list[dict[str, str]]:
         if isinstance(player, str):
             normalized.append({"player_id": f"p{index}", "playername": player})
             continue
+
         if not isinstance(player, dict):
             continue
+
         player_id = str(player.get("player_id") or player.get("id") or f"p{index}")
         name = str(player.get("playername") or player.get("name") or player_id)
         normalized.append({"player_id": player_id, "playername": name})
@@ -211,4 +196,3 @@ def normalize_players(players: Any) -> list[dict[str, str]]:
         {"player_id": "p2", "playername": "병진"},
         {"player_id": "p3", "playername": "성민"},
     ]
->>>>>>> Stashed changes
