@@ -13,10 +13,12 @@ from collections.abc import Callable
 
 from backend.state import build_state_snapshot
 from core.constants import CommonEventType, CommonPhase
+from core.envelope import WSMessage
 from core.events import FusionContext, GameEvent
 from core.models import SeatZone
 from core.player_manager import PlayerManager
 from games.werewolf.fsm import WerewolfFSM
+from games.werewolf.ontology import WerewolfEventType, WerewolfInputType
 from games.werewolf.state import WerewolfPlayerState
 
 
@@ -74,6 +76,12 @@ class Orchestrator:
             self._handle_seat_right_registered(event)
         elif event.event_type == CommonEventType.SEAT_REGISTERED:
             self._handle_seat_registered(event)
+        elif event.event_type in (
+            WerewolfEventType.CARD_PEEK,
+            WerewolfEventType.CARD_SWAP,
+            WerewolfEventType.VOTE_POINT,
+        ):
+            self._handle_werewolf_event(event)
 
     def _handle_seat_right_registered(self, event: GameEvent) -> None:
         actor_id = event.actor_id
@@ -219,19 +227,11 @@ class Orchestrator:
             for r in player_roles
         ]
 
-        orch = self
-
-        async def _fsm_broadcast(ws_msg) -> None:
-            with orch._lock:
-                snapshot = orch._snapshot()
-            if orch._broadcast_cb:
-                await orch._broadcast_cb(snapshot)
-
         with self._lock:
             self._werewolf_fsm = WerewolfFSM(
                 players=ws_players,
                 center_cards=center_roles,
-                broadcast=_fsm_broadcast,
+                broadcast=self._ww_broadcast,
             )
             self._werewolf_fsm.start()
             snapshot = self._snapshot()
@@ -244,7 +244,7 @@ class Orchestrator:
 
     # ── WebSocket input 처리 ───────────────────────────────────────────────────
 
-    def handle_input(self, input_type: str, data: dict) -> None:
+    def handle_input(self, input_type: str, data: dict, player_id: str | None = None) -> None:
         if input_type == "start_registration":
             self.start_registration()
         elif input_type == "finalize_player":
@@ -281,17 +281,12 @@ class Orchestrator:
                 self._werewolf_fsm = None
                 snapshot = self._snapshot()
             self._broadcast(snapshot)
-        elif input_type in ("add_30_sec", "start_now", "werewolf_vote_player"):
-            if self._werewolf_fsm is None:
-                return
-            voter_id = data.get("voter_id")
-            with self._lock:
-                msgs = self._werewolf_fsm.handle_input(
-                    input_type, data, player_id=voter_id
-                )
-                snapshot = self._snapshot()
-            if msgs:
-                self._broadcast(snapshot)
+        elif input_type in (
+            WerewolfInputType.ADD_30_SEC,
+            WerewolfInputType.START_NOW,
+            WerewolfInputType.VOTE_PLAYER,
+        ):
+            self._handle_werewolf_input(input_type, data, player_id)
 
     # ── 내부 헬퍼 ─────────────────────────────────────────────────────────────
 
@@ -330,6 +325,34 @@ class Orchestrator:
             expected_events=expected,
         )
         self._send_fusion_context(ctx, self._state_version)
+
+    # ── 늑대인간 게임 ──────────────────────────────────────────────────────────
+
+    async def _ww_broadcast(self, _msg: WSMessage) -> None:
+        """FSM 타이머가 asyncio 루프에서 직접 호출하는 broadcast 콜백."""
+        with self._lock:
+            snapshot = self._snapshot()
+        cb = self._broadcast_cb
+        if cb is not None:
+            result = cb(snapshot)
+            if asyncio.iscoroutine(result):
+                await result
+
+    def _handle_werewolf_event(self, event: GameEvent) -> None:
+        with self._lock:
+            if self._werewolf_fsm is None:
+                return
+            self._werewolf_fsm.handle_event(event)
+            snapshot = self._snapshot()
+        self._broadcast(snapshot)
+
+    def _handle_werewolf_input(self, input_type: str, data: dict, player_id: str | None) -> None:
+        with self._lock:
+            if self._werewolf_fsm is None:
+                return
+            self._werewolf_fsm.handle_input(input_type, data, player_id)
+            snapshot = self._snapshot()
+        self._broadcast(snapshot)
 
     def _broadcast(self, snapshot: dict) -> None:
         if self._broadcast_cb is None or self._loop is None:
