@@ -3,6 +3,7 @@ import { useWebSocket } from './hooks/useWebSocket'
 import SeatRegistration from './components/common/SeatRegistration'
 import Lobby from './pages/Lobby'
 import WerewolfGame from './pages/WerewolfGame'
+import YachtGame from './pages/YachtGame'
 
 export default function App() {
   const [page, setPage] = useState('seat')
@@ -43,5 +44,19 @@ export default function App() {
       onRestart={() => setPage('lobby')}
     />
   )
+  if (page === 'seat') {
+    return <SeatRegistration players={players} setPlayers={setPlayers} onStart={() => setPage('lobby')} />
+  }
+  if (page === 'lobby') {
+    return (
+      <Lobby
+        players={players}
+        onSelectYacht={() => setPage('yacht')}
+        onSelectWerewolf={() => setPage('werewolf')}
+      />
+    )
+  }
+  if (page === 'yacht') return <YachtGame players={players} onExit={() => setPage('lobby')} onChangePlayers={() => setPage('seat')} />
+  if (page === 'werewolf') return <WerewolfGame players={players} />
   return null
 }
