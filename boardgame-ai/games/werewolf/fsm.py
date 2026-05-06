@@ -11,6 +11,7 @@ from core.events import FusionContext, GameEvent
 from games.base_fsm import BaseFSM
 from games.werewolf.judge import judge_winner
 from games.werewolf.night_roles import (
+    resolve_doppelganger_peek,
     resolve_drunk_swap,
     resolve_insomniac_peek,
     resolve_robber_swap,
@@ -24,6 +25,7 @@ from games.werewolf.ontology import (
     WerewolfInputType,
     WerewolfPhase,
     WerewolfRole,
+    WEREWOLF_TEAM,
 )
 from games.werewolf.state import WerewolfGameState, WerewolfPlayerState
 
@@ -77,6 +79,25 @@ class WerewolfFSM(BaseFSM):
             f"{a.owner_id}_{a.card_index}": a.to_dict()
             for a in self.state.anchors
         }
+
+        if phase == WerewolfPhase.NIGHT_DOPPELGANGER:
+            dg_ids = self._players_with_role(WerewolfRole.DOPPELGANGER)
+            dg_id = dg_ids[0] if dg_ids else None
+            other_players = [
+                p.player_id for p in self.state.players if p.player_id != dg_id
+            ]
+            return FusionContext(
+                fsm_state=phase.value,
+                game_type="werewolf",
+                active_player=dg_id,
+                allowed_actors=dg_ids,
+                expected_events=[WerewolfEventType.CARD_PEEK],
+                reject_events=[WerewolfEventType.CARD_SWAP, WerewolfEventType.VOTE_POINT],
+                valid_targets={"player_ids": other_players},
+                zones={},
+                anchors=anchors,
+                params={},
+            )
 
         if phase == WerewolfPhase.NIGHT_SEER:
             seer_ids = self._players_with_role(WerewolfRole.SEER)
@@ -255,6 +276,14 @@ class WerewolfFSM(BaseFSM):
             # 늑대인간들은 original_role로 서로를 인식 → 카드 행동 불필요, 즉시 전이
             return msgs + self._advance_to_next_phase()
 
+        if phase == WerewolfPhase.NIGHT_MINION:
+            # 하수인은 늑대인간 목록 확인만 → 즉시 전이
+            return msgs + self._advance_to_next_phase()
+
+        if phase == WerewolfPhase.NIGHT_MASON:
+            # 두 메이슨이 서로를 확인만 → 즉시 전이
+            return msgs + self._advance_to_next_phase()
+
         if phase == WerewolfPhase.NIGHT_SEER:
             self._seer_peeks = []
 
@@ -284,6 +313,16 @@ class WerewolfFSM(BaseFSM):
         data = event.data
         card_owner_id: str | None = data.get("card_owner_id")
         card_index = int(data.get("card_index", 0))
+
+        if phase == WerewolfPhase.NIGHT_DOPPELGANGER:
+            if actor_id not in self._players_with_role(WerewolfRole.DOPPELGANGER):
+                return []
+            # 도플갱어는 다른 플레이어 카드만 확인 가능 (센터 카드 불가)
+            if not card_owner_id or card_owner_id.startswith("center_"):
+                return []
+            resolve_doppelganger_peek(self.state, actor_id, card_owner_id)
+            self.state.state_version += 1
+            return [self._make_state_update()] + self._advance_to_next_phase()
 
         if phase == WerewolfPhase.NIGHT_SEER:
             if actor_id not in self._players_with_role(WerewolfRole.SEER):
