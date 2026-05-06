@@ -41,6 +41,8 @@ export default function App() {
       players={players}
       onLobby={() => setPage('seat')}
       onRestart={() => setPage('lobby')}
+      wsState={state}
+      send={send}
     />
   )
   return null

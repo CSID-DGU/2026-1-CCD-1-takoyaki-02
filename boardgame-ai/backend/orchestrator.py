@@ -16,6 +16,8 @@ from core.constants import CommonEventType, CommonPhase
 from core.events import FusionContext, GameEvent
 from core.models import SeatZone
 from core.player_manager import PlayerManager
+from games.werewolf.fsm import WerewolfFSM
+from games.werewolf.state import WerewolfPlayerState
 
 
 class Orchestrator:
@@ -35,6 +37,7 @@ class Orchestrator:
         # PlayerManager 변경 시 비전 파이프라인에 새 players 리스트 전달용 콜백.
         # 좌석 등록 완료 / 플레이어 추가·삭제·이름수정 직후마다 호출.
         self._players_listener: Callable[[list], None] | None = None
+        self._werewolf_fsm: WerewolfFSM | None = None
 
     def set_broadcast(
         self,
@@ -203,6 +206,38 @@ class Orchestrator:
         self._notify_players()
         self._broadcast(snapshot)
 
+    def start_werewolf_game(
+        self, player_roles: list[dict], center_roles: list[str]
+    ) -> None:
+        """역할 배정 완료 후 WerewolfFSM을 생성하고 게임을 시작한다."""
+        ws_players = [
+            WerewolfPlayerState(
+                player_id=r["player_id"],
+                original_role=r["role"],
+                current_role=r["role"],
+            )
+            for r in player_roles
+        ]
+
+        orch = self
+
+        async def _fsm_broadcast(ws_msg) -> None:
+            with orch._lock:
+                snapshot = orch._snapshot()
+            if orch._broadcast_cb:
+                await orch._broadcast_cb(snapshot)
+
+        with self._lock:
+            self._werewolf_fsm = WerewolfFSM(
+                players=ws_players,
+                center_cards=center_roles,
+                broadcast=_fsm_broadcast,
+            )
+            self._werewolf_fsm.start()
+            snapshot = self._snapshot()
+
+        self._broadcast(snapshot)
+
     def current_snapshot(self) -> dict:
         with self._lock:
             return self._snapshot()
@@ -236,6 +271,27 @@ class Orchestrator:
             pid = data.get("player_id")
             if pid:
                 self.remove_player(pid)
+        elif input_type == "start_werewolf_game":
+            player_roles = data.get("player_roles", [])
+            center_roles = data.get("center_roles", [])
+            if player_roles:
+                self.start_werewolf_game(player_roles, center_roles)
+        elif input_type == "reset_game":
+            with self._lock:
+                self._werewolf_fsm = None
+                snapshot = self._snapshot()
+            self._broadcast(snapshot)
+        elif input_type in ("add_30_sec", "start_now", "werewolf_vote_player"):
+            if self._werewolf_fsm is None:
+                return
+            voter_id = data.get("voter_id")
+            with self._lock:
+                msgs = self._werewolf_fsm.handle_input(
+                    input_type, data, player_id=voter_id
+                )
+                snapshot = self._snapshot()
+            if msgs:
+                self._broadcast(snapshot)
 
     # ── 내부 헬퍼 ─────────────────────────────────────────────────────────────
 
@@ -243,12 +299,18 @@ class Orchestrator:
         # pending_register_id가 있으면 우선 사용 (record_seat 후 PM dict는 비워지지만
         # finalize 전까지 프론트가 모달을 유지해야 함)
         registering = self._pending_register_id or self._pm.state.registering_player_id
+        game_state = (
+            self._werewolf_fsm.get_state_dict()
+            if self._werewolf_fsm is not None
+            else None
+        )
         return build_state_snapshot(
             players=self._pm.state.players,
             phase=self._phase,
             registering_player_id=registering,
             seat_step=self._seat_step,
             sound=sound,
+            game_state=game_state,
         )
 
     def _push_context(self, phase: str, active_player: str | None = None) -> None:
