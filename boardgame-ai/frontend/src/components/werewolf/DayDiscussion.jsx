@@ -14,10 +14,6 @@ export default function DayDiscussion({ timeLeft = 300, onVote, onAddTime }) {
     }
   }, [timeLeft])
 
-  const addTime = () => {
-    onAddTime?.()
-  }
-
   const formatTime = (s) => {
     const m = Math.floor(s / 60)
     const sec = s % 60
@@ -132,7 +128,7 @@ export default function DayDiscussion({ timeLeft = 300, onVote, onAddTime }) {
 
         {/* 하단 버튼 */}
         <div style={styles.buttonRow}>
-          <button onClick={addTime} style={styles.btnSecondary}>
+          <button onClick={onAddTime} style={styles.btnSecondary}>
             + 30초 추가
           </button>
           <button onClick={onVote} style={styles.btnPrimary}>

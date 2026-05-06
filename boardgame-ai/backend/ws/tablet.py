@@ -76,6 +76,7 @@ async def tablet_ws_handler(websocket: WebSocket, orchestrator: Any) -> None:
                 orchestrator.handle_input(
                     msg.get("input_type", ""),
                     msg.get("data", {}),
+                    player_id=msg.get("player_id"),
                 )
                 consecutive_errors = 0
             except Exception:
