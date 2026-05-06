@@ -63,7 +63,7 @@ function GameCard({ icon, name, info1, info2, onClick }) {
   )
 }
 
-export default function Lobby({ players, onSelectWerewolf }) {
+export default function Lobby({ players, onSelectYacht, onSelectWerewolf }) {
   return (
     <div style={s.page}>
       <div style={s.title}>보드게임 AI 테이블</div>
@@ -74,7 +74,7 @@ export default function Lobby({ players, onSelectWerewolf }) {
           name="요트 다이스"
           info1="2-5인 플레이어"
           info2="주사위 자동 인식"
-          onClick={() => {}}
+          onClick={onSelectYacht}
         />
         <GameCard
           icon="🌙"
