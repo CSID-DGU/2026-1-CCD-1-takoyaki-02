@@ -54,7 +54,7 @@ class WerewolfVisionConfig:
 
     # YOLO 카드 감지 모델
     # 학습 완료 후 이 경로에 .pt 파일을 두면 자동 로드
-    card_weights_path: str | Path = "vision/weights/werewolf_cards.pt"
+    card_weights_path: str | Path = "weights/werewolf_cards.pt"
     yolo_conf: float = 0.50
     yolo_iou: float = 0.45
     yolo_imgsz: int = 640

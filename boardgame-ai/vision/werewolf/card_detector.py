@@ -23,7 +23,7 @@ from vision.schemas import BBox
 from vision.werewolf.schemas import ALL_CARD_CLASSES, CardDetRaw
 
 # YOLO 학습 완료 후 이 경로에 .pt 파일을 놓으면 자동 활성화
-_DEFAULT_MODEL_PATH = "vision/weights/werewolf_cards.pt"
+_DEFAULT_MODEL_PATH = "weights/werewolf_cards.pt"
 
 
 class WerewolfCardDetector:
