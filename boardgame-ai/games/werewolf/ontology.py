@@ -21,9 +21,12 @@ class WerewolfRole(StrEnum):
 
 
 # 늑대 팀에 속하는 역할 집합
-WEREWOLF_TEAM: frozenset[str] = frozenset({WerewolfRole.WEREWOLF.value})
+WEREWOLF_TEAM: frozenset[str] = frozenset({
+    WerewolfRole.WEREWOLF.value,
+    WerewolfRole.MINION.value,
+})
 
-# 밤에 행동 순서가 있는 역할 (스펙 §4 야간 순서)
+# 밤에 행동 순서가 있는 역할 (원나잇 늑대인간 표준 순서)
 NIGHT_ORDER: list[str] = [
     WerewolfRole.DOPPELGANGER.value,
     WerewolfRole.WEREWOLF.value,
@@ -58,14 +61,16 @@ class WerewolfEventType(StrEnum):
     """비전팀이 발생시키는 늑대인간 전용 이벤트.
 
     data 스키마:
-        CARD_PEEK:  {"card_owner_id": str|None, "card_index": int}
-        CARD_SWAP:  {"from_id": str, "to_id": str}
-        VOTE_POINT: {"target_id": str}
+        CARD_PEEK:     {"card_owner_id": str|None, "card_index": int}
+        CARD_SWAP:     {"from_id": str, "to_id": str}
+        VOTE_POINT:    {"target_id": str}
+        ROLE_DETECTED: {"role": str}  — 역할 등록 단계 카메라 인식
     """
 
-    CARD_PEEK = "werewolf_card_peek"    # 카드 들여다보기 감지
-    CARD_SWAP = "werewolf_card_swap"    # 카드 교환 제스처 감지
-    VOTE_POINT = "werewolf_vote_point"  # 투표 포인팅 감지
+    CARD_PEEK = "werewolf_card_peek"        # 카드 들여다보기 감지
+    CARD_SWAP = "werewolf_card_swap"        # 카드 교환 제스처 감지
+    VOTE_POINT = "werewolf_vote_point"      # 투표 포인팅 감지
+    ROLE_DETECTED = "werewolf_role_detected"  # 역할 등록 단계 카드 인식
 
 
 class WerewolfInputType(StrEnum):
@@ -105,3 +110,11 @@ PHASE_TO_ROLE: dict[WerewolfPhase, WerewolfRole] = {
     WerewolfPhase.NIGHT_DRUNK: WerewolfRole.DRUNK,
     WerewolfPhase.NIGHT_INSOMNIAC: WerewolfRole.INSOMNIAC,
 }
+
+# passive 야간 페이즈: 비전 이벤트 없이 프론트가 start_now 보낼 때까지 대기
+PASSIVE_NIGHT_PHASES: frozenset[WerewolfPhase] = frozenset({
+    WerewolfPhase.NIGHT_START,
+    WerewolfPhase.NIGHT_WEREWOLF,
+    WerewolfPhase.NIGHT_MINION,
+    WerewolfPhase.NIGHT_MASON,
+})

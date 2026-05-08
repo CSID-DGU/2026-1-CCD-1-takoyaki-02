@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import RoleRegistration from '../components/werewolf/RoleRegistration'
 import RoleRegShowCard from '../components/werewolf/RoleRegShowCard'
 import RoleRegConfirm from '../components/werewolf/RoleRegConfirm'
@@ -22,8 +22,10 @@ const NIGHT_PHASE_ROLES = {
   night_insomniac: 'insomniac',
 }
 
-// werewolf_1, mason_2 등 → werewolf, mason 으로 정규화
-const normalizeRoleId = (id) => (id ?? '').replace(/_\d+$/, '')
+export default function WerewolfGame({ state, send, players, onLobby, onRestart }) {
+  const phase = state?.phase
+  const roleReg = state?.role_reg
+  const werewolf = state?.werewolf
 
 const loadingStyle = {
   minHeight: '100vh',

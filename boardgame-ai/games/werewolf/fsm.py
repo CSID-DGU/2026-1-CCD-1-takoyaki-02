@@ -20,6 +20,7 @@ from games.werewolf.night_roles import (
 )
 from games.werewolf.ontology import (
     NIGHT_PHASES,
+    PASSIVE_NIGHT_PHASES,
     PHASE_TO_ROLE,
     WerewolfEventType,
     WerewolfInputType,
@@ -45,9 +46,13 @@ class WerewolfFSM(BaseFSM):
     # ── Public API ──────────────────────────────────────────────────────────────
 
     def start(self) -> list[WSMessage]:
-        """게임을 시작한다. NIGHT_START → 첫 야간 페이즈."""
+        """게임을 시작한다. NIGHT_START 페이즈에서 대기 (start_now 입력 대기)."""
         self.state.state_version += 1
-        return [self._make_state_update()] + self._advance_to_next_phase()
+        ctx_msg = WSMessage.make_fusion_context(
+            self.get_fusion_context(),
+            state_version=self.state.state_version,
+        )
+        return [self._make_state_update(), ctx_msg]
 
     def handle_event(self, event: GameEvent) -> list[WSMessage]:
         etype = event.event_type
@@ -205,7 +210,7 @@ class WerewolfFSM(BaseFSM):
                 params={"pointing_stabilization_frames": 10},
             )
 
-        # 기본: 이벤트 없음 (NIGHT_START, DAY_DISCUSSION, RESULT 등)
+        # 기본: 이벤트 없음 (passive 야간 페이즈, DAY_DISCUSSION, RESULT 등)
         return FusionContext(
             fsm_state=phase.value,
             game_type="werewolf",
@@ -420,12 +425,15 @@ class WerewolfFSM(BaseFSM):
         return [self._make_state_update()]
 
     def _handle_start_now(self) -> list[WSMessage]:
-        if WerewolfPhase(self.state.phase) != WerewolfPhase.DAY_DISCUSSION:
-            return []
-        if self._timer_task and not self._timer_task.done():
-            self._timer_task.cancel()
-            self._timer_task = None
-        return self._advance_to_next_phase()
+        current = WerewolfPhase(self.state.phase)
+        if current in PASSIVE_NIGHT_PHASES:
+            return self._advance_to_next_phase()
+        if current == WerewolfPhase.DAY_DISCUSSION:
+            if self._timer_task and not self._timer_task.done():
+                self._timer_task.cancel()
+                self._timer_task = None
+            return self._advance_to_next_phase()
+        return []
 
     def _handle_vote_player(self, player_id: str | None, data: dict) -> list[WSMessage]:
         if WerewolfPhase(self.state.phase) != WerewolfPhase.VOTE:
