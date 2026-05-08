@@ -415,7 +415,7 @@ class Orchestrator:
         )
         return build_state_snapshot(
             players=self._pm.state.players,
-            phase=phase,
+            phase=self._phase,
             registering_player_id=registering,
             seat_step=self._seat_step,
             sound=sound,
