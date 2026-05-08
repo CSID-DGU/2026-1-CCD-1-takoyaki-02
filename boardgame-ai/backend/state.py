@@ -11,8 +11,9 @@ def build_state_snapshot(
     registering_player_id: str | None = None,
     seat_step: str = "idle",
     sound: str | None = None,
+    game_state: dict | None = None,
 ) -> dict:
-    return {
+    result: dict = {
         "phase": phase,
         "registering_player_id": registering_player_id,
         # idle | right_pending | right_done | completed
@@ -28,3 +29,6 @@ def build_state_snapshot(
         # 1회성 trigger: 프론트가 사운드 재생 후 무시
         "sound": sound,
     }
+    if game_state is not None:
+        result["game_state"] = game_state
+    return result

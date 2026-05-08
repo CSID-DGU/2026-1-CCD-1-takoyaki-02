@@ -8,13 +8,16 @@ from enum import StrEnum
 class WerewolfRole(StrEnum):
     WEREWOLF = "werewolf"
     VILLAGER = "villager"
-    SEER = "seer"            # 예언자
-    ROBBER = "robber"        # 도둑
+    SEER = "seer"                  # 예언자
+    ROBBER = "robber"              # 도둑
     TROUBLEMAKER = "troublemaker"  # 말썽꾼
-    DRUNK = "drunk"          # 술꾼
-    INSOMNIAC = "insomniac"  # 불면증환자
-    HUNTER = "hunter"        # 사냥꾼
-    TANNER = "tanner"        # 무두장이
+    DRUNK = "drunk"                # 술꾼
+    INSOMNIAC = "insomniac"        # 불면증환자
+    HUNTER = "hunter"              # 사냥꾼
+    TANNER = "tanner"              # 무두장이
+    DOPPELGANGER = "doppelganger"  # 도플갱어
+    MINION = "minion"              # 하수인
+    MASON = "mason"                # 프리메이슨
 
 
 # 늑대 팀에 속하는 역할 집합
@@ -22,7 +25,10 @@ WEREWOLF_TEAM: frozenset[str] = frozenset({WerewolfRole.WEREWOLF.value})
 
 # 밤에 행동 순서가 있는 역할 (스펙 §4 야간 순서)
 NIGHT_ORDER: list[str] = [
+    WerewolfRole.DOPPELGANGER.value,
     WerewolfRole.WEREWOLF.value,
+    WerewolfRole.MINION.value,
+    WerewolfRole.MASON.value,
     WerewolfRole.SEER.value,
     WerewolfRole.ROBBER.value,
     WerewolfRole.TROUBLEMAKER.value,
@@ -33,7 +39,10 @@ NIGHT_ORDER: list[str] = [
 
 class WerewolfPhase(StrEnum):
     NIGHT_START = "night_start"
+    NIGHT_DOPPELGANGER = "night_doppelganger"
     NIGHT_WEREWOLF = "night_werewolf"
+    NIGHT_MINION = "night_minion"
+    NIGHT_MASON = "night_mason"
     NIGHT_SEER = "night_seer"
     NIGHT_ROBBER = "night_robber"
     NIGHT_TROUBLEMAKER = "night_troublemaker"
@@ -73,7 +82,10 @@ class WerewolfInputType(StrEnum):
 
 # 야간 페이즈 순서 (NIGHT_ORDER 역할 문자열과 대응)
 NIGHT_PHASES: list[WerewolfPhase] = [
+    WerewolfPhase.NIGHT_DOPPELGANGER,
     WerewolfPhase.NIGHT_WEREWOLF,
+    WerewolfPhase.NIGHT_MINION,
+    WerewolfPhase.NIGHT_MASON,
     WerewolfPhase.NIGHT_SEER,
     WerewolfPhase.NIGHT_ROBBER,
     WerewolfPhase.NIGHT_TROUBLEMAKER,
@@ -83,7 +95,10 @@ NIGHT_PHASES: list[WerewolfPhase] = [
 
 # 야간 페이즈 → 해당 역할 매핑
 PHASE_TO_ROLE: dict[WerewolfPhase, WerewolfRole] = {
+    WerewolfPhase.NIGHT_DOPPELGANGER: WerewolfRole.DOPPELGANGER,
     WerewolfPhase.NIGHT_WEREWOLF: WerewolfRole.WEREWOLF,
+    WerewolfPhase.NIGHT_MINION: WerewolfRole.MINION,
+    WerewolfPhase.NIGHT_MASON: WerewolfRole.MASON,
     WerewolfPhase.NIGHT_SEER: WerewolfRole.SEER,
     WerewolfPhase.NIGHT_ROBBER: WerewolfRole.ROBBER,
     WerewolfPhase.NIGHT_TROUBLEMAKER: WerewolfRole.TROUBLEMAKER,

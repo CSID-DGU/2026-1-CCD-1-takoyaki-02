@@ -39,6 +39,8 @@ export default function App() {
   if (page === 'werewolf') return (
     <WerewolfGame
       players={players}
+      wsState={state}
+      send={send}
       onLobby={() => setPage('seat')}
       onRestart={() => setPage('lobby')}
     />
