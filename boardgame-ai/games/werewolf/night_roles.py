@@ -112,6 +112,23 @@ def resolve_drunk_swap(
     )
 
 
+def resolve_doppelganger_peek(
+    state: WerewolfGameState,
+    actor_id: str,
+    target_id: str,
+) -> dict[str, str]:
+    """도플갱어가 대상 플레이어의 카드를 훔쳐본다.
+
+    Returns:
+        {target_id: role_value}
+    """
+    target_role = state.get_player(target_id).current_role
+    state.night_actions.append(
+        NightAction(actor_id=actor_id, action_type="doppelganger_peek", target_ids=[target_id])
+    )
+    return {target_id: target_role}
+
+
 def resolve_insomniac_peek(
     state: WerewolfGameState,
     actor_id: str,

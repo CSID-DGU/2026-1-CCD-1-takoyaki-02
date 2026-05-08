@@ -63,7 +63,7 @@ function GameCard({ icon, name, info1, info2, onClick }) {
   )
 }
 
-export default function Lobby({ players, onSelectWerewolf }) {
+export default function Lobby({ players, send, onSelectWerewolf }) {
   return (
     <div style={s.page}>
       <div style={s.title}>보드게임 AI 테이블</div>
@@ -81,7 +81,10 @@ export default function Lobby({ players, onSelectWerewolf }) {
           name="한밤의 늑대인간"
           info1="4-10인 플레이어"
           info2="카드·제스처 인식"
-          onClick={onSelectWerewolf}
+          onClick={() => {
+            send('select_game', { game_type: 'werewolf' })
+            onSelectWerewolf()
+          }}
         />
       </div>
     </div>

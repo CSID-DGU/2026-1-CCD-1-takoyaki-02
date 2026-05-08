@@ -3,7 +3,7 @@ import { useState, useEffect, useRef } from 'react'
 const RADIUS = 110
 const CIRCUMFERENCE = 2 * Math.PI * RADIUS
 
-export default function DayDiscussion({ initialTime = 300, onVote, onComplete }) {
+export default function DayDiscussion({ initialTime = 300, onVote, onComplete, onAddTime }) {
   const [timeLeft, setTimeLeft] = useState(initialTime)
   const totalTimeRef = useRef(initialTime)
 
@@ -19,6 +19,7 @@ export default function DayDiscussion({ initialTime = 300, onVote, onComplete })
   const addTime = () => {
     setTimeLeft(t => t + 30)
     totalTimeRef.current += 30
+    onAddTime?.()
   }
 
   const formatTime = (s) => {

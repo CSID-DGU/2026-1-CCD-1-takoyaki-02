@@ -11,8 +11,10 @@ def build_state_snapshot(
     registering_player_id: str | None = None,
     seat_step: str = "idle",
     sound: str | None = None,
+    role_reg: dict | None = None,
+    werewolf_state: dict | None = None,
 ) -> dict:
-    return {
+    snap: dict = {
         "phase": phase,
         "registering_player_id": registering_player_id,
         # idle | right_pending | right_done | completed
@@ -28,3 +30,8 @@ def build_state_snapshot(
         # 1회성 trigger: 프론트가 사운드 재생 후 무시
         "sound": sound,
     }
+    if role_reg is not None:
+        snap["role_reg"] = role_reg
+    if werewolf_state is not None:
+        snap["werewolf"] = werewolf_state
+    return snap
