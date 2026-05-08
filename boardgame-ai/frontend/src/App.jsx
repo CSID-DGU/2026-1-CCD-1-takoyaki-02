@@ -48,7 +48,7 @@ export default function App() {
       />
     )
   }
-  if (page === 'lobby') return <Lobby players={players} onSelectWerewolf={() => setPage('werewolf')} />
+  if (page === 'lobby') return <Lobby players={players} send={send} onSelectWerewolf={() => setPage('werewolf')} />
   if (page === 'werewolf') return (
     <WerewolfGame
       players={players}

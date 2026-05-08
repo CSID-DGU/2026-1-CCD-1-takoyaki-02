@@ -22,11 +22,6 @@ const NIGHT_PHASE_ROLES = {
   night_insomniac: 'insomniac',
 }
 
-export default function WerewolfGame({ state, send, players, onLobby, onRestart }) {
-  const phase = state?.phase
-  const roleReg = state?.role_reg
-  const werewolf = state?.werewolf
-
 const loadingStyle = {
   minHeight: '100vh',
   background: '#0d1520',
@@ -36,6 +31,8 @@ const loadingStyle = {
   color: '#eee',
   fontFamily: "'Segoe UI', sans-serif",
 }
+
+const normalizeRoleId = (id) => (id ?? '').replace(/_\d+$/, '')
 
 export default function WerewolfGame({ players, onLobby, onRestart, wsState, send }) {
   const [localPhase, setLocalPhase] = useState('role_registration')
