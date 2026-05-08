@@ -18,6 +18,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from backend.orchestrator import Orchestrator
 from backend.routes.players import router as players_router
 from backend.vision_runner import VisionRunner
+from backend.werewolf_runner import WerewolfRunner
 from backend.ws.tablet import manager as ws_manager
 from backend.ws.tablet import tablet_ws_handler
 from bridge.local_bridge import LocalBridge
@@ -38,17 +39,25 @@ async def lifespan(app: FastAPI):
     bridge.on_game_event(orchestrator.handle_game_event)
 
     vision_runner = VisionRunner(config=config, bridge=bridge)
-    # PlayerManager 변경 시 비전 파이프라인의 players 리스트 자동 갱신.
-    # (좌석 등록 완료/이름 수정/삭제 직후 호출 — 매칭 후보 동기화용)
-    orchestrator.set_players_listener(vision_runner.update_players)
+    werewolf_runner = WerewolfRunner(bridge=bridge)
+
+    # 좌석 등록 완료/플레이어 변경 시 두 파이프라인에 동시 전달
+    def _on_players_changed(players: list) -> None:
+        vision_runner.update_players(players)
+        werewolf_runner.update_players(players)
+
+    orchestrator.set_players_listener(_on_players_changed)
     vision_runner.start()
+    werewolf_runner.start()
 
     app.state.orchestrator = orchestrator
     app.state.vision_runner = vision_runner
+    app.state.werewolf_runner = werewolf_runner
 
     yield
 
     vision_runner.stop()
+    werewolf_runner.stop()
 
 
 app = FastAPI(title="Boardgame AI Backend", lifespan=lifespan)

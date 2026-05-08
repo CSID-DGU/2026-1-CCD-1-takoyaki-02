@@ -12,10 +12,14 @@ import threading
 from collections.abc import Callable
 
 from backend.state import build_state_snapshot
-from core.constants import CommonEventType, CommonPhase
+from core.constants import CommonEventType, CommonPhase, MsgType
+from core.envelope import WSMessage
 from core.events import FusionContext, GameEvent
 from core.models import SeatZone
 from core.player_manager import PlayerManager
+from games.werewolf.fsm import WerewolfFSM
+from games.werewolf.ontology import WerewolfEventType, WerewolfInputType
+from games.werewolf.state import WerewolfPlayerState
 
 
 class Orchestrator:
@@ -35,6 +39,8 @@ class Orchestrator:
         # PlayerManager 변경 시 비전 파이프라인에 새 players 리스트 전달용 콜백.
         # 좌석 등록 완료 / 플레이어 추가·삭제·이름수정 직후마다 호출.
         self._players_listener: Callable[[list], None] | None = None
+        # 늑대인간 FSM (게임 시작 시 주입)
+        self._werewolf_fsm: WerewolfFSM | None = None
 
     def set_broadcast(
         self,
@@ -71,6 +77,16 @@ class Orchestrator:
             self._handle_seat_right_registered(event)
         elif event.event_type == CommonEventType.SEAT_REGISTERED:
             self._handle_seat_registered(event)
+        elif event.event_type in (
+            WerewolfEventType.CARD_PEEK,
+            WerewolfEventType.CARD_SWAP,
+            WerewolfEventType.VOTE_POINT,
+        ):
+            with self._lock:
+                fsm = self._werewolf_fsm
+            if fsm is not None:
+                msgs = fsm.handle_event(event)
+                self._dispatch_fsm_messages(msgs)
 
     def _handle_seat_right_registered(self, event: GameEvent) -> None:
         actor_id = event.actor_id
@@ -236,6 +252,25 @@ class Orchestrator:
             pid = data.get("player_id")
             if pid:
                 self.remove_player(pid)
+        elif input_type == "start_werewolf_game":
+            self.start_werewolf_game(data.get("players", []), data.get("center_cards", []))
+        elif input_type == WerewolfInputType.ADD_30_SEC:
+            with self._lock:
+                fsm = self._werewolf_fsm
+            if fsm:
+                self._dispatch_fsm_messages(fsm.handle_input(input_type, data))
+        elif input_type == WerewolfInputType.START_NOW:
+            with self._lock:
+                fsm = self._werewolf_fsm
+            if fsm:
+                self._dispatch_fsm_messages(fsm.handle_input(input_type, data))
+        elif input_type == WerewolfInputType.VOTE_PLAYER:
+            with self._lock:
+                fsm = self._werewolf_fsm
+            if fsm:
+                self._dispatch_fsm_messages(
+                    fsm.handle_input(input_type, data, data.get("player_id"))
+                )
 
     # ── 내부 헬퍼 ─────────────────────────────────────────────────────────────
 
@@ -268,6 +303,54 @@ class Orchestrator:
             expected_events=expected,
         )
         self._send_fusion_context(ctx, self._state_version)
+
+    def start_werewolf_game(self, players_data: list[dict], center_cards: list[str]) -> None:
+        """늑대인간 게임 시작. FSM 생성 후 NIGHT_START 페이즈 진입."""
+        players = [
+            WerewolfPlayerState(
+                player_id=p["player_id"],
+                original_role=p["role"],
+                current_role=p["role"],
+            )
+            for p in players_data
+        ]
+        broadcast = self._make_fsm_broadcast()
+        with self._lock:
+            self._werewolf_fsm = WerewolfFSM(
+                players=players,
+                center_cards=center_cards,
+                broadcast=broadcast,
+            )
+            msgs = self._werewolf_fsm.start()
+        self._dispatch_fsm_messages(msgs)
+
+    def _make_fsm_broadcast(self) -> Callable[[WSMessage], object]:
+        """WerewolfFSM 타이머용 async broadcast 콜백 생성.
+
+        STATE_UPDATE → WebSocket broadcast
+        FUSION_CONTEXT → vision pipeline으로 bridge 전달
+        """
+        async def broadcast(msg: WSMessage) -> None:
+            if msg.msg_type == MsgType.STATE_UPDATE and self._broadcast_cb:
+                await self._broadcast_cb(msg.payload)
+            elif msg.msg_type == MsgType.FUSION_CONTEXT:
+                ctx = FusionContext.from_dict(msg.payload)
+                self._send_fusion_context(ctx, msg.state_version)
+        return broadcast
+
+    def _dispatch_fsm_messages(self, msgs: list[WSMessage]) -> None:
+        """FSM이 반환한 WSMessage 리스트를 적절한 채널로 라우팅.
+
+        비전 스레드 또는 WS 핸들러 스레드에서 호출되는 동기 함수.
+        STATE_UPDATE → WebSocket broadcast (run_coroutine_threadsafe)
+        FUSION_CONTEXT → bridge.send_fusion_context() (직접 호출)
+        """
+        for msg in msgs:
+            if msg.msg_type == MsgType.STATE_UPDATE:
+                self._broadcast(msg.payload)
+            elif msg.msg_type == MsgType.FUSION_CONTEXT:
+                ctx = FusionContext.from_dict(msg.payload)
+                self._send_fusion_context(ctx, msg.state_version)
 
     def _broadcast(self, snapshot: dict) -> None:
         if self._broadcast_cb is None or self._loop is None:
