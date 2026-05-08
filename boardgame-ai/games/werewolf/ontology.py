@@ -8,16 +8,16 @@ from enum import StrEnum
 class WerewolfRole(StrEnum):
     WEREWOLF = "werewolf"
     VILLAGER = "villager"
-    SEER = "seer"                    # 예언자
-    ROBBER = "robber"                # 도둑
-    TROUBLEMAKER = "troublemaker"    # 말썽꾼
-    DRUNK = "drunk"                  # 술꾼
-    INSOMNIAC = "insomniac"          # 불면증환자
-    HUNTER = "hunter"                # 사냥꾼
-    TANNER = "tanner"                # 무두장이
-    MINION = "minion"                # 하수인
-    DOPPELGANGER = "doppelganger"    # 도플갱어
-    MASON = "mason"                  # 프리메이슨
+    SEER = "seer"                  # 예언자
+    ROBBER = "robber"              # 도둑
+    TROUBLEMAKER = "troublemaker"  # 말썽꾼
+    DRUNK = "drunk"                # 술꾼
+    INSOMNIAC = "insomniac"        # 불면증환자
+    HUNTER = "hunter"              # 사냥꾼
+    TANNER = "tanner"              # 무두장이
+    DOPPELGANGER = "doppelganger"  # 도플갱어
+    MINION = "minion"              # 하수인
+    MASON = "mason"                # 프리메이슨
 
 
 # 늑대 팀에 속하는 역할 집합
@@ -42,10 +42,10 @@ NIGHT_ORDER: list[str] = [
 
 class WerewolfPhase(StrEnum):
     NIGHT_START = "night_start"
-    NIGHT_DOPPELGANGER = "night_doppelganger"   # 도플갱어: 카드 훔쳐보기
-    NIGHT_WEREWOLF = "night_werewolf"            # 늑대인간: 서로 확인 (passive)
-    NIGHT_MINION = "night_minion"                # 하수인: 늑대 확인 (passive)
-    NIGHT_MASON = "night_mason"                  # 프리메이슨: 서로 확인 (passive)
+    NIGHT_DOPPELGANGER = "night_doppelganger"
+    NIGHT_WEREWOLF = "night_werewolf"
+    NIGHT_MINION = "night_minion"
+    NIGHT_MASON = "night_mason"
     NIGHT_SEER = "night_seer"
     NIGHT_ROBBER = "night_robber"
     NIGHT_TROUBLEMAKER = "night_troublemaker"

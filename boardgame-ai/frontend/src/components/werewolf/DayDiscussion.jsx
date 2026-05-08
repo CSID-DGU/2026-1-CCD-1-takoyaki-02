@@ -1,26 +1,18 @@
-import { useState, useEffect, useRef } from 'react'
+import { useRef, useEffect } from 'react'
 
 const RADIUS = 110
 const CIRCUMFERENCE = 2 * Math.PI * RADIUS
 
-export default function DayDiscussion({ initialTime = 300, onVote, onComplete, onAddTime }) {
-  const [timeLeft, setTimeLeft] = useState(initialTime)
-  const totalTimeRef = useRef(initialTime)
+// timeLeft는 백엔드 timer_remaining을 그대로 전달받아 사용한다.
+// 로컬 setInterval 없이 백엔드 state_update(1초마다)로 동기화된다.
+export default function DayDiscussion({ timeLeft = 300, onVote, onAddTime }) {
+  const maxTimeRef = useRef(timeLeft)
 
   useEffect(() => {
-    if (timeLeft <= 0) {
-      onComplete?.()
-      return
+    if (timeLeft > maxTimeRef.current) {
+      maxTimeRef.current = timeLeft
     }
-    const id = setInterval(() => setTimeLeft(t => t - 1), 1000)
-    return () => clearInterval(id)
   }, [timeLeft])
-
-  const addTime = () => {
-    setTimeLeft(t => t + 30)
-    totalTimeRef.current += 30
-    onAddTime?.()
-  }
 
   const formatTime = (s) => {
     const m = Math.floor(s / 60)
@@ -28,7 +20,7 @@ export default function DayDiscussion({ initialTime = 300, onVote, onComplete, o
     return `${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`
   }
 
-  const progress = Math.max(0, timeLeft / totalTimeRef.current)
+  const progress = Math.max(0, timeLeft / maxTimeRef.current)
   const strokeDashoffset = CIRCUMFERENCE * (1 - progress)
   const isUrgent = timeLeft <= 30
 
@@ -136,7 +128,7 @@ export default function DayDiscussion({ initialTime = 300, onVote, onComplete, o
 
         {/* 하단 버튼 */}
         <div style={styles.buttonRow}>
-          <button onClick={addTime} style={styles.btnSecondary}>
+          <button onClick={onAddTime} style={styles.btnSecondary}>
             + 30초 추가
           </button>
           <button onClick={onVote} style={styles.btnPrimary}>

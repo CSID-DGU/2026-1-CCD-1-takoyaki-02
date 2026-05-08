@@ -48,28 +48,15 @@ export default function App() {
       />
     )
   }
-
-  if (page === 'lobby') {
-    return (
-      <Lobby
-        players={players}
-        send={send}
-        onSelectWerewolf={() => setPage('werewolf')}
-      />
-    )
-  }
-
-  if (page === 'werewolf') {
-    return (
-      <WerewolfGame
-        state={state}
-        send={send}
-        players={players}
-        onLobby={() => setPage('seat')}
-        onRestart={() => setPage('lobby')}
-      />
-    )
-  }
-
+  if (page === 'lobby') return <Lobby players={players} onSelectWerewolf={() => setPage('werewolf')} />
+  if (page === 'werewolf') return (
+    <WerewolfGame
+      players={players}
+      wsState={state}
+      send={send}
+      onLobby={() => setPage('seat')}
+      onRestart={() => setPage('lobby')}
+    />
+  )
   return null
 }

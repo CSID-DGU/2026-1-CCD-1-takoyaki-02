@@ -26,6 +26,7 @@ from games.werewolf.ontology import (
     WerewolfInputType,
     WerewolfPhase,
     WerewolfRole,
+    WEREWOLF_TEAM,
 )
 from games.werewolf.state import WerewolfGameState, WerewolfPlayerState
 
@@ -276,6 +277,18 @@ class WerewolfFSM(BaseFSM):
         self.state.state_version += 1
         msgs: list[WSMessage] = [self._make_state_update()]
 
+        if phase == WerewolfPhase.NIGHT_WEREWOLF:
+            # 늑대인간들은 original_role로 서로를 인식 → 카드 행동 불필요, 즉시 전이
+            return msgs + self._advance_to_next_phase()
+
+        if phase == WerewolfPhase.NIGHT_MINION:
+            # 하수인은 늑대인간 목록 확인만 → 즉시 전이
+            return msgs + self._advance_to_next_phase()
+
+        if phase == WerewolfPhase.NIGHT_MASON:
+            # 두 메이슨이 서로를 확인만 → 즉시 전이
+            return msgs + self._advance_to_next_phase()
+
         if phase == WerewolfPhase.NIGHT_SEER:
             self._seer_peeks = []
 
@@ -307,11 +320,11 @@ class WerewolfFSM(BaseFSM):
         card_index = int(data.get("card_index", 0))
 
         if phase == WerewolfPhase.NIGHT_DOPPELGANGER:
-            dg_ids = self._players_with_role(WerewolfRole.DOPPELGANGER)
-            if actor_id not in dg_ids:
+            if actor_id not in self._players_with_role(WerewolfRole.DOPPELGANGER):
                 return []
-            if card_owner_id is None:
-                return []  # 센터 카드 훔쳐보기 불가
+            # 도플갱어는 다른 플레이어 카드만 확인 가능 (센터 카드 불가)
+            if not card_owner_id or card_owner_id.startswith("center_"):
+                return []
             resolve_doppelganger_peek(self.state, actor_id, card_owner_id)
             self.state.state_version += 1
             return [self._make_state_update()] + self._advance_to_next_phase()
