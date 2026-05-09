@@ -91,6 +91,7 @@ class WerewolfVisionPipeline:
 
         # 상태
         self._fsm_state_version: int = 0
+        self._has_context: bool = False
         self._jsonl_logger = JsonlLogger(config.jsonl_log_path)
 
         # FSM → FusionContext 수신 핸들러 등록
@@ -161,7 +162,7 @@ class WerewolfVisionPipeline:
             hands=hands,
         )
 
-        if frame_id % 30 == 0:
+        if frame_id % 30 == 0 and self._has_context:
             hand_info = [(h.handedness, h.player_id, h.gesture) for h in hands]
             cards = self._card_tracker.get_tracked_cards()
             card_info = [(c.player_id, c.cls_name, c.face_up) for c in cards]
@@ -182,6 +183,7 @@ class WerewolfVisionPipeline:
         self._jsonl_logger.log(perception)
 
     def _on_fusion_context(self, ctx: FusionContext, state_version: int) -> None:
+        self._has_context = True
         self._fusion.update_context(ctx)
         self._fsm_state_version = state_version
 
