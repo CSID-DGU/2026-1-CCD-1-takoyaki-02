@@ -21,7 +21,7 @@ const ROLES = [
 
 const TEAMS = ['전체', '마을 팀', '늑대 팀', '중립 팀']
 
-export default function RoleRegistration({ players = [], onStart }) {
+export default function RoleRegistration({ players = [], onStart, onExit }) {
   const [selected, setSelected] = useState([])
   const [activeTeam, setActiveTeam] = useState('전체')
 
@@ -111,17 +111,22 @@ export default function RoleRegistration({ players = [], onStart }) {
             <p style={styles.mainSub}>카드를 눌러 게임에 사용할 역할을 추가하세요.</p>
           </div>
 
-          <button
-            type="button"
-            disabled={!done}
-            onClick={() => onStart(selected)}
-            style={{
-              ...styles.startButton,
-              ...(!done ? styles.startButtonDisabled : {}),
-            }}
-          >
-            게임 시작
-          </button>
+          <div style={styles.topActions}>
+            <button type="button" onClick={onExit} style={styles.exitButton}>
+              나가기
+            </button>
+            <button
+              type="button"
+              disabled={!done}
+              onClick={() => onStart(selected)}
+              style={{
+                ...styles.startButton,
+                ...(!done ? styles.startButtonDisabled : {}),
+              }}
+            >
+              게임 시작
+            </button>
+          </div>
         </header>
 
         <nav style={styles.teamTabs}>
@@ -371,6 +376,13 @@ const styles = {
     flexShrink: 0,
   },
 
+  topActions: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 10,
+    flexShrink: 0,
+  },
+
   mainTitle: {
     margin: 0,
     fontSize: 28,
@@ -395,6 +407,19 @@ const styles = {
     cursor: 'pointer',
     flexShrink: 0,
     boxShadow: '0 6px 0 #68420E, 0 14px 22px rgba(0,0,0,0.35)',
+  },
+
+  exitButton: {
+    width: 104,
+    height: 50,
+    border: '1px solid rgba(255,255,255,0.18)',
+    borderRadius: 16,
+    background: 'rgba(255,255,255,0.08)',
+    color: 'rgba(255,255,255,0.82)',
+    fontSize: 16,
+    fontWeight: 900,
+    cursor: 'pointer',
+    flexShrink: 0,
   },
 
   startButtonDisabled: {

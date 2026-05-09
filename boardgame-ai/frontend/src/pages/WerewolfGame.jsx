@@ -131,6 +131,7 @@ export default function WerewolfGame({ players, onLobby, onRestart, wsState, sen
     return (
       <RoleRegistration
         players={players}
+        onExit={onRestart}
         onStart={(roles) => {
           setSelectedRoles(roles)
           setPlayerIndex(0)
