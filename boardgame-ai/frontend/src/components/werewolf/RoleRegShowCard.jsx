@@ -1,4 +1,4 @@
-export default function RoleRegShowCard({ player, onDetected }) {
+export default function RoleRegShowCard({ player, onDetected, onBack, onExit }) {
   return (
     <>
       <style>{`
@@ -20,6 +20,15 @@ export default function RoleRegShowCard({ player, onDetected }) {
 
         {/* 배경 */}
         <div style={styles.sky} />
+
+        <div style={styles.actions}>
+          <button type="button" style={styles.actionButton} onClick={onBack}>
+            돌아가기
+          </button>
+          <button type="button" style={styles.actionButton} onClick={onExit}>
+            나가기
+          </button>
+        </div>
 
         {/* 달 */}
         <div style={styles.moon} />
@@ -100,6 +109,28 @@ const styles = {
     userSelect: 'none',
   },
 
+  actions: {
+    position: 'absolute',
+    top: 24,
+    right: 24,
+    zIndex: 2,
+    display: 'flex',
+    gap: 10,
+  },
+
+  actionButton: {
+    height: 42,
+    padding: '0 16px',
+    border: '1px solid rgba(248,241,221,0.18)',
+    borderRadius: 10,
+    background: 'rgba(248,241,221,0.08)',
+    color: 'rgba(248,241,221,0.82)',
+    fontSize: 14,
+    fontWeight: 700,
+    cursor: 'pointer',
+    backdropFilter: 'blur(8px)',
+  },
+
   sky: {
     position: 'absolute',
     inset: 0,
@@ -108,8 +139,8 @@ const styles = {
 
   moon: {
     position: 'absolute',
-    top: 60,
-    right: 100,
+    top: 82,
+    right: 154,
     width: 90,
     height: 90,
     borderRadius: '50%',

@@ -145,6 +145,11 @@ export default function WerewolfGame({ players, onLobby, onRestart, wsState, sen
     return (
       <RoleRegShowCard
         player={players[playerIndex]}
+        onBack={() => {
+          setDetectedRoleId(null)
+          setLocalPhase('role_registration')
+        }}
+        onExit={onRestart}
         onDetected={(roleId) => {
           setDetectedRoleId(roleId)
           setLocalPhase('role_reg_confirm')
