@@ -5,6 +5,7 @@ const RECONNECT_DELAY_MS = 2000
 export function useWebSocket(path) {
   const [state, setState] = useState(null)
   const [connected, setConnected] = useState(false)
+  const [messages, setMessages] = useState([])
   const ws = useRef(null)
 
   useEffect(() => {
@@ -52,5 +53,5 @@ export function useWebSocket(path) {
     }
   }, [])
 
-  return { state, connected, send }
+  return { state, connected, messages, send }
 }

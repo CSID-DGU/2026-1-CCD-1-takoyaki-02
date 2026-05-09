@@ -74,7 +74,7 @@ export default function Lobby({ players, send, onSelectWerewolf }) {
           name="요트 다이스"
           info1="2-5인 플레이어"
           info2="주사위 자동 인식"
-          onClick={() => {}}
+          onClick={onSelectYacht}
         />
         <GameCard
           icon="🌙"
