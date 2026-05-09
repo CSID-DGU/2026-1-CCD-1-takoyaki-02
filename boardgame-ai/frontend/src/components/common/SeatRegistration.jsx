@@ -284,13 +284,7 @@ export default function SeatRegistration({
 
   const cancelRegistration = () => {
     if (!registeringId) return
-    const target = players.find((p) => p.player_id === registeringId)
-    const isTemp = !target || !target.playername
-    if (isTemp) {
-      send('player_remove', { player_id: registeringId })
-    } else {
-      send('cancel_seat_registration', {})
-    }
+    send('cancel_seat_registration', { player_id: registeringId })
   }
 
   const finalizePlayer = (player_id, name) => {

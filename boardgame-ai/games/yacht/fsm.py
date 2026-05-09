@@ -137,6 +137,21 @@ class YachtFSM(BaseFSM):
     def get_state_dict(self) -> dict:
         return self.state.to_dict()
 
+    def restore_state(
+        self,
+        state: YachtGameState,
+        message: str | None = None,
+    ) -> list[WSMessage]:
+        restored_version = max(self.state.state_version, state.state_version) + 1
+        self.state = state
+        self.state.state_version = restored_version
+        if message is not None:
+            self.state.last_message = message
+        return self._state_context_tts(
+            self.state.last_message
+            or f"{self.state.current_player.playername}님 차례입니다."
+        )
+
     def _handle_roll_confirmed(self, event: GameEvent) -> list[WSMessage]:
         if self.state.phase != YachtPhase.AWAITING_ROLL.value:
             return []

@@ -30,7 +30,8 @@ export function useWebSocket(path) {
       socket.onmessage = (e) => {
         try {
           const msg = JSON.parse(e.data)
-          if (msg.msg_type === 'state_update') setState(msg.state)
+          setMessages(prev => [msg, ...prev].slice(0, 20))
+          if (msg.msg_type === 'state_update') setState(msg.state ?? msg.payload)
         } catch (_) {}
       }
     }
