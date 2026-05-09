@@ -337,18 +337,20 @@ function ScoreTable({ state, currentOnly = false, compact = false, onScore }) {
           }
 
           const score = player?.scores?.[key]
-          const available = state.available_categories?.includes(key)
+          const hasScore = score != null
+          const available = compact ? hasScore : state.available_categories?.includes(key)
           const canScore =
             !compact &&
             player?.player_id === state.current_player_id &&
             available &&
             state.dice_values?.length
+          const displayScore = hasScore ? score : (compact ? '—' : predictedScore(key, state))
 
           return (
             <tr key={key} style={s.scoreRow(canScore)} onClick={canScore ? () => onScore(key) : undefined}>
-              <td style={{ ...s.tdName, color: score == null && !available ? '#aaa' : '#111' }}>{label}</td>
-              <td style={{ ...s.tdScore, color: score == null ? '#999' : '#111' }}>
-                {score ?? predictedScore(key, state)}
+              <td style={{ ...s.tdName, color: !hasScore && !available ? '#aaa' : '#111' }}>{label}</td>
+              <td style={{ ...s.tdScore, color: hasScore ? '#111' : '#999' }}>
+                {displayScore}
               </td>
             </tr>
           )
