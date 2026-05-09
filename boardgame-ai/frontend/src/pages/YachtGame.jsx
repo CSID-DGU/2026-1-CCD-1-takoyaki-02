@@ -279,7 +279,7 @@ export default function YachtGame({ players, onExit, onChangePlayers }) {
 
           <div style={s.hint}>
             {state.phase === 'AWAITING_ROLL'
-              ? '미사용 족보: 검은 글씨 → 이미 사용했거나 불가능: 회색'
+              ? <>사용 가능 족보: 검은 글씨<br />이미 사용한 족보: 회색 글씨</>
               : '가능한 족보: 파란색 배경 → 클릭하면 점수 기록'}
           </div>
         </main>
