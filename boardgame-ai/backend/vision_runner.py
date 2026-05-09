@@ -1,13 +1,14 @@
-"""VisionPipeline을 백그라운드 스레드로 실행하는 어댑터."""
+"""VisionPipeline(요트)을 백그라운드 스레드로 실행하는 어댑터."""
 
 from __future__ import annotations
 
+import queue
 import threading
 from pathlib import Path
 
 from bridge.local_bridge import LocalBridge
-from vision.config import VisionConfig
-from vision.pipeline import VisionPipeline
+from vision.yacht.config import VisionConfig
+from vision.yacht.pipeline import VisionPipeline
 
 
 class VisionRunner:
@@ -17,7 +18,7 @@ class VisionRunner:
         self._pipeline: VisionPipeline | None = None
         self._thread: threading.Thread | None = None
 
-    def start(self) -> None:
+    def start(self, frame_queue: "queue.Queue") -> None:
         weights = Path(self._config.weights_path)
         if not weights.exists():
             print(
@@ -33,11 +34,12 @@ class VisionRunner:
         )
         self._thread = threading.Thread(
             target=self._pipeline.start,
+            args=(frame_queue,),
             daemon=True,
             name="vision-pipeline",
         )
         self._thread.start()
-        print(f"[vision_runner] 비전 파이프라인 시작 (weights={weights})")
+        print(f"[vision_runner] 요트 비전 파이프라인 시작 (weights={weights})")
 
     def stop(self) -> None:
         if self._pipeline is not None:

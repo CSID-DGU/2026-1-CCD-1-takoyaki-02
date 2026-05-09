@@ -26,7 +26,8 @@ from collections import Counter, deque
 from dataclasses import dataclass
 from enum import Enum, auto
 
-from vision.schemas import BBox, DiceState, FramePerception, HandDet
+from vision.schemas import BBox, HandDet
+from vision.yacht.schemas import DiceState, YachtFramePerception
 
 # 디버그 로그용 — pipeline에서 logging.basicConfig(level=DEBUG)로 켤 수 있음.
 # 기본 INFO/WARNING 환경에선 조용히 동작.
@@ -111,7 +112,7 @@ class RollAttributor:
 
     # ── public ───────────────────────────────────────────────────────────────
 
-    def update(self, perception: FramePerception) -> str | None:
+    def update(self, perception: YachtFramePerception) -> str | None:
         """매 프레임 호출. ROLL_CONFIRMED 발화 시 actor 반환, 아니면 None."""
         self._just_finalized = False  # 매 프레임 리셋 — 발화 분기에서만 True
 
@@ -143,7 +144,7 @@ class RollAttributor:
 
     # ── 상태별 step ───────────────────────────────────────────────────────────
 
-    def _step_waiting(self, perception: FramePerception) -> str | None:
+    def _step_waiting(self, perception: YachtFramePerception) -> str | None:
         if perception.tray is None:
             return None
         # 손이 안 잡힌 동안에는 마지막 stable snapshot 갱신.
@@ -164,7 +165,7 @@ class RollAttributor:
             self._enter_hand_in_tray(perception)
         return None
 
-    def _step_hand_in_tray(self, perception: FramePerception) -> str | None:
+    def _step_hand_in_tray(self, perception: YachtFramePerception) -> str | None:
         # 점유 중에는 candidate_actor 강화 (들고 있는 동안 가장 가까운 player)
         nearest = self._nearest_player_to_tray(perception)
         if nearest is not None:
@@ -230,7 +231,7 @@ class RollAttributor:
         self._reset_to_waiting()
         return None
 
-    def _enter_hand_in_tray(self, perception: FramePerception) -> None:
+    def _enter_hand_in_tray(self, perception: YachtFramePerception) -> None:
         self._state = RollState.HAND_IN_TRAY
         # 손이 들어온 직후의 흐트러진 dice 좌표 대신,
         # 손 들어가기 직전 마지막 stable snapshot을 비교 기준으로 사용.
@@ -261,7 +262,7 @@ class RollAttributor:
 
     # ── 헬퍼 ─────────────────────────────────────────────────────────────────
 
-    def _is_any_hand_in_tray(self, perception: FramePerception) -> bool:
+    def _is_any_hand_in_tray(self, perception: YachtFramePerception) -> bool:
         """어떤 손의 wrist 또는 손가락 끝(5개) 중 하나라도 tray 패딩 영역 안에 있는가.
 
         21 landmark 전부 검사하면 손이 멀리 있어도 한 점이 안에 떨어져 false positive.
@@ -286,7 +287,7 @@ class RollAttributor:
                     return True
         return False
 
-    def _is_roll_tray_in_tray(self, perception: FramePerception) -> bool:
+    def _is_roll_tray_in_tray(self, perception: YachtFramePerception) -> bool:
         """roll_tray bbox가 tray bbox와 충분히 겹치는가.
 
         겹침 비율 = (교집합 면적) / (roll_tray 면적). 이 비율이 임계 이상이면 굴림통이
@@ -306,7 +307,7 @@ class RollAttributor:
             return False
         return (inter / rt_area) >= self._roll_tray_overlap_ratio
 
-    def _dice_outside_keep(self, perception: FramePerception) -> list[DiceState]:
+    def _dice_outside_keep(self, perception: YachtFramePerception) -> list[DiceState]:
         """굴림 대상 dice — 현재는 tray_inner를 무시하고 모든 dice를 굴림 대상으로 본다.
 
         tray_inner가 사실상 tray 전체를 덮어 dice가 모두 kept로 분류되던 문제를 회피.
@@ -314,10 +315,10 @@ class RollAttributor:
         """
         return list(perception.dice)
 
-    def _n_kept(self, perception: FramePerception) -> int:
+    def _n_kept(self, perception: YachtFramePerception) -> int:
         return 0
 
-    def _nearest_player_to_tray(self, perception: FramePerception) -> str | None:
+    def _nearest_player_to_tray(self, perception: YachtFramePerception) -> str | None:
         """tray 또는 roll_tray 중심에 가장 가까운 player_id 보유 손."""
         ref = perception.tray or perception.roll_tray
         if ref is None:

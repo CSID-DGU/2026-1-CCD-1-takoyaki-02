@@ -22,7 +22,7 @@ import math
 
 from core.events import FusionContext
 from vision.schemas import FramePerception, HandDet
-from vision.werewolf.card_tracker import CardTracker
+from vision.tracking.card_tracker import CardTracker
 from vision.werewolf.schemas import TrackedCard
 
 # ── FSM 팀과 합의된 문자열 상수 ────────────────────────────────────────────────

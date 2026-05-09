@@ -12,7 +12,8 @@ event_type 문자열 상수만 여기서 정의.
 from __future__ import annotations
 
 from core.events import FusionContext
-from vision.schemas import BBox, FramePerception
+from vision.schemas import BBox
+from vision.yacht.schemas import YachtFramePerception
 
 # ── 요트 전용 event_type 문자열 상수 ─────────────────────────────────────────
 ROLL_CONFIRMED = "ROLL_CONFIRMED"
@@ -41,7 +42,7 @@ class YachtRules:
     def build_candidates(
         self,
         ctx: FusionContext,
-        perception: FramePerception,
+        perception: YachtFramePerception,
     ) -> list[tuple[str, object, float]]:
         """
         Returns
@@ -64,7 +65,7 @@ class YachtRules:
     # ── 내부 ─────────────────────────────────────────────────────────────────
 
     def _check_roll_event(
-        self, perception: FramePerception, ctx: FusionContext | None = None
+        self, perception: YachtFramePerception, ctx: FusionContext | None = None
     ) -> tuple[str, object, float] | None:
         """주사위 안정 + actor 확정 시 ROLL_CONFIRMED 또는 ROLL_UNREADABLE 후보.
 
@@ -112,7 +113,7 @@ class YachtRules:
         return ROLL_UNREADABLE, {"_key": data_key, **data}, 0.6
 
     def _check_dice_escaped(
-        self, perception: FramePerception, ctx: FusionContext | None = None
+        self, perception: YachtFramePerception, ctx: FusionContext | None = None
     ) -> tuple[str, object, float] | None:
         """tray 안에 있던 dice가 밖으로 나간 경우만 DICE_ESCAPED 후보.
 

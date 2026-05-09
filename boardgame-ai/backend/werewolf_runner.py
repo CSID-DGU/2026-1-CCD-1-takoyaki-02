@@ -1,14 +1,13 @@
-"""WerewolfVisionPipeline을 백그라운드 스레드로 실행하는 어댑터.
-
-VisionRunner(요트) 와 동일한 패턴.
-"""
+"""WerewolfVisionPipeline을 백그라운드 스레드로 실행하는 어댑터."""
 
 from __future__ import annotations
 
+import queue
 import threading
 
 from bridge.local_bridge import LocalBridge
-from vision.werewolf.werewolf_pipeline import WerewolfVisionConfig, WerewolfVisionPipeline
+from vision.werewolf.config import WerewolfVisionConfig
+from vision.werewolf.pipeline import WerewolfVisionPipeline
 
 
 class WerewolfRunner:
@@ -17,7 +16,7 @@ class WerewolfRunner:
         self._pipeline: WerewolfVisionPipeline | None = None
         self._thread: threading.Thread | None = None
 
-    def start(self) -> None:
+    def start(self, frame_queue: "queue.Queue") -> None:
         config = WerewolfVisionConfig()
         self._pipeline = WerewolfVisionPipeline(
             config=config,
@@ -26,6 +25,7 @@ class WerewolfRunner:
         )
         self._thread = threading.Thread(
             target=self._pipeline.start,
+            args=(frame_queue,),
             daemon=True,
             name="werewolf-vision-pipeline",
         )

@@ -1,6 +1,6 @@
 """FusionEngine + YachtRules 통합 테스트.
 
-Mock FramePerception + FusionContext로 3조건 필터와 이벤트 생성 검증.
+Mock YachtFramePerception + FusionContext로 3조건 필터와 이벤트 생성 검증.
 """
 
 from __future__ import annotations
@@ -14,7 +14,8 @@ from vision.fusion.yacht_rules import (
     ROLL_CONFIRMED,
     ROLL_UNREADABLE,
 )
-from vision.schemas import BBox, DiceState, FramePerception, HandDet
+from vision.schemas import BBox, HandDet
+from vision.yacht.schemas import DiceState, YachtFramePerception
 
 # ── 픽스처 헬퍼 ───────────────────────────────────────────────────────────────
 
@@ -73,8 +74,8 @@ def _frame(
     roll_actor_id: str | None = None,
     tray: BBox | None = None,
     roll_just_confirmed: bool = False,
-) -> FramePerception:
-    return FramePerception(
+) -> YachtFramePerception:
+    return YachtFramePerception(
         frame_id=frame_id,
         ts=float(frame_id) / 30.0,
         image_hw=(1080, 1920),
