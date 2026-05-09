@@ -27,7 +27,7 @@ class HandDetector:
         min_tracking_confidence: float = 0.5,
         min_presence_confidence: float = 0.5,
     ) -> None:
-        base_opts = mp_base.BaseOptions(model_asset_path=str(model_path))
+        base_opts = mp_base.BaseOptions(model_asset_buffer=Path(model_path).read_bytes())
         opts = mp_vision.HandLandmarkerOptions(
             base_options=base_opts,
             running_mode=mp_vision.RunningMode.VIDEO,

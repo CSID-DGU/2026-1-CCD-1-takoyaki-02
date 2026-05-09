@@ -11,7 +11,8 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from vision.detectors.dot_counter import DotCounter
-from vision.schemas import DiceState, YoloDet
+from vision.schemas import YoloDet
+from vision.yacht.schemas import DiceState
 
 
 @dataclass

@@ -182,15 +182,18 @@ class FusionEngine:
                 self._stab_counters[event_type] = 0
                 continue
 
-            events.append(
-                GameEvent(
-                    event_type=event_type,
-                    actor_id=actor_id,
-                    confidence=conf,
-                    frame_id=perception.frame_id,
-                    data={k: v for k, v in event_data.items() if k not in ("actor_id", "_key")},
-                )
+            fired = GameEvent(
+                event_type=event_type,
+                actor_id=actor_id,
+                confidence=conf,
+                frame_id=perception.frame_id,
+                data={k: v for k, v in event_data.items() if k not in ("actor_id", "_key")},
             )
+            print(
+                f"[fusion] EVENT={event_type}  actor={actor_id}  "
+                f"conf={conf:.2f}  frame={perception.frame_id}"
+            )
+            events.append(fired)
             # 중간 이벤트 1회 발화 가드
             if event_type == CommonEventType.SEAT_RIGHT_REGISTERED and actor_id:
                 self._seat_right_event_emitted.add(actor_id)
@@ -233,8 +236,8 @@ class FusionEngine:
             )
             self._seat_right_confirmed[actor] = (right_hand.wrist_xy, r_angle)
 
-        # Step 2: 왼손 OK사인 + 오른손 이미 확인됨 → 발화
-        if left_hand is not None and actor in self._seat_right_confirmed:
+        # Step 2: 왼손 OK사인 + SEAT_RIGHT_REGISTERED 이미 발화됨 → 발화
+        if left_hand is not None and actor in self._seat_right_event_emitted:
             right_wrist, right_angle = self._seat_right_confirmed[actor]
             left_wrist = left_hand.wrist_xy
             left_angle = (

@@ -29,7 +29,11 @@ class WebSocketBridge(Bridge):
     def on_game_event(self, handler: Callable[[GameEvent, int], None]) -> None:
         raise NotImplementedError
 
-    def on_fusion_context(self, handler: Callable[[FusionContext, int], None]) -> None:
+    def on_fusion_context(
+        self,
+        handler: Callable[[FusionContext, int], None],
+        game_type: str | None = None,
+    ) -> None:
         raise NotImplementedError
 
     def start(self) -> None:

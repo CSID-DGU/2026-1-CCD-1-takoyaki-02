@@ -12,23 +12,29 @@ from __future__ import annotations
 import asyncio
 import random
 from copy import deepcopy
+import threading
 from contextlib import asynccontextmanager
 from typing import Any
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
+from backend.lobby_runner import LobbyRunner
 from backend.orchestrator import Orchestrator
 from backend.routes.players import router as players_router
 from backend.vision_runner import VisionRunner
 from backend.werewolf_runner import WerewolfRunner
 from backend.ws.tablet import manager as ws_manager
 from backend.ws.tablet import tablet_ws_handler
+from backend.yacht_runner import YachtRunner
 from bridge.local_bridge import LocalBridge
 from core.envelope import WSMessage
 from core.events import GameEvent
 from games.yacht import YachtEventType, YachtFSM, YachtGameState, YachtInputType
 from vision.config import VisionConfig
+from games.yacht import YachtEventType, YachtFSM, YachtInputType
+from vision.camera import CameraManager
+from vision.yacht.config import VisionConfig
 
 
 @asynccontextmanager
@@ -44,26 +50,43 @@ async def lifespan(app: FastAPI):
     orchestrator.set_broadcast(ws_manager.broadcast, loop)
     bridge.on_game_event(orchestrator.handle_game_event)
 
+    camera = CameraManager(source=0, resolution=(1920, 1080), fps=30)
     vision_runner = VisionRunner(config=config, bridge=bridge)
     werewolf_runner = WerewolfRunner(bridge=bridge)
+    lobby_runner = LobbyRunner(bridge=bridge)
+    # 비전 → 활성 YachtSession.fsm 라우터. LocalBridge에 자동 핸들러 등록됨.
+    yacht_runner = YachtRunner(bridge=bridge, loop=loop)
 
-    # 좌석 등록 완료/플레이어 변경 시 두 파이프라인에 동시 전달
     def _on_players_changed(players: list) -> None:
         vision_runner.update_players(players)
         werewolf_runner.update_players(players)
+        lobby_runner.update_players(players)
 
     orchestrator.set_players_listener(_on_players_changed)
-    vision_runner.start()
-    werewolf_runner.start()
+
+    yacht_queue = camera.subscribe()
+    werewolf_queue = camera.subscribe()
+    lobby_queue = camera.subscribe()
+
+    camera.start()
+    vision_runner.start(yacht_queue)
+    werewolf_runner.start(werewolf_queue)
+    lobby_runner.start(lobby_queue)
 
     app.state.orchestrator = orchestrator
+    app.state.camera = camera
     app.state.vision_runner = vision_runner
     app.state.werewolf_runner = werewolf_runner
+    app.state.lobby_runner = lobby_runner
+    app.state.bridge = bridge
+    app.state.yacht_runner = yacht_runner
 
     yield
 
+    camera.stop()
     vision_runner.stop()
     werewolf_runner.stop()
+    lobby_runner.stop()
 
 
 app = FastAPI(title="Boardgame AI Backend", lifespan=lifespan)
@@ -92,25 +115,40 @@ async def ws_tablet(websocket: WebSocket) -> None:
 @app.websocket("/ws/yacht")
 async def yacht_socket(websocket: WebSocket) -> None:
     await websocket.accept()
-    session = YachtSession(websocket)
-    await session.send_hello()
-
+    session = YachtSession(websocket=websocket, bridge=app.state.bridge)
+    # 비전 → 활성 세션 라우팅 활성화. send_hello/receive loop 어디서 예외가 나도
+    # finally에서 반드시 deregister 되도록 register 직후부터 try 진입.
+    app.state.yacht_runner.register_session(session)
     try:
+        await session.send_hello()
         while True:
             data = await websocket.receive_json()
             await session.handle_client_message(data)
     except WebSocketDisconnect:
         return
+    finally:
+        app.state.yacht_runner.deregister_session(session)
 
 
 class YachtSession:
-    def __init__(self, websocket: WebSocket) -> None:
+    def __init__(self, websocket: WebSocket, bridge: LocalBridge) -> None:
         self.websocket = websocket
         self.fsm: YachtFSM | None = None
         self.undo_stack: list[YachtGameState] = []
+        self._bridge = bridge
+        # FSM 상태 변경 직렬화 — 비전 스레드와 WS 스레드가 동시에 호출 가능
+        self._fsm_lock = threading.Lock()
 
     async def send_hello(self) -> None:
         await self.send(WSMessage.make_hello({"game_type": "yacht"}))
+
+    async def dispatch_vision_event(self, event: GameEvent) -> None:
+        """yacht_runner가 호출. 비전 이벤트를 FSM에 전달하고 응답을 클라이언트로."""
+        if self.fsm is None:
+            return
+        with self._fsm_lock:
+            messages = self.fsm.handle_event(event)
+        await self.send_many(messages)
 
     async def handle_client_message(self, data: dict[str, Any]) -> None:
         input_type = str(data.get("input_type", ""))
@@ -122,7 +160,9 @@ class YachtSession:
             return
 
         if self.fsm is None:
-            await self.send(WSMessage.make_error("GAME_NOT_STARTED", "요트다이스가 시작되지 않았습니다."))
+            await self.send(
+                WSMessage.make_error("GAME_NOT_STARTED", "요트다이스가 시작되지 않았습니다.")
+            )
             return
 
         if input_type == "ROLL_DICE":
@@ -141,6 +181,8 @@ class YachtSession:
             messages = self.fsm.handle_event(event)
             if self.roll_was_recorded(previous_state):
                 self.undo_stack.append(previous_state)
+            with self._fsm_lock:
+                messages = self.fsm.handle_event(event)
             await self.send_many(messages)
             return
 
@@ -152,7 +194,9 @@ class YachtSession:
                 frame_id=-1,
                 data={},
             )
-            await self.send_many(self.fsm.handle_event(event))
+            with self._fsm_lock:
+                messages = self.fsm.handle_event(event)
+            await self.send_many(messages)
             return
 
         if input_type in {
@@ -160,7 +204,9 @@ class YachtSession:
             YachtInputType.DICE_REROLL_REQUESTED.value,
             YachtInputType.RESOLVE_UNREADABLE_ROLL.value,
         }:
-            await self.send_many(self.fsm.handle_input(input_type, payload, player_id))
+            with self._fsm_lock:
+                messages = self.fsm.handle_input(input_type, payload, player_id)
+            await self.send_many(messages)
             return
 
         if input_type == YachtInputType.SCORE_CATEGORY_SELECTED.value:
@@ -196,13 +242,23 @@ class YachtSession:
             await self.start_game({"players": players})
             return
 
-        await self.send(WSMessage.make_error("UNKNOWN_INPUT", f"알 수 없는 입력입니다: {input_type}"))
+        await self.send(
+            WSMessage.make_error("UNKNOWN_INPUT", f"알 수 없는 입력입니다: {input_type}")
+        )
 
     async def start_game(self, payload: dict[str, Any]) -> None:
         players = normalize_players(payload.get("players"))
         self.fsm = YachtFSM(players)
         self.undo_stack = []
         await self.send_many(self.fsm.start())
+        with self._fsm_lock:
+            # on_fusion_context 콜백 주입 → FSM이 phase 전환마다 비전에도 직접 알림
+            self.fsm = YachtFSM(
+                players,
+                on_fusion_context=self._bridge.send_fusion_context,
+            )
+            messages = self.fsm.start()
+        await self.send_many(messages)
 
     def roll_was_recorded(self, previous_state: YachtGameState) -> bool:
         if self.fsm is None:

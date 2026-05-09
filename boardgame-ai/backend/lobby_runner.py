@@ -1,4 +1,4 @@
-"""WerewolfVisionPipeline을 백그라운드 스레드로 실행하는 어댑터."""
+"""LobbyVisionPipeline을 백그라운드 스레드로 실행하는 어댑터."""
 
 from __future__ import annotations
 
@@ -6,20 +6,17 @@ import queue
 import threading
 
 from bridge.local_bridge import LocalBridge
-from vision.werewolf.config import WerewolfVisionConfig
-from vision.werewolf.pipeline import WerewolfVisionPipeline
+from vision.lobby.pipeline import LobbyVisionPipeline
 
 
-class WerewolfRunner:
+class LobbyRunner:
     def __init__(self, bridge: LocalBridge) -> None:
         self._bridge = bridge
-        self._pipeline: WerewolfVisionPipeline | None = None
+        self._pipeline: LobbyVisionPipeline | None = None
         self._thread: threading.Thread | None = None
 
     def start(self, frame_queue: "queue.Queue") -> None:
-        config = WerewolfVisionConfig()
-        self._pipeline = WerewolfVisionPipeline(
-            config=config,
+        self._pipeline = LobbyVisionPipeline(
             bridge=self._bridge,
             players=[],
         )
@@ -27,10 +24,10 @@ class WerewolfRunner:
             target=self._pipeline.start,
             args=(frame_queue,),
             daemon=True,
-            name="werewolf-vision-pipeline",
+            name="lobby-vision-pipeline",
         )
         self._thread.start()
-        print("[werewolf_runner] 늑대인간 비전 파이프라인 시작")
+        print("[lobby_runner] 로비 비전 파이프라인 시작")
 
     def stop(self) -> None:
         if self._pipeline is not None:

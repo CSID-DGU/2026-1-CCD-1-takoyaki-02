@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from typing import Any, Awaitable, Callable
+import logging
+from collections.abc import Awaitable, Callable
+from typing import Any
 
 from core.audio import AudioPriority, TTSRequest
 from core.constants import AgentRole, MsgType
@@ -13,15 +15,43 @@ from games.base_fsm import BaseFSM
 from games.yacht.scoring import calculate_score
 from games.yacht.state import YachtEventType, YachtGameState, YachtInputType, YachtPhase
 
+logger = logging.getLogger(__name__)
+
 
 class YachtFSM(BaseFSM):
     def __init__(
         self,
         players: list[Player | str | dict[str, Any]],
         broadcast: Callable[[WSMessage], Awaitable[None]] | None = None,
+        on_fusion_context: Callable[[FusionContext, int], None] | None = None,
     ) -> None:
         self.state = YachtGameState.new(players)
         self._broadcast = broadcast
+        # phase 전환마다 비전 FusionEngine에 컨텍스트 전달용 콜백.
+        # 보통 LocalBridge.send_fusion_context를 주입한다.
+        self._on_fusion_context = on_fusion_context
+
+    def _emit_fusion_context(self) -> WSMessage:
+        """현재 컨텍스트를 비전 콜백으로 push하고 프론트용 WSMessage를 반환.
+
+        FSM이 phase를 바꾼 직후 호출. 비전과 프론트가 같은 시점에 같은 컨텍스트를
+        받도록 단일 진입점으로 일원화. 콜백 미주입 환경(단위 테스트 등)에서는
+        프론트용 메시지만 만들고 조용히 넘어감.
+
+        콜백 호출 실패는 로깅만 하고 흡수 — 비전 측 문제로 게임 흐름이나 프론트
+        응답이 끊기지 않도록 한다.
+        """
+        ctx = self.get_fusion_context()
+        if self._on_fusion_context is not None:
+            try:
+                self._on_fusion_context(ctx, self.state.state_version)
+            except Exception:
+                logger.exception(
+                    "on_fusion_context callback failed (phase=%s, version=%d)",
+                    self.state.phase,
+                    self.state.state_version,
+                )
+        return WSMessage.make_fusion_context(ctx, self.state.state_version)
 
     def start(self) -> list[WSMessage]:
         self.state.phase = YachtPhase.AWAITING_ROLL.value
@@ -29,7 +59,7 @@ class YachtFSM(BaseFSM):
         self.state.last_message = f"{self.state.current_player.playername}님, 주사위를 굴려주세요."
         return [
             self._make_state_update(),
-            WSMessage.make_fusion_context(self.get_fusion_context(), self.state.state_version),
+            self._emit_fusion_context(),
             self._make_tts(self.state.last_message),
         ]
 
@@ -39,7 +69,9 @@ class YachtFSM(BaseFSM):
         if event.event_type == YachtEventType.ROLL_UNREADABLE.value:
             return self._handle_roll_unreadable(event)
         if event.event_type == YachtEventType.DICE_ESCAPED.value:
-            return self._warn_and_keep_roll_phase("주사위가 트레이 밖으로 나갔습니다. 다시 굴려주세요.")
+            return self._warn_and_keep_roll_phase(
+                "주사위가 트레이 밖으로 나갔습니다. 다시 굴려주세요."
+            )
         if event.event_type in (
             YachtEventType.RULE_VIOLATION.value,
             YachtEventType.RULE_VIOLATION_LOWER.value,
@@ -267,10 +299,7 @@ class YachtFSM(BaseFSM):
         values = ", ".join(str(v) for v in self.state.dice_values)
         if self.state.phase == YachtPhase.AWAITING_SCORE.value:
             return f"주사위 결과는 {values}입니다. 점수 칸을 선택해주세요."
-        return (
-            f"주사위 결과는 {values}입니다. "
-            "보관할 주사위를 고르거나 점수 칸을 선택해주세요."
-        )
+        return f"주사위 결과는 {values}입니다. " "보관할 주사위를 고르거나 점수 칸을 선택해주세요."
 
     def _normalize_keep_mask(self, keep_mask: Any) -> list[bool]:
         if not isinstance(keep_mask, list) or len(keep_mask) != 5:
@@ -280,7 +309,7 @@ class YachtFSM(BaseFSM):
     def _state_context_tts(self, text: str) -> list[WSMessage]:
         return [
             self._make_state_update(),
-            WSMessage.make_fusion_context(self.get_fusion_context(), self.state.state_version),
+            self._emit_fusion_context(),
             self._make_tts(text),
         ]
 

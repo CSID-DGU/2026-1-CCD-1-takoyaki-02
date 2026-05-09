@@ -59,6 +59,8 @@ export default function App() {
       />
     )
   }
+  if (page === 'lobby') return <Lobby players={players} send={send} onSelectYacht={() => setPage('yacht')} onSelectWerewolf={() => setPage('werewolf')} />
+  if (page === 'yacht') return <YachtGame players={players} onExit={() => setPage('lobby')} onChangePlayers={() => setPage('seat')} />
   if (page === 'werewolf') return (
     <WerewolfGame
       players={players}
