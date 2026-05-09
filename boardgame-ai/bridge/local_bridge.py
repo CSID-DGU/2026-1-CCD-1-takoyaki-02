@@ -19,9 +19,9 @@ class LocalBridge(Bridge):
     def __init__(self) -> None:
         self._game_event_handlers: list[Callable[[GameEvent, int], None]] = []
         # (game_type, handler) — game_type 이 _UNSET 이면 모든 context 수신
-        self._fusion_context_handlers: list[
-            tuple[object, Callable[[FusionContext, int], None]]
-        ] = []
+        self._fusion_context_handlers: list[tuple[object, Callable[[FusionContext, int], None]]] = (
+            []
+        )
         self._running = False
 
     def send_game_event(self, event: GameEvent, state_version: int) -> None:

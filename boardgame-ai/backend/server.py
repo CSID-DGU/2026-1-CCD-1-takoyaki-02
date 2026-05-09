@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import random
+import threading
 from contextlib import asynccontextmanager
 from typing import Any
 
@@ -24,6 +25,7 @@ from backend.vision_runner import VisionRunner
 from backend.werewolf_runner import WerewolfRunner
 from backend.ws.tablet import manager as ws_manager
 from backend.ws.tablet import tablet_ws_handler
+from backend.yacht_runner import YachtRunner
 from bridge.local_bridge import LocalBridge
 from core.envelope import WSMessage
 from core.events import GameEvent
@@ -49,6 +51,8 @@ async def lifespan(app: FastAPI):
     vision_runner = VisionRunner(config=config, bridge=bridge)
     werewolf_runner = WerewolfRunner(bridge=bridge)
     lobby_runner = LobbyRunner(bridge=bridge)
+    # 비전 → 활성 YachtSession.fsm 라우터. LocalBridge에 자동 핸들러 등록됨.
+    yacht_runner = YachtRunner(bridge=bridge, loop=loop)
 
     def _on_players_changed(players: list) -> None:
         vision_runner.update_players(players)
@@ -71,6 +75,8 @@ async def lifespan(app: FastAPI):
     app.state.vision_runner = vision_runner
     app.state.werewolf_runner = werewolf_runner
     app.state.lobby_runner = lobby_runner
+    app.state.bridge = bridge
+    app.state.yacht_runner = yacht_runner
 
     yield
 
@@ -106,24 +112,39 @@ async def ws_tablet(websocket: WebSocket) -> None:
 @app.websocket("/ws/yacht")
 async def yacht_socket(websocket: WebSocket) -> None:
     await websocket.accept()
-    session = YachtSession(websocket)
-    await session.send_hello()
-
+    session = YachtSession(websocket=websocket, bridge=app.state.bridge)
+    # 비전 → 활성 세션 라우팅 활성화. send_hello/receive loop 어디서 예외가 나도
+    # finally에서 반드시 deregister 되도록 register 직후부터 try 진입.
+    app.state.yacht_runner.register_session(session)
     try:
+        await session.send_hello()
         while True:
             data = await websocket.receive_json()
             await session.handle_client_message(data)
     except WebSocketDisconnect:
         return
+    finally:
+        app.state.yacht_runner.deregister_session(session)
 
 
 class YachtSession:
-    def __init__(self, websocket: WebSocket) -> None:
+    def __init__(self, websocket: WebSocket, bridge: LocalBridge) -> None:
         self.websocket = websocket
         self.fsm: YachtFSM | None = None
+        self._bridge = bridge
+        # FSM 상태 변경 직렬화 — 비전 스레드와 WS 스레드가 동시에 호출 가능
+        self._fsm_lock = threading.Lock()
 
     async def send_hello(self) -> None:
         await self.send(WSMessage.make_hello({"game_type": "yacht"}))
+
+    async def dispatch_vision_event(self, event: GameEvent) -> None:
+        """yacht_runner가 호출. 비전 이벤트를 FSM에 전달하고 응답을 클라이언트로."""
+        if self.fsm is None:
+            return
+        with self._fsm_lock:
+            messages = self.fsm.handle_event(event)
+        await self.send_many(messages)
 
     async def handle_client_message(self, data: dict[str, Any]) -> None:
         input_type = str(data.get("input_type", ""))
@@ -135,7 +156,9 @@ class YachtSession:
             return
 
         if self.fsm is None:
-            await self.send(WSMessage.make_error("GAME_NOT_STARTED", "요트다이스가 시작되지 않았습니다."))
+            await self.send(
+                WSMessage.make_error("GAME_NOT_STARTED", "요트다이스가 시작되지 않았습니다.")
+            )
             return
 
         if input_type == "ROLL_DICE":
@@ -147,7 +170,9 @@ class YachtSession:
                 frame_id=-1,
                 data={"dice_values": dice_values, "keep_mask": self.fsm.state.keep_mask},
             )
-            await self.send_many(self.fsm.handle_event(event))
+            with self._fsm_lock:
+                messages = self.fsm.handle_event(event)
+            await self.send_many(messages)
             return
 
         if input_type == "DICE_ESCAPED":
@@ -158,7 +183,9 @@ class YachtSession:
                 frame_id=-1,
                 data={},
             )
-            await self.send_many(self.fsm.handle_event(event))
+            with self._fsm_lock:
+                messages = self.fsm.handle_event(event)
+            await self.send_many(messages)
             return
 
         if input_type in {
@@ -167,7 +194,9 @@ class YachtSession:
             YachtInputType.SCORE_CATEGORY_SELECTED.value,
             YachtInputType.RESOLVE_UNREADABLE_ROLL.value,
         }:
-            await self.send_many(self.fsm.handle_input(input_type, payload, player_id))
+            with self._fsm_lock:
+                messages = self.fsm.handle_input(input_type, payload, player_id)
+            await self.send_many(messages)
             return
 
         if input_type == "RESTART":
@@ -175,12 +204,20 @@ class YachtSession:
             await self.start_game({"players": players})
             return
 
-        await self.send(WSMessage.make_error("UNKNOWN_INPUT", f"알 수 없는 입력입니다: {input_type}"))
+        await self.send(
+            WSMessage.make_error("UNKNOWN_INPUT", f"알 수 없는 입력입니다: {input_type}")
+        )
 
     async def start_game(self, payload: dict[str, Any]) -> None:
         players = normalize_players(payload.get("players"))
-        self.fsm = YachtFSM(players)
-        await self.send_many(self.fsm.start())
+        with self._fsm_lock:
+            # on_fusion_context 콜백 주입 → FSM이 phase 전환마다 비전에도 직접 알림
+            self.fsm = YachtFSM(
+                players,
+                on_fusion_context=self._bridge.send_fusion_context,
+            )
+            messages = self.fsm.start()
+        await self.send_many(messages)
 
     @staticmethod
     def roll_dice() -> list[int]:
