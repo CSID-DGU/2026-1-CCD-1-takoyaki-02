@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Awaitable, Callable
 from typing import Any
 
@@ -13,6 +14,8 @@ from core.models import Player
 from games.base_fsm import BaseFSM
 from games.yacht.scoring import calculate_score
 from games.yacht.state import YachtEventType, YachtGameState, YachtInputType, YachtPhase
+
+logger = logging.getLogger(__name__)
 
 
 class YachtFSM(BaseFSM):
@@ -34,10 +37,20 @@ class YachtFSM(BaseFSM):
         FSM이 phase를 바꾼 직후 호출. 비전과 프론트가 같은 시점에 같은 컨텍스트를
         받도록 단일 진입점으로 일원화. 콜백 미주입 환경(단위 테스트 등)에서는
         프론트용 메시지만 만들고 조용히 넘어감.
+
+        콜백 호출 실패는 로깅만 하고 흡수 — 비전 측 문제로 게임 흐름이나 프론트
+        응답이 끊기지 않도록 한다.
         """
         ctx = self.get_fusion_context()
         if self._on_fusion_context is not None:
-            self._on_fusion_context(ctx, self.state.state_version)
+            try:
+                self._on_fusion_context(ctx, self.state.state_version)
+            except Exception:
+                logger.exception(
+                    "on_fusion_context callback failed (phase=%s, version=%d)",
+                    self.state.phase,
+                    self.state.state_version,
+                )
         return WSMessage.make_fusion_context(ctx, self.state.state_version)
 
     def start(self) -> list[WSMessage]:

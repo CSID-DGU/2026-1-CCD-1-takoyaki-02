@@ -5,13 +5,15 @@ WebSocket은 FakeWebSocket으로 대체.
 
 asyncio loop은 별도 스레드에서 돌려서 yacht_runner._route_event의
 run_coroutine_threadsafe가 정상 동작하도록 한다.
+
+대기는 time.sleep 대신 threading.Event 기반 deterministic polling으로
+처리해 CI/느린 머신 플래키 방지.
 """
 
 from __future__ import annotations
 
 import asyncio
 import threading
-import time
 from typing import Any
 
 import pytest
@@ -27,13 +29,38 @@ from games.yacht import YachtEventType, YachtFSM
 
 
 class FakeWebSocket:
-    """WebSocket 인터페이스 중 send_json만 구현. 송신 메시지 기록."""
+    """WebSocket 인터페이스 중 send_json만 구현. 송신 메시지 기록 + Event 알림.
+
+    `wait_for(msg_type, timeout)`로 특정 msg_type 도착을 deterministic 하게 대기 가능.
+    """
 
     def __init__(self) -> None:
         self.sent: list[dict] = []
+        self._cond = threading.Condition()
 
     async def send_json(self, payload: dict) -> None:
-        self.sent.append(payload)
+        with self._cond:
+            self.sent.append(payload)
+            self._cond.notify_all()
+
+    def wait_for(self, msg_type: str, timeout: float = 2.0, after: int = 0) -> bool:
+        """`after` 인덱스 이후에 해당 msg_type이 도착할 때까지 대기.
+
+        `after`는 sent 리스트의 시작 인덱스. 보통 호출 직전의 len(self.sent).
+        그 이후 새로 도착한 메시지에서만 매칭. True면 도착, False면 timeout.
+        """
+
+        def _arrived() -> bool:
+            return any(m.get("msg_type") == msg_type for m in self.sent[after:])
+
+        with self._cond:
+            return self._cond.wait_for(_arrived, timeout=timeout)
+
+    def wait_quiet(self, timeout: float = 0.05) -> None:
+        """짧은 시간 안에 새 메시지가 안 오는 것을 확인 (음성 검증)."""
+        snapshot = len(self.sent)
+        with self._cond:
+            self._cond.wait_for(lambda: len(self.sent) > snapshot, timeout=timeout)
 
 
 def _make_event(event_type: str, actor_id: str = "p1", **data: Any) -> GameEvent:
@@ -48,14 +75,29 @@ def _make_event(event_type: str, actor_id: str = "p1", **data: Any) -> GameEvent
 
 @pytest.fixture()
 def loop_in_thread():
-    """asyncio loop을 별도 스레드에서 돌리는 fixture."""
+    """asyncio loop을 별도 스레드에서 돌리는 fixture.
+
+    started_event로 loop 진입을 동기화, set_event_loop로 스레드 컨텍스트에
+    loop을 등록해 일부 asyncio API가 current loop을 찾을 수 있게 한다.
+    """
     loop = asyncio.new_event_loop()
-    thread = threading.Thread(target=loop.run_forever, daemon=True)
+    started = threading.Event()
+
+    def _run() -> None:
+        asyncio.set_event_loop(loop)
+        loop.call_soon(started.set)
+        loop.run_forever()
+
+    thread = threading.Thread(target=_run, daemon=True, name="test-loop")
     thread.start()
-    yield loop
-    loop.call_soon_threadsafe(loop.stop)
-    thread.join(timeout=1.0)
-    loop.close()
+    assert started.wait(timeout=2.0), "test loop failed to start"
+    try:
+        yield loop
+    finally:
+        loop.call_soon_threadsafe(loop.stop)
+        thread.join(timeout=2.0)
+        assert not thread.is_alive(), "test loop thread did not exit"
+        loop.close()
 
 
 def _start_session_sync(session: YachtSession, loop: asyncio.AbstractEventLoop) -> None:
@@ -89,14 +131,13 @@ def test_yacht_event_routes_to_active_session(loop_in_thread) -> None:
     )
     bridge.send_game_event(event, state_version=2)
 
-    # asyncio loop이 schedule된 task를 처리할 시간 확보
-    time.sleep(0.1)
+    # FSM 응답이 도착할 때까지 deterministic 대기 (start_game 메시지 이후만)
+    assert ws.wait_for(MsgType.STATE_UPDATE.value, timeout=2.0, after=sent_before)
+    assert ws.wait_for(MsgType.FUSION_CONTEXT.value, timeout=2.0, after=sent_before)
 
-    # FSM이 ROLL_CONFIRMED를 받아 응답 메시지 발화
-    new_msgs = ws.sent[sent_before:]
-    sent_msg_types = [m.get("msg_type") for m in new_msgs]
-    assert MsgType.STATE_UPDATE.value in sent_msg_types, f"got {sent_msg_types}"
-    assert MsgType.FUSION_CONTEXT.value in sent_msg_types
+    new_msg_types = [m.get("msg_type") for m in ws.sent[sent_before:]]
+    assert MsgType.STATE_UPDATE.value in new_msg_types
+    assert MsgType.FUSION_CONTEXT.value in new_msg_types
 
 
 def test_yacht_event_ignored_when_no_active_session(loop_in_thread) -> None:
@@ -105,9 +146,8 @@ def test_yacht_event_ignored_when_no_active_session(loop_in_thread) -> None:
     YachtRunner(bridge=bridge, loop=loop_in_thread)  # register 안 함
 
     event = _make_event(YachtEventType.ROLL_CONFIRMED.value, dice_values=[1] * 5)
-    bridge.send_game_event(event, state_version=1)
-    time.sleep(0.05)
     # 예외만 안 뜨면 OK
+    bridge.send_game_event(event, state_version=1)
 
 
 def test_non_yacht_event_not_routed_to_yacht(loop_in_thread) -> None:
@@ -123,9 +163,9 @@ def test_non_yacht_event_not_routed_to_yacht(loop_in_thread) -> None:
     sent_before = len(ws.sent)
     event = _make_event(CommonEventType.SEAT_REGISTERED.value)
     bridge.send_game_event(event, state_version=1)
-    time.sleep(0.05)
 
-    # FSM은 SEAT_REGISTERED 안 받으므로 추가 메시지 없음
+    # 짧은 시간 동안 추가 메시지가 도착하지 않는지 확인
+    ws.wait_quiet(timeout=0.1)
     assert len(ws.sent) == sent_before
 
 
@@ -177,6 +217,22 @@ def test_fsm_works_without_on_fusion_context_callback() -> None:
     fsm = YachtFSM([{"player_id": "p1", "playername": "A"}])
     messages = fsm.start()
     assert any(m.msg_type == MsgType.FUSION_CONTEXT.value for m in messages)
+
+
+def test_fsm_survives_on_fusion_context_callback_exception() -> None:
+    """콜백이 예외를 던져도 FSM 응답은 정상 반환되어야 (게임 흐름 보호)."""
+
+    def _bad_callback(_ctx: FusionContext, _ver: int) -> None:
+        raise RuntimeError("vision bridge unavailable")
+
+    fsm = YachtFSM(
+        [{"player_id": "p1", "playername": "A"}],
+        on_fusion_context=_bad_callback,
+    )
+    messages = fsm.start()
+    # 콜백 실패와 무관하게 프론트용 메시지는 반환되어야 함
+    assert any(m.msg_type == MsgType.FUSION_CONTEXT.value for m in messages)
+    assert any(m.msg_type == MsgType.STATE_UPDATE.value for m in messages)
 
 
 # ── deregister race condition ───────────────────────────────────────────────

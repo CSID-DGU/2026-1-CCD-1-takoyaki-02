@@ -113,10 +113,11 @@ async def ws_tablet(websocket: WebSocket) -> None:
 async def yacht_socket(websocket: WebSocket) -> None:
     await websocket.accept()
     session = YachtSession(websocket=websocket, bridge=app.state.bridge)
-    # 비전 → 활성 세션 라우팅 활성화
+    # 비전 → 활성 세션 라우팅 활성화. send_hello/receive loop 어디서 예외가 나도
+    # finally에서 반드시 deregister 되도록 register 직후부터 try 진입.
     app.state.yacht_runner.register_session(session)
-    await session.send_hello()
     try:
+        await session.send_hello()
         while True:
             data = await websocket.receive_json()
             await session.handle_client_message(data)

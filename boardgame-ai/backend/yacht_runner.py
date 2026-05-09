@@ -11,12 +11,16 @@
 from __future__ import annotations
 
 import asyncio
+import concurrent.futures
+import logging
 import threading
 from typing import Protocol
 
 from bridge.local_bridge import LocalBridge
 from core.events import GameEvent
 from games.yacht import YachtEventType
+
+logger = logging.getLogger(__name__)
 
 # 라우팅 대상 yacht event_type 화이트리스트.
 # 비전이 직접 발화하는 ROLL_CONFIRMED/ROLL_UNREADABLE/DICE_ESCAPED + fusion engine이
@@ -70,7 +74,19 @@ class YachtRunner:
         if session is None or session.fsm is None:
             return
         # 비전 daemon thread → asyncio loop으로 marshal (WebSocket send는 loop 전용)
-        asyncio.run_coroutine_threadsafe(
+        future = asyncio.run_coroutine_threadsafe(
             session.dispatch_vision_event(event),
             self._loop,
         )
+        # 코루틴 실패가 조용히 사라지지 않도록 완료 시 예외 로깅
+        future.add_done_callback(lambda f, etype=event.event_type: _log_dispatch_failure(f, etype))
+
+
+def _log_dispatch_failure(future: concurrent.futures.Future[None], event_type: str) -> None:
+    try:
+        future.result()
+    except concurrent.futures.CancelledError:
+        # 셧다운 등으로 인한 취소는 정상 종료 신호로 간주
+        return
+    except Exception:
+        logger.exception("dispatch_vision_event failed (event_type=%s)", event_type)
