@@ -1,17 +1,18 @@
-"""FramePerception 직렬화/역직렬화 계약 테스트."""
+"""YachtFramePerception 직렬화/역직렬화 계약 테스트."""
 
 from __future__ import annotations
 
 import json
 
-from vision.schemas import BBox, DiceState, FramePerception, HandDet, YoloDet
+from vision.schemas import BBox, HandDet, YoloDet
+from vision.yacht.schemas import DiceState, YachtFramePerception
 
 
 def _make_bbox() -> BBox:
     return BBox(x1=0.1, y1=0.2, x2=0.5, y2=0.6, conf=0.9, cls_name="dice")
 
 
-def _make_frame() -> FramePerception:
+def _make_frame() -> YachtFramePerception:
     bbox = _make_bbox()
     dice = DiceState(
         track_id=1,
@@ -29,7 +30,7 @@ def _make_frame() -> FramePerception:
         player_id="p_abc123",
     )
     tray = BBox(x1=0.0, y1=0.0, x2=1.0, y2=1.0, conf=0.95, cls_name="tray")
-    return FramePerception(
+    return YachtFramePerception(
         frame_id=42,
         ts=1234567890.0,
         image_hw=(1080, 1920),
@@ -131,12 +132,12 @@ def test_hand_det_roundtrip() -> None:
     assert restored.player_id == h.player_id
 
 
-# ── FramePerception ───────────────────────────────────────────────────────────
+# ── YachtFramePerception ───────────────────────────────────────────────────────────
 
 
 def test_frame_perception_roundtrip() -> None:
     fp = _make_frame()
-    restored = FramePerception.from_dict(fp.to_dict())
+    restored = YachtFramePerception.from_dict(fp.to_dict())
     assert restored.frame_id == fp.frame_id
     assert restored.ts == fp.ts
     assert restored.image_hw == fp.image_hw
@@ -152,7 +153,7 @@ def test_frame_perception_jsonl() -> None:
     fp = _make_frame()
     line = fp.to_jsonl_line()
     d = json.loads(line)
-    restored = FramePerception.from_dict(d)
+    restored = YachtFramePerception.from_dict(d)
     assert restored.frame_id == fp.frame_id
 
 

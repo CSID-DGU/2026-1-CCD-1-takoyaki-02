@@ -7,7 +7,8 @@
 from __future__ import annotations
 
 from vision.attribution.roll_attributor import RollAttributor, RollState
-from vision.schemas import BBox, DiceState, FramePerception, HandDet
+from vision.schemas import BBox, HandDet
+from vision.yacht.schemas import DiceState, YachtFramePerception
 
 
 def _tray() -> BBox:
@@ -56,7 +57,7 @@ def _frame(
     dice: list[DiceState],
     tray_inner: BBox | None = None,
     roll_tray_in: bool = True,
-) -> FramePerception:
+) -> YachtFramePerception:
     """기본적으로 roll_tray가 tray 안에 있다고 가정.
 
     roll_tray 진입 게이트 테스트를 위해 roll_tray_in=False로 설정 가능.
@@ -66,7 +67,7 @@ def _frame(
         if roll_tray_in
         else BBox(0.0, 0.0, 0.05, 0.05, 0.9, "roll_tray")
     )
-    return FramePerception(
+    return YachtFramePerception(
         frame_id=frame_id,
         ts=float(frame_id) / 30.0,
         image_hw=(1080, 1920),
@@ -216,7 +217,7 @@ def test_no_tray_no_occupation() -> None:
         exit_debounce_frames=1,
         roll_tray_in_tray_required=1,
     )
-    perception = FramePerception(
+    perception = YachtFramePerception(
         frame_id=0,
         ts=0.0,
         image_hw=(1080, 1920),

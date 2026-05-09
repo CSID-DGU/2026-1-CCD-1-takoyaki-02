@@ -1,7 +1,9 @@
-"""프레임 단위 비전 인지 결과 데이터 구조.
+"""프레임 단위 비전 인지 결과 공용 데이터 구조.
 
 모든 좌표는 정규화 float64 (0.0 ~ 1.0) — core 규칙 준수.
 외부 라이브러리(numpy 등) 미사용. 순수 Python dataclass.
+
+요트다이스 전용 타입(DiceState, YachtFramePerception)은 vision/yacht/schemas.py 에 있음.
 """
 
 from __future__ import annotations
@@ -102,39 +104,6 @@ class YoloDet:
 
 
 @dataclass
-class DiceState:
-    """주사위 하나의 트래킹 상태."""
-
-    track_id: int
-    bbox: BBox
-    center: tuple[float, float]
-    motion_score: float
-    stable_frames: int
-    pip_count: int | None = None  # 안정 후 확정된 눈 수
-
-    def to_dict(self) -> dict[str, Any]:
-        return {
-            "track_id": self.track_id,
-            "bbox": self.bbox.to_dict(),
-            "center": list(self.center),
-            "motion_score": self.motion_score,
-            "stable_frames": self.stable_frames,
-            "pip_count": self.pip_count,
-        }
-
-    @classmethod
-    def from_dict(cls, d: dict[str, Any]) -> DiceState:
-        return cls(
-            track_id=int(d["track_id"]),
-            bbox=BBox.from_dict(d["bbox"]),
-            center=tuple(d["center"]),
-            motion_score=float(d["motion_score"]),
-            stable_frames=int(d["stable_frames"]),
-            pip_count=d.get("pip_count"),
-        )
-
-
-@dataclass
 class HandDet:
     """MediaPipe 손 감지 결과."""
 
@@ -169,46 +138,23 @@ class HandDet:
 
 @dataclass
 class FramePerception:
-    """프레임 단위 통합 인지 스냅샷. Fusion Engine의 입력."""
+    """프레임 단위 공용 인지 스냅샷. FusionEngine의 입력.
+
+    요트다이스 전용 필드(tray, dice 등)는 YachtFramePerception(vision/yacht/schemas.py)에 있음.
+    """
 
     frame_id: int
     ts: float
     image_hw: tuple[int, int]  # (height, width)
-
-    tray: BBox | None = None
-    tray_inner: BBox | None = None
-    roll_tray: BBox | None = None
-    dice: list[DiceState] = field(default_factory=list)
     hands: list[HandDet] = field(default_factory=list)
-    roll_actor_id: str | None = None
-    # RollAttributor가 이번 프레임에 굴림을 finalize했는지 (1회성 신호).
-    # YachtRules가 ROLL_CONFIRMED/ROLL_UNREADABLE 후보 게이트로 사용. 정적 화면 발화 루프 차단.
-    roll_just_confirmed: bool = False
-
-    # RollAttributor 내부 상태 힌트 (Fusion이 참조)
     phase_hints: dict[str, Any] = field(default_factory=dict)
-    # 예: {"dice_all_stable": True, "dice_count": 5, "roll_state": "DICE_STABLE"}
-
-    def dice_all_stable(self, stabilization_frames: int) -> bool:
-        if not self.dice:
-            return False
-        return all(d.stable_frames >= stabilization_frames for d in self.dice)
-
-    def dice_values(self) -> list[int | None]:
-        return [d.pip_count for d in self.dice]
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "frame_id": self.frame_id,
             "ts": self.ts,
             "image_hw": list(self.image_hw),
-            "tray": self.tray.to_dict() if self.tray else None,
-            "tray_inner": self.tray_inner.to_dict() if self.tray_inner else None,
-            "roll_tray": self.roll_tray.to_dict() if self.roll_tray else None,
-            "dice": [d.to_dict() for d in self.dice],
             "hands": [h.to_dict() for h in self.hands],
-            "roll_actor_id": self.roll_actor_id,
-            "roll_just_confirmed": self.roll_just_confirmed,
             "phase_hints": self.phase_hints,
         }
 
@@ -221,12 +167,6 @@ class FramePerception:
             frame_id=int(d["frame_id"]),
             ts=float(d["ts"]),
             image_hw=tuple(d["image_hw"]),
-            tray=BBox.from_dict(d["tray"]) if d.get("tray") else None,
-            tray_inner=BBox.from_dict(d["tray_inner"]) if d.get("tray_inner") else None,
-            roll_tray=BBox.from_dict(d["roll_tray"]) if d.get("roll_tray") else None,
-            dice=[DiceState.from_dict(x) for x in d.get("dice", [])],
             hands=[HandDet.from_dict(x) for x in d.get("hands", [])],
-            roll_actor_id=d.get("roll_actor_id"),
-            roll_just_confirmed=bool(d.get("roll_just_confirmed", False)),
             phase_hints=dict(d.get("phase_hints", {})),
         )

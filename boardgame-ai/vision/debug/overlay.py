@@ -10,7 +10,8 @@ from typing import Any
 
 import cv2
 
-from vision.schemas import BBox, FramePerception
+from vision.schemas import BBox
+from vision.yacht.schemas import YachtFramePerception
 
 # 색상 (BGR)
 _COLOR_TRAY = (0, 255, 0)
@@ -25,7 +26,7 @@ _FONT = cv2.FONT_HERSHEY_SIMPLEX
 
 def draw_overlay(
     frame_bgr: Any,
-    perception: FramePerception,
+    perception: YachtFramePerception,
     recent_event: dict | None = None,
     event_ttl_frames: int = 0,
     warmup_remaining: int = 0,
