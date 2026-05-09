@@ -124,7 +124,10 @@ class YachtSession:
             return
 
         if input_type == "ROLL_DICE":
-            dice_values = payload.get("dice_values") or self.roll_dice()
+            dice_values = payload.get("dice_values") or self.roll_dice(
+                self.fsm.state.dice_values,
+                self.fsm.state.keep_mask,
+            )
             event = GameEvent(
                 event_type=YachtEventType.ROLL_CONFIRMED.value,
                 actor_id=self.fsm.state.current_player.player_id,
@@ -168,8 +171,18 @@ class YachtSession:
         await self.send_many(self.fsm.start())
 
     @staticmethod
-    def roll_dice() -> list[int]:
-        return [random.randint(1, 6) for _ in range(5)]
+    def roll_dice(
+        current_values: list[int | None] | None = None,
+        keep_mask: list[bool] | None = None,
+    ) -> list[int]:
+        values = list(current_values or [])
+        keep = list(keep_mask or [])
+        return [
+            int(values[index])
+            if index < len(values) and index < len(keep) and keep[index] and values[index] is not None
+            else random.randint(1, 6)
+            for index in range(5)
+        ]
 
     async def send_many(self, messages: list[WSMessage]) -> None:
         for message in messages:

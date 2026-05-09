@@ -49,7 +49,16 @@ export default function App() {
       />
     )
   }
-  if (page === 'lobby') return <Lobby players={players} send={send} onSelectWerewolf={() => setPage('werewolf')} />
+  if (page === 'lobby') {
+    return (
+      <Lobby
+        players={players}
+        send={send}
+        onSelectYacht={() => setPage('yacht')}
+        onSelectWerewolf={() => setPage('werewolf')}
+      />
+    )
+  }
   if (page === 'werewolf') return (
     <WerewolfGame
       players={players}
@@ -59,19 +68,6 @@ export default function App() {
       onRestart={() => setPage('lobby')}
     />
   )
-  if (page === 'seat') {
-    return <SeatRegistration players={players} setPlayers={setPlayers} onStart={() => setPage('lobby')} />
-  }
-  if (page === 'lobby') {
-    return (
-      <Lobby
-        players={players}
-        onSelectYacht={() => setPage('yacht')}
-        onSelectWerewolf={() => setPage('werewolf')}
-      />
-    )
-  }
   if (page === 'yacht') return <YachtGame players={players} onExit={() => setPage('lobby')} onChangePlayers={() => setPage('seat')} />
-  if (page === 'werewolf') return <WerewolfGame players={players} />
   return null
 }
