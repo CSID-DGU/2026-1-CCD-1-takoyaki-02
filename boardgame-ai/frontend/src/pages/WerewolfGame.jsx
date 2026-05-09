@@ -108,6 +108,7 @@ export default function WerewolfGame({ players, onLobby, onRestart, wsState }) {
           players={players}
           votes={votes}
           onComplete={() => setShowVoteResult(true)}
+          send={send}
         />
       )
     }
