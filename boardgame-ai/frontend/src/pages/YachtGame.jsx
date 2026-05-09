@@ -136,7 +136,18 @@ const s = {
     boxShadow: kept ? '0 8px 16px rgba(31,122,79,0.16)' : '0 4px 10px rgba(31,35,29,0.05)',
   }),
   actionRow: { display: 'flex', gap: 10, flexWrap: 'wrap' },
-  hint: { marginTop: 42, fontSize: 16, lineHeight: 1.45, color: '#646b60' },
+  rollMessage: {
+    marginTop: 42,
+    maxWidth: 430,
+    padding: '14px 16px',
+    border: '1px solid #dfe8db',
+    borderRadius: 10,
+    background: '#f7faf5',
+    color: '#364034',
+    fontSize: 16,
+    fontWeight: 650,
+    lineHeight: 1.45,
+  },
   scoreWrap: {
     padding: '28px 28px 28px 0',
     boxSizing: 'border-box',
@@ -154,21 +165,11 @@ const s = {
   tdName: { padding: '10px 14px', borderBottom: '1px solid #edf0ea', fontWeight: 700 },
   tdScore: { padding: '10px 14px', borderBottom: '1px solid #edf0ea', textAlign: 'right', fontVariantNumeric: 'tabular-nums' },
   scoreRow: clickable => ({
-    background: clickable ? '#eaf5ee' : '#fff',
+    background: clickable ? '#dff0ff' : '#fff',
     cursor: clickable ? 'pointer' : 'default',
   }),
   bonusRow: { background: '#f3f8ef', color: '#4d7538', fontWeight: 800 },
   totalRow: { fontWeight: 800 },
-  footerLine: {
-    minHeight: 24,
-    color: '#626a5f',
-    fontSize: 14,
-    marginTop: 14,
-    padding: '10px 12px',
-    background: '#f7f8f5',
-    border: '1px solid #e2e6df',
-    borderRadius: 8,
-  },
   modalShade: {
     position: 'fixed',
     inset: 0,
@@ -357,18 +358,11 @@ export default function YachtGame({ players, onExit, onChangePlayers }) {
             )}
           </div>
 
-          <div style={s.hint}>
-            {state.phase === 'AWAITING_ROLL'
-              ? <>사용 가능 족보: 검은 글씨<br />이미 사용한 족보: 회색 글씨</>
-              : '가능한 족보: 파란색 배경 → 클릭하면 점수 기록'}
-          </div>
+          <div style={s.rollMessage}>{statusMessage}</div>
         </main>
 
         <aside style={s.scoreWrap}>
           <ScoreTable state={state} currentOnly onScore={(category) => scoreCategory(category, state, send)} />
-          <div style={s.footerLine}>
-            {statusMessage}
-          </div>
         </aside>
       </div>
 
