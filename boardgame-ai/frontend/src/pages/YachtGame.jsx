@@ -58,6 +58,10 @@ const s = {
     fontWeight: 600,
     cursor: 'pointer',
   },
+  buttonDisabled: {
+    opacity: 0.45,
+    cursor: 'not-allowed',
+  },
   buttonSmall: {
     border: 'none',
     background: '#e6e6e6',
@@ -184,6 +188,11 @@ export default function YachtGame({ players, onExit, onChangePlayers }) {
     () => [...(state?.players || [])].sort((a, b) => b.total - a.total),
     [state],
   )
+  const statusMessage = useMemo(() => {
+    const latest = messages.find(m => m.msg_type === 'tts_play' || m.msg_type === 'error')
+    return latest?.payload?.text || latest?.payload?.message || state?.last_message
+  }, [messages, state?.last_message])
+  const canUndo = state?.can_undo ?? true
 
   if (!state) {
     return (
@@ -232,7 +241,13 @@ export default function YachtGame({ players, onExit, onChangePlayers }) {
         <header style={s.header}>
           <div style={s.title}>요트다이스</div>
           <div style={s.headerActions}>
-            <button style={s.button} onClick={() => send('RESTART')}>되돌리기</button>
+            <button
+              style={{ ...s.button, ...(canUndo ? {} : s.buttonDisabled) }}
+              onClick={() => send('UNDO_ROUND')}
+              disabled={!canUndo}
+            >
+              되돌리기
+            </button>
             <button style={s.button} onClick={onExit}>나가기</button>
           </div>
         </header>
@@ -287,7 +302,7 @@ export default function YachtGame({ players, onExit, onChangePlayers }) {
         <aside style={s.scoreWrap}>
           <ScoreTable state={state} currentOnly onScore={(category) => scoreCategory(category, state, send)} />
           <div style={s.footerLine}>
-            {messages.find(m => m.msg_type === 'tts_play')?.payload?.text || state.last_message}
+            {statusMessage}
           </div>
         </aside>
       </div>
