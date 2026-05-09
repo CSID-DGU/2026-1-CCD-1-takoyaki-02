@@ -17,6 +17,7 @@ from typing import Any
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
+from backend.lobby_runner import LobbyRunner
 from backend.orchestrator import Orchestrator
 from backend.routes.players import router as players_router
 from backend.vision_runner import VisionRunner
@@ -27,7 +28,8 @@ from bridge.local_bridge import LocalBridge
 from core.envelope import WSMessage
 from core.events import GameEvent
 from games.yacht import YachtEventType, YachtFSM, YachtInputType
-from vision.config import VisionConfig
+from vision.camera import CameraManager
+from vision.yacht.config import VisionConfig
 
 
 @asynccontextmanager
@@ -43,26 +45,39 @@ async def lifespan(app: FastAPI):
     orchestrator.set_broadcast(ws_manager.broadcast, loop)
     bridge.on_game_event(orchestrator.handle_game_event)
 
+    camera = CameraManager(source=0, resolution=(1920, 1080), fps=30)
     vision_runner = VisionRunner(config=config, bridge=bridge)
     werewolf_runner = WerewolfRunner(bridge=bridge)
+    lobby_runner = LobbyRunner(bridge=bridge)
 
-    # 좌석 등록 완료/플레이어 변경 시 두 파이프라인에 동시 전달
     def _on_players_changed(players: list) -> None:
         vision_runner.update_players(players)
         werewolf_runner.update_players(players)
+        lobby_runner.update_players(players)
 
     orchestrator.set_players_listener(_on_players_changed)
-    vision_runner.start()
-    werewolf_runner.start()
+
+    yacht_queue = camera.subscribe()
+    werewolf_queue = camera.subscribe()
+    lobby_queue = camera.subscribe()
+
+    camera.start()
+    vision_runner.start(yacht_queue)
+    werewolf_runner.start(werewolf_queue)
+    lobby_runner.start(lobby_queue)
 
     app.state.orchestrator = orchestrator
+    app.state.camera = camera
     app.state.vision_runner = vision_runner
     app.state.werewolf_runner = werewolf_runner
+    app.state.lobby_runner = lobby_runner
 
     yield
 
+    camera.stop()
     vision_runner.stop()
     werewolf_runner.stop()
+    lobby_runner.stop()
 
 
 app = FastAPI(title="Boardgame AI Backend", lifespan=lifespan)

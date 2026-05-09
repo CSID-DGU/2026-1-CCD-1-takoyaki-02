@@ -182,15 +182,18 @@ class FusionEngine:
                 self._stab_counters[event_type] = 0
                 continue
 
-            events.append(
-                GameEvent(
-                    event_type=event_type,
-                    actor_id=actor_id,
-                    confidence=conf,
-                    frame_id=perception.frame_id,
-                    data={k: v for k, v in event_data.items() if k not in ("actor_id", "_key")},
-                )
+            fired = GameEvent(
+                event_type=event_type,
+                actor_id=actor_id,
+                confidence=conf,
+                frame_id=perception.frame_id,
+                data={k: v for k, v in event_data.items() if k not in ("actor_id", "_key")},
             )
+            print(
+                f"[fusion] EVENT={event_type}  actor={actor_id}  "
+                f"conf={conf:.2f}  frame={perception.frame_id}"
+            )
+            events.append(fired)
             # 중간 이벤트 1회 발화 가드
             if event_type == CommonEventType.SEAT_RIGHT_REGISTERED and actor_id:
                 self._seat_right_event_emitted.add(actor_id)

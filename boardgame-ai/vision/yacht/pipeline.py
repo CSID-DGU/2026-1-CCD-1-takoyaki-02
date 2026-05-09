@@ -84,7 +84,7 @@ class VisionPipeline:
         self._event_banner_ttl: int = 0
         self._fsm_state_version: int = 0
 
-        self._bridge.on_fusion_context(self._on_fusion_context)
+        self._bridge.on_fusion_context(self._on_fusion_context, game_type="yacht")
 
     def start(self, frame_queue: "queue.Queue[Any]") -> None:
         """CameraManager가 공급하는 frame_queue에서 프레임을 소비해 처리 (블로킹)."""
@@ -167,6 +167,16 @@ class VisionPipeline:
             "dice_count": len(dice_states),
             "roll_state": self._roll_attributor.state.name,
         }
+
+        if frame_id % 30 == 0:
+            hand_info = [(h.handedness, h.player_id, h.gesture) for h in hands]
+            dice_info = [(d.track_id, d.pip_count, d.stable_frames) for d in dice_states]
+            print(
+                f"[yacht f{frame_id}] "
+                f"tray={'O' if tray else 'X'}  "
+                f"dice={dice_info}  "
+                f"hands={hand_info}"
+            )
 
         events = self._fusion.feed(perception)
         if frame_id >= self._config.warmup_frames:

@@ -1,24 +1,15 @@
-"""한밤의 늑대인간 전용 비전 파이프라인.
+"""로비 전용 비전 파이프라인.
 
-VisionPipeline(요트) 과 독립적으로 동작. 공통 컴포넌트(HandDetector,
-GestureClassifier, HandTracker, FusionEngine)는 재사용하고,
-요트 전용 컴포넌트(DiceManager, DotCounter, RollAttributor)는 포함하지 않는다.
+자리 등록(seat registration) 단계에서만 동작.
+주사위·카드 감지 없이 손 감지 + 제스처 분류만 수행한다.
 
-처리 흐름:
-  CameraManager (frame_queue)
-    → WerewolfCardDetector (YOLO, 모델 없으면 fallback)
-    → CardTracker (ByteTrack + 역할/플레이어 매핑)
-    → HandDetector + GestureClassifier + HandTracker
-    → FramePerception 조립 (hands 필드만 채움)
-    → FusionEngine (WerewolfRules 주입됨)
-    → Bridge.send_game_event()
+game_type=None 인 FusionContext 만 수신하므로 요트/웨어울프 파이프라인과 이벤트가 중복되지 않는다.
 """
 
 from __future__ import annotations
 
 import queue
 import time
-from pathlib import Path
 from typing import Any
 
 import cv2
@@ -31,81 +22,57 @@ from vision.attribution.seat_matcher import (
     players_with_both_hands_tracked,
 )
 from vision.debug.jsonl_logger import JsonlLogger
-from vision.detectors.card_detector import WerewolfCardDetector
 from vision.detectors.gesture_classifier import GestureClassifier
 from vision.detectors.hand_detector import HandDetector
 from vision.fusion.engine import FusionEngine
-from vision.fusion.werewolf_rules import WerewolfRules
 from vision.geometry.arm_vector import compute_arm_angle
 from vision.schemas import FramePerception, HandDet
-from vision.tracking.card_tracker import CardTracker
 from vision.tracking.hand_tracker import HandTracker
-from vision.werewolf.config import WerewolfVisionConfig
 
 
-class WerewolfVisionPipeline:
-    """한밤의 늑대인간 비전 파이프라인.
+class LobbyVisionPipeline:
+    """로비(자리 등록) 전용 비전 파이프라인.
 
-    VisionPipeline(요트 전용) 과 완전히 독립된 클래스.
-    공통 컴포넌트만 재사용하고 요트 전용 로직은 포함하지 않는다.
+    손 감지 + 제스처 분류만 수행. game_type=None FusionContext 만 처리.
     """
 
     def __init__(
         self,
-        config: WerewolfVisionConfig,
         bridge: Bridge,
         players: list[Player],
+        max_num_hands: int = 8,
+        min_detection_confidence: float = 0.5,
+        min_tracking_confidence: float = 0.5,
+        warmup_frames: int = 30,
     ) -> None:
-        self._config = config
         self._bridge = bridge
         self._players = players
+        self._warmup_frames = warmup_frames
         self._running = False
         self._frame_id = 0
+        self._fsm_state_version: int = 0
 
-        # 카드 파이프라인 (늑대인간 전용)
-        self._card_detector = WerewolfCardDetector(
-            model_path=str(config.card_weights_path),
-            conf=config.yolo_conf,
-            iou=config.yolo_iou,
-            imgsz=config.yolo_imgsz,
-        )
-        self._card_tracker = CardTracker(
-            player_match_threshold=config.card_player_match_threshold,
-        )
-
-        # 손 파이프라인 (기존 컴포넌트 재사용)
         self._hand_detector = HandDetector(
-            max_num_hands=config.mp_max_num_hands,
-            min_detection_confidence=config.mp_min_detection_confidence,
-            min_tracking_confidence=config.mp_min_tracking_confidence,
+            max_num_hands=max_num_hands,
+            min_detection_confidence=min_detection_confidence,
+            min_tracking_confidence=min_tracking_confidence,
         )
         self._gesture_clf = GestureClassifier()
         self._hand_tracker = HandTracker()
-        # track_id → 직전 제스처 (release 감지용)
         self._prev_gestures: dict[int, str | None] = {}
 
-        # Fusion (WerewolfRules 주입)
         self._fusion = FusionEngine()
-        self._werewolf_rules = WerewolfRules(self._card_tracker)
-        self._fusion.register_werewolf_rules(self._werewolf_rules)
+        self._jsonl_logger = JsonlLogger(None)
 
-        # 상태
-        self._fsm_state_version: int = 0
-        self._jsonl_logger = JsonlLogger(config.jsonl_log_path)
-
-        # FSM → FusionContext 수신 핸들러 등록
-        self._bridge.on_fusion_context(self._on_fusion_context, game_type="werewolf")
+        # game_type=None 인 FusionContext 만 수신
+        self._bridge.on_fusion_context(self._on_fusion_context, game_type=None)
 
     # ── 공개 인터페이스 ────────────────────────────────────────────────────────
 
     def start(self, frame_queue: "queue.Queue[Any]") -> None:
         """CameraManager가 공급하는 frame_queue에서 프레임을 소비해 처리 (블로킹)."""
         self._running = True
-        skip_counter = 0
-        print(
-            f"[werewolf_pipeline] 시작  "
-            f"card_model={'loaded' if self._card_detector.is_loaded else 'NOT LOADED (fallback)'}"
-        )
+        print("[lobby_pipeline] 시작")
 
         try:
             while self._running:
@@ -114,26 +81,17 @@ class WerewolfVisionPipeline:
                 except queue.Empty:
                     continue
 
-                if self._config.frame_skip > 0:
-                    skip_counter += 1
-                    if skip_counter <= self._config.frame_skip:
-                        continue
-                    skip_counter = 0
-
                 ts = time.time()
                 self._process_one(frame, self._frame_id, ts)
                 self._frame_id += 1
         finally:
-            try:
-                self._hand_detector.close()
-            finally:
-                self._jsonl_logger.close()
+            self._hand_detector.close()
+            self._jsonl_logger.close()
 
     def stop(self) -> None:
         self._running = False
 
     def update_players(self, players: list[Player]) -> None:
-        """백엔드에서 플레이어 목록이 갱신될 때 호출."""
         self._players = players
 
     # ── 내부 처리 ──────────────────────────────────────────────────────────────
@@ -141,19 +99,14 @@ class WerewolfVisionPipeline:
     def _process_one(self, frame_bgr: Any, frame_id: int, ts: float) -> None:
         h, w = frame_bgr.shape[:2]
 
-        # 1) 카드 감지 + 추적 (CardTracker 내부 상태 갱신)
-        card_dets = self._card_detector.detect(frame_bgr)
-        self._card_tracker.update(card_dets, self._players, frame_id)
-
-        # 2) 손 감지 (RGB 변환 후 MediaPipe)
         frame_rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
         raw_hands = self._hand_detector.detect(frame_rgb)
-
-        # 3) 손 시간적 안정화 + player_id 배정
         hands = self._stabilize_hands(raw_hands)
 
-        # 4) FramePerception 조립
-        #    dice/tray 필드는 기본값(None/[]) 그대로 — 요트 전용 필드
+        if frame_id % 30 == 0:
+            hand_info = [(h.handedness, h.player_id, h.gesture) for h in hands]
+            print(f"[lobby f{frame_id}] hands={hand_info}")
+
         perception = FramePerception(
             frame_id=frame_id,
             ts=ts,
@@ -161,25 +114,10 @@ class WerewolfVisionPipeline:
             hands=hands,
         )
 
-        if frame_id % 30 == 0:
-            hand_info = [(h.handedness, h.player_id, h.gesture) for h in hands]
-            cards = self._card_tracker.get_tracked_cards()
-            card_info = [(c.player_id, c.cls_name, c.face_up) for c in cards]
-            print(
-                f"[werewolf f{frame_id}] "
-                f"cards={card_info}  "
-                f"hands={hand_info}"
-            )
-
-        # 5) FusionEngine → GameEvent 생성
-        #    WerewolfRules 는 내부에서 self._card_tracker 를 직접 참조
         events = self._fusion.feed(perception)
-        if frame_id >= self._config.warmup_frames:
+        if frame_id >= self._warmup_frames:
             for event in events:
                 self._bridge.send_game_event(event, self._fsm_state_version)
-
-        # 6) JSONL 로깅
-        self._jsonl_logger.log(perception)
 
     def _on_fusion_context(self, ctx: FusionContext, state_version: int) -> None:
         self._fusion.update_context(ctx)
@@ -188,7 +126,6 @@ class WerewolfVisionPipeline:
     # ── 손 안정화 ──────────────────────────────────────────────────────────────
 
     def _stabilize_hands(self, raw_hands: list[HandDet]) -> list[HandDet]:
-        """HandTracker 로 frame-to-frame track 을 유지하고 player_id 를 안정화한다."""
         detections: list[tuple[tuple[float, float], float]] = []
         for h in raw_hands:
             angle = compute_arm_angle(h.landmarks_21)
