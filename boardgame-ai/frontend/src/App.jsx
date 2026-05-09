@@ -5,9 +5,22 @@ import Lobby from './pages/Lobby'
 import WerewolfGame from './pages/WerewolfGame'
 import YachtGame from './pages/YachtGame'
 
+const WEREWOLF_PHASES = new Set([
+  'role_registration',
+  'night_start', 'night_doppelganger', 'night_werewolf', 'night_minion',
+  'night_mason', 'night_seer', 'night_robber', 'night_troublemaker',
+  'night_drunk', 'night_insomniac',
+  'day_discussion', 'vote_countdown', 'vote', 'result',
+])
+
 export default function App() {
   const [page, setPage] = useState('seat')
   const { state, connected, send } = useWebSocket('/ws/tablet')
+
+  const phase = state?.phase ?? 'player_setup'
+  const players = state?.players ?? []
+  const registeringId = state?.registering_player_id ?? null
+  const seatStep = state?.seat_step ?? 'idle'
 
   // 사운드 트리거 처리
   useEffect(() => {
@@ -17,12 +30,12 @@ export default function App() {
     }
   }, [state?.sound])
 
-  const players = state?.players ?? []
-  // TODO(yacht/werewolf FSM 합류 시): state.phase로 게임 단계별 라우팅 (PLAYER_SETUP/GAME_SELECT/IN_GAME 등)
-  // 현재는 page state로 직접 라우팅 중이어서 phase는 미사용. 백엔드 → FSM 통합 후 사용 예정.
-  // const phase = state?.phase ?? 'player_setup'
-  const registeringId = state?.registering_player_id ?? null
-  const seatStep = state?.seat_step ?? 'idle'
+  // 백엔드 phase가 늑대인간 게임 단계로 진입하면 page 동기화
+  useEffect(() => {
+    if (WEREWOLF_PHASES.has(phase) && page !== 'werewolf') {
+      setPage('werewolf')
+    }
+  }, [phase, page])
 
   if (page === 'seat') {
     return (
@@ -36,10 +49,12 @@ export default function App() {
       />
     )
   }
-  if (page === 'lobby') return <Lobby players={players} onSelectWerewolf={() => setPage('werewolf')} />
+  if (page === 'lobby') return <Lobby players={players} send={send} onSelectWerewolf={() => setPage('werewolf')} />
   if (page === 'werewolf') return (
     <WerewolfGame
       players={players}
+      wsState={state}
+      send={send}
       onLobby={() => setPage('seat')}
       onRestart={() => setPage('lobby')}
     />

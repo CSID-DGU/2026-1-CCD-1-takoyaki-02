@@ -1,3 +1,5 @@
+import { useState, useEffect } from 'react'
+
 const ROLE_NIGHT_DATA = {
   doppelganger: {
     name: '도플갱어',
@@ -55,8 +57,23 @@ const ROLE_NIGHT_DATA = {
   },
 }
 
+const PASSIVE_ROLES = new Set(['werewolf', 'minion', 'mason'])
+const PASSIVE_DURATION = 7
+
 export default function NightRoleAnnounce({ roleId, onComplete }) {
   const role = ROLE_NIGHT_DATA[roleId]
+  const isPassive = PASSIVE_ROLES.has(roleId)
+  const [countdown, setCountdown] = useState(isPassive ? PASSIVE_DURATION : null)
+
+  useEffect(() => {
+    if (!isPassive) return
+    setCountdown(PASSIVE_DURATION)
+    const interval = setInterval(() => {
+      setCountdown(prev => Math.max(0, prev - 1))
+    }, 1000)
+    return () => clearInterval(interval)
+  }, [roleId, isPassive])
+
   if (!role) return null
 
   return (
@@ -81,7 +98,7 @@ export default function NightRoleAnnounce({ roleId, onComplete }) {
         }
       `}</style>
 
-      <div onClick={onComplete} style={styles.page}>
+      <div style={styles.page}>
 
         {/* 배경 */}
         <div style={styles.sky} />
@@ -154,6 +171,9 @@ export default function NightRoleAnnounce({ roleId, onComplete }) {
           <div style={{ ...styles.textBlock, animation: 'fadeIn 0.6s ease-out 0.25s both' }}>
             <p style={styles.announceText}>{role.announce}</p>
             <p style={styles.actionText}>{role.action}</p>
+            {isPassive && (
+              <p style={styles.countdownText}>{countdown}초 후 자동으로 넘어갑니다</p>
+            )}
           </div>
 
         </div>
@@ -172,7 +192,6 @@ const styles = {
     alignItems: 'center',
     justifyContent: 'center',
     fontFamily: "'Segoe UI', 'Apple SD Gothic Neo', sans-serif",
-    cursor: 'pointer',
     userSelect: 'none',
   },
 
@@ -266,5 +285,13 @@ const styles = {
     textAlign: 'center',
     lineHeight: 1.9,
     whiteSpace: 'pre-line',
+  },
+
+  countdownText: {
+    margin: 0,
+    fontSize: 14,
+    color: 'rgba(248,241,221,0.35)',
+    textAlign: 'center',
+    letterSpacing: 0.5,
   },
 }

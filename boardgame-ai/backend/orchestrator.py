@@ -13,9 +13,22 @@ from collections.abc import Callable
 
 from backend.state import build_state_snapshot
 from core.constants import CommonEventType, CommonPhase
+from core.envelope import WSMessage
 from core.events import FusionContext, GameEvent
 from core.models import SeatZone
 from core.player_manager import PlayerManager
+from games.werewolf.fsm import WerewolfFSM
+from games.werewolf.ontology import WerewolfEventType, WerewolfInputType
+from games.werewolf.state import WerewolfPlayerState
+
+# 역할 등록 phase 식별자 (CommonPhase에 없는 내부 확장 값)
+_PHASE_ROLE_REGISTRATION = "role_registration"
+
+
+def _normalize_role(role_id: str) -> str:
+    """프론트 role id (werewolf_1, mason_2 등) → FSM role 문자열 (werewolf, mason)."""
+    import re
+    return re.sub(r"_\d+$", "", role_id)
 
 
 class Orchestrator:
@@ -29,12 +42,13 @@ class Orchestrator:
         self._state_version = 0
         # 좌석 등록 단계: idle | right_pending | right_done | completed
         self._seat_step = "idle"
-        # 등록 흐름 상의 player_id (record_seat 후 PlayerManager.registering_player_id가
-        # 비워져도 finalize/cancel 전까지 프론트가 모달을 유지하도록 별도 추적).
         self._pending_register_id: str | None = None
-        # PlayerManager 변경 시 비전 파이프라인에 새 players 리스트 전달용 콜백.
-        # 좌석 등록 완료 / 플레이어 추가·삭제·이름수정 직후마다 호출.
         self._players_listener: Callable[[list], None] | None = None
+        self._werewolf_fsm: WerewolfFSM | None = None
+        # 역할 등록 단계 상태
+        self._role_reg: dict | None = None
+        # OK 사인 one-shot: 브로드캐스트 한 번 후 자동 소멸
+        self._gesture_confirmed: str | None = None
 
     def set_broadcast(
         self,
@@ -45,32 +59,35 @@ class Orchestrator:
         self._loop = loop
 
     def set_players_listener(self, cb: Callable[[list], None]) -> None:
-        """PlayerManager 변경 시 비전 파이프라인 등 외부 컴포넌트에 전달할 콜백 등록.
-
-        콜백 인자: 현재 등록된(또는 전체) Player 리스트.
-        """
         self._players_listener = cb
 
     def _notify_players(self) -> None:
-        """좌석 등록 완료/삭제/수정 직후 비전 파이프라인에 새 players 전달.
-
-        seat_zone이 채워진 플레이어만 매칭 후보로 의미가 있으므로 필터링.
-        호출자는 이미 self._lock을 잡고 있다고 가정하지 않음 (스냅샷만 읽음).
-        """
         if self._players_listener is None:
             return
         registered = [p for p in self._pm.state.players if p.seat_zone is not None]
-        # 비전 스레드 갱신 실패가 백엔드 흐름을 끊지 않도록 흡수
         with contextlib.suppress(Exception):
             self._players_listener(registered)
 
-    # ── 비전 이벤트 소비 ───────────────────────────────────────────────────────
+    # ── 비전 이벤트 소비 ───────────────────────────────────────────────────────────────────
 
     def handle_game_event(self, event: GameEvent, _state_version: int) -> None:
         if event.event_type == CommonEventType.SEAT_RIGHT_REGISTERED:
             self._handle_seat_right_registered(event)
         elif event.event_type == CommonEventType.SEAT_REGISTERED:
             self._handle_seat_registered(event)
+        elif event.event_type == WerewolfEventType.ROLE_DETECTED:
+            with self._lock:
+                phase = self._phase
+            if phase == _PHASE_ROLE_REGISTRATION:
+                self._handle_role_detected(event)
+        elif event.event_type == CommonEventType.GESTURE_CONFIRMED:
+            self._handle_gesture_confirmed(event)
+        elif event.event_type in (
+            WerewolfEventType.CARD_PEEK,
+            WerewolfEventType.CARD_SWAP,
+            WerewolfEventType.VOTE_POINT,
+        ):
+            self._handle_werewolf_event(event)
 
     def _handle_seat_right_registered(self, event: GameEvent) -> None:
         actor_id = event.actor_id
@@ -102,10 +119,22 @@ class Orchestrator:
             self._seat_step = "completed"
             snapshot = self._snapshot(sound="registered")
 
-        # 비전에는 다시 PLAYER_SETUP phase로 알림 (등록 종료)
         self._push_context(CommonPhase.PLAYER_SETUP)
-        # 좌석 등록 완료 → 비전 파이프라인의 players 리스트 갱신
         self._notify_players()
+        self._broadcast(snapshot)
+
+    def _handle_role_detected(self, event: GameEvent) -> None:
+        """역할 등록 단계에서 ROLE_DETECTED 이벤트 수신."""
+        role = (event.data or {}).get("role")
+        if not role:
+            return
+        with self._lock:
+            if self._role_reg is None:
+                return
+            if self._role_reg["detected_role"] is not None:
+                return  # 이미 감지됨, 확인 대기 중
+            self._role_reg["detected_role"] = role
+            snapshot = self._snapshot()
         self._broadcast(snapshot)
 
     # ── HTTP 핸들러 (routes/players.py에서 호출) ───────────────────────────────
@@ -118,10 +147,6 @@ class Orchestrator:
         return {"player_id": pid}
 
     def start_registration(self) -> dict:
-        """임시 player_id 발급 + 즉시 좌석 등록 phase 진입.
-
-        프론트가 "+" 버튼 누르면 호출. 이름은 등록 완료 후 finalize로 받음.
-        """
         with self._lock:
             pid = self._pm.add_pending_player()
             self._pm.start_seat_registration(pid)
@@ -134,7 +159,6 @@ class Orchestrator:
         return {"player_id": pid}
 
     def finalize_player(self, player_id: str, playername: str) -> None:
-        """등록 완료 후 이름 확정."""
         with self._lock:
             self._pm.edit_playername(player_id, playername)
             self._seat_step = "idle"
@@ -154,7 +178,6 @@ class Orchestrator:
     def remove_player(self, player_id: str) -> None:
         with self._lock:
             self._pm.remove_player(player_id)
-            # 등록 도중/완료 후 취소된 경우 모든 등록 상태 복귀
             if self._pending_register_id == player_id:
                 self._pending_register_id = None
             if (
@@ -164,7 +187,6 @@ class Orchestrator:
                 self._phase = CommonPhase.PLAYER_SETUP
                 self._seat_step = "idle"
             snapshot = self._snapshot()
-        # 등록 phase 빠져나갔으면 비전에도 알림
         if self._phase == CommonPhase.PLAYER_SETUP:
             self._push_context(CommonPhase.PLAYER_SETUP)
         self._notify_players()
@@ -175,11 +197,6 @@ class Orchestrator:
             return [p.to_dict() for p in self._pm.state.players]
 
     def cancel_seat_registration(self) -> None:
-        """등록 모달 "취소" 처리 — 좌석 등록만 중단하고 플레이어는 유지.
-
-        임시 등록(이름 없음) 중인 경우 호출자가 player_remove로 직접 삭제.
-        기존 플레이어 재등록 중에는 이 함수를 사용해 플레이어 보존.
-        """
         with self._lock:
             self._pm.state.registering_player_id = None
             self._pm.state.pending_wrists = {}
@@ -192,15 +209,37 @@ class Orchestrator:
         self._broadcast(snapshot)
 
     def start_seat_registration(self, player_id: str) -> None:
-        """기존 플레이어의 좌석 재등록 (seat_zone 초기화 → 비전 후보에서 일시 제외)."""
         with self._lock:
             self._pm.restart_seat_registration(player_id)
             self._phase = CommonPhase.SEAT_REGISTER
             self._seat_step = "right_pending"
             snapshot = self._snapshot()
         self._push_context(CommonPhase.SEAT_REGISTER, active_player=player_id)
-        # seat_zone=None이 되었으므로 매칭 후보 리스트도 즉시 갱신
         self._notify_players()
+        self._broadcast(snapshot)
+
+    def start_werewolf_game(
+        self, player_roles: list[dict], center_roles: list[str]
+    ) -> None:
+        """역할 배정 완료 후 WerewolfFSM을 생성하고 게임을 시작한다."""
+        ws_players = [
+            WerewolfPlayerState(
+                player_id=r["player_id"],
+                original_role=r["role"],
+                current_role=r["role"],
+            )
+            for r in player_roles
+        ]
+
+        with self._lock:
+            self._werewolf_fsm = WerewolfFSM(
+                players=ws_players,
+                center_cards=center_roles,
+                broadcast=self._ww_broadcast,
+            )
+            self._werewolf_fsm.start()
+            snapshot = self._snapshot()
+
         self._broadcast(snapshot)
 
     def current_snapshot(self) -> dict:
@@ -209,7 +248,7 @@ class Orchestrator:
 
     # ── WebSocket input 처리 ───────────────────────────────────────────────────
 
-    def handle_input(self, input_type: str, data: dict) -> None:
+    def handle_input(self, input_type: str, data: dict, player_id: str | None = None) -> None:
         if input_type == "start_registration":
             self.start_registration()
         elif input_type == "finalize_player":
@@ -236,19 +275,156 @@ class Orchestrator:
             pid = data.get("player_id")
             if pid:
                 self.remove_player(pid)
+        elif input_type == "select_game":
+            game_type = data.get("game_type", "")
+            self._handle_select_game(game_type)
+        elif input_type == "start_role_registration":
+            selected_roles = data.get("selected_roles", [])
+            player_order = data.get("player_order", [])
+            if selected_roles and player_order:
+                self.start_role_registration(selected_roles, player_order)
+        elif input_type == "confirm_role":
+            pid = data.get("player_id")
+            if pid:
+                self.confirm_role(pid)
+        elif input_type == "start_werewolf_game":
+            player_roles = data.get("player_roles", [])
+            center_roles = data.get("center_roles", [])
+            if player_roles:
+                self.start_werewolf_game(player_roles, center_roles)
+        elif input_type == "reset_game":
+            with self._lock:
+                self._werewolf_fsm = None
+                snapshot = self._snapshot()
+            self._broadcast(snapshot)
+        elif input_type in (
+            WerewolfInputType.ADD_30_SEC,
+            WerewolfInputType.START_NOW,
+            WerewolfInputType.VOTE_PLAYER,
+        ):
+            self._handle_werewolf_input(input_type, data, player_id)
+
+    # ── 게임 선택 & 역할 등록 ────────────────────────────────────────────────────
+
+    def _handle_select_game(self, game_type: str) -> None:
+        """로비에서 게임 선택. 현재는 phase 기록만."""
+        with self._lock:
+            self._phase = CommonPhase.GAME_SELECT
+            snapshot = self._snapshot()
+        self._broadcast(snapshot)
+
+    def start_role_registration(
+        self,
+        selected_roles: list[str],
+        player_order: list[str],
+    ) -> None:
+        """역할 카드를 선택하고 역할 등록 단계 진입.
+
+        selected_roles: 프론트에서 선택한 역할 id 목록 (werewolf_1, mason_2 등 포함, 플레이어 수+3장)
+        player_order:   등록 순서대로 정렬된 player_id 목록
+        """
+        if not player_order:
+            return
+        normalized_roles = [_normalize_role(r) for r in selected_roles]
+        first_player = player_order[0]
+
+        with self._lock:
+            self._phase = _PHASE_ROLE_REGISTRATION
+            self._role_reg = {
+                "all_roles": normalized_roles,
+                "player_order": player_order,
+                "player_index": 0,
+                "player_id": first_player,
+                "detected_role": None,
+                "confirmed_roles": {},
+            }
+            snapshot = self._snapshot()
+
+        self._push_role_reg_context(first_player)
+        self._broadcast(snapshot)
+
+    def confirm_role(self, player_id: str) -> None:
+        """플레이어가 감지된 역할을 확인. 다음 플레이어로 이동하거나 게임 시작."""
+        with self._lock:
+            if self._role_reg is None:
+                return
+            detected = self._role_reg.get("detected_role")
+            if detected is None:
+                return
+
+            self._role_reg["confirmed_roles"][player_id] = detected
+            next_index = self._role_reg["player_index"] + 1
+            player_order = self._role_reg["player_order"]
+
+            if next_index < len(player_order):
+                # 다음 플레이어
+                next_player = player_order[next_index]
+                self._role_reg["player_index"] = next_index
+                self._role_reg["player_id"] = next_player
+                self._role_reg["detected_role"] = None
+                snapshot = self._snapshot()
+                start_game = False
+            else:
+                # 모든 플레이어 완료 → 센터 카드 계산 후 게임 시작
+                confirmed_roles = dict(self._role_reg["confirmed_roles"])
+                all_roles = list(self._role_reg["all_roles"])
+                for role in confirmed_roles.values():
+                    if role in all_roles:
+                        all_roles.remove(role)
+                center_cards = all_roles[:3]
+
+                players_data = [
+                    {"player_id": pid, "role": confirmed_roles[pid]}
+                    for pid in player_order
+                ]
+                self._role_reg = None
+                snapshot = None
+                start_game = True
+
+        if start_game:
+            self.start_werewolf_game(players_data, center_cards)
+        else:
+            self._push_role_reg_context(next_player)
+            self._broadcast(snapshot)
+
+    def _push_role_reg_context(self, player_id: str) -> None:
+        """역할 등록 단계 FusionContext 발송 — 해당 플레이어의 카드 감지 대기."""
+        self._state_version += 1
+        ctx = FusionContext(
+            fsm_state=_PHASE_ROLE_REGISTRATION,
+            game_type="werewolf",
+            active_player=player_id,
+            allowed_actors=[player_id],
+            expected_events=[WerewolfEventType.ROLE_DETECTED],
+            reject_events=[
+                WerewolfEventType.CARD_PEEK,
+                WerewolfEventType.CARD_SWAP,
+                WerewolfEventType.VOTE_POINT,
+            ],
+            valid_targets=None,
+            zones={},
+            anchors={},
+            params={"stabilization_frames": 5},
+        )
+        self._send_fusion_context(ctx, self._state_version)
 
     # ── 내부 헬퍼 ─────────────────────────────────────────────────────────────
 
     def _snapshot(self, sound: str | None = None) -> dict:
-        # pending_register_id가 있으면 우선 사용 (record_seat 후 PM dict는 비워지지만
-        # finalize 전까지 프론트가 모달을 유지해야 함)
         registering = self._pending_register_id or self._pm.state.registering_player_id
+        game_state = (
+            self._werewolf_fsm.get_state_dict()
+            if self._werewolf_fsm is not None
+            else None
+        )
         return build_state_snapshot(
             players=self._pm.state.players,
             phase=self._phase,
             registering_player_id=registering,
             seat_step=self._seat_step,
             sound=sound,
+            game_state=game_state,
+            gesture_confirmed=self._gesture_confirmed,
         )
 
     def _push_context(self, phase: str, active_player: str | None = None) -> None:
@@ -258,16 +434,61 @@ class Orchestrator:
                 CommonEventType.SEAT_RIGHT_REGISTERED,
                 CommonEventType.SEAT_REGISTERED,
             ]
+            allowed = [active_player] if active_player else []
+        elif phase == CommonPhase.PLAYER_SETUP:
+            expected = [CommonEventType.GESTURE_CONFIRMED]
+            # allowed_actors 비워두면 모든 플레이어 허용 (개발 모드 fallback)
+            allowed = []
         else:
             expected = []
+            allowed = [active_player] if active_player else []
         ctx = FusionContext(
             fsm_state=phase,
             game_type=None,
             active_player=active_player,
-            allowed_actors=[active_player] if active_player else [],
+            allowed_actors=allowed,
             expected_events=expected,
         )
         self._send_fusion_context(ctx, self._state_version)
+
+    # ── 늑대인간 게임 ──────────────────────────────────────────────────────────
+
+    async def _ww_broadcast(self, _msg: WSMessage) -> None:
+        """FSM 타이머가 asyncio 루프에서 직접 호출하는 broadcast 콜백."""
+        with self._lock:
+            snapshot = self._snapshot()
+        cb = self._broadcast_cb
+        if cb is not None:
+            result = cb(snapshot)
+            if asyncio.iscoroutine(result):
+                await result
+
+    def _handle_gesture_confirmed(self, event: GameEvent) -> None:
+        """OK 사인 감지 → player_id를 one-shot으로 broadcast."""
+        actor_id = event.actor_id
+        if not actor_id:
+            return
+        with self._lock:
+            self._gesture_confirmed = actor_id
+            snapshot = self._snapshot()
+            self._gesture_confirmed = None
+        self._broadcast(snapshot)
+
+    def _handle_werewolf_event(self, event: GameEvent) -> None:
+        with self._lock:
+            if self._werewolf_fsm is None:
+                return
+            self._werewolf_fsm.handle_event(event)
+            snapshot = self._snapshot()
+        self._broadcast(snapshot)
+
+    def _handle_werewolf_input(self, input_type: str, data: dict, player_id: str | None) -> None:
+        with self._lock:
+            if self._werewolf_fsm is None:
+                return
+            self._werewolf_fsm.handle_input(input_type, data, player_id)
+            snapshot = self._snapshot()
+        self._broadcast(snapshot)
 
     def _broadcast(self, snapshot: dict) -> None:
         if self._broadcast_cb is None or self._loop is None:

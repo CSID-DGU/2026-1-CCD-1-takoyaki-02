@@ -4,14 +4,16 @@ games/werewolf/ontology.py 직접 import 금지 — vision↔games 분리 규칙
 FSM 팀과 합의된 문자열 상수를 이 파일에서만 관리.
 
 지원 이벤트:
-  CARD_PEEK  : 야간 페이즈에서 카드 앞면 전환 감지 (예언자/불면증)
-  CARD_SWAP  : 야간 페이즈에서 카드 교환 제스처 감지 (도둑/말썽꾼/술꾼)
-  VOTE_POINT : 투표 페이즈에서 뒤집힌 카드를 손목 벡터로 가리킴 감지
+  ROLE_DETECTED: 역할 등록 단계에서 face_up 카드 안정적 감지
+  CARD_PEEK    : 야간 페이즈에서 카드 앞면 전환 감지 (예언자/불면증)
+  CARD_SWAP    : 야간 페이즈에서 카드 교환 제스처 감지 (도둑/말썽꾼/술꾼)
+  VOTE_POINT   : 투표 페이즈에서 뒤집힌 카드를 손목 벡터로 가리킴 감지
 
 감지 전략:
-  CARD_PEEK  → TrackedCard.just_flipped_up == True (face_down→face_up 전환 프레임)
-  CARD_SWAP  → grab 제스처(카드 A 근처) → release 제스처(카드 B 근처) 순서
-  VOTE_POINT → 손목[0]→검지끝[8] 방향 벡터 연장선이 face_down 카드 bbox 와 교차
+  ROLE_DETECTED → face_up 카드가 stable_frames >= 10 프레임 유지 시 발화 (1인당 1회)
+  CARD_PEEK     → TrackedCard.just_flipped_up == True (face_down→face_up 전환 프레임)
+  CARD_SWAP     → grab 제스처(카드 A 근처) → release 제스처(카드 B 근처) 순서
+  VOTE_POINT    → 손목[0]→검지끝[8] 방향 벡터 연장선이 face_down 카드 bbox 와 교차
 """
 
 from __future__ import annotations
@@ -25,16 +27,22 @@ from vision.werewolf.schemas import TrackedCard
 
 # ── FSM 팀과 합의된 문자열 상수 ────────────────────────────────────────────────
 # games/werewolf/ontology.py 의 WerewolfEventType / WerewolfPhase 와 동일한 값
+ROLE_DETECTED = "werewolf_role_detected"
 CARD_PEEK = "werewolf_card_peek"
 CARD_SWAP = "werewolf_card_swap"
 VOTE_POINT = "werewolf_vote_point"
 
+_PHASE_ROLE_REGISTRATION = "role_registration"
+_PHASE_NIGHT_DOPPELGANGER = "night_doppelganger"
 _PHASE_NIGHT_SEER = "night_seer"
 _PHASE_NIGHT_INSOMNIAC = "night_insomniac"
 _PHASE_NIGHT_ROBBER = "night_robber"
 _PHASE_NIGHT_TROUBLEMAKER = "night_troublemaker"
 _PHASE_NIGHT_DRUNK = "night_drunk"
 _PHASE_VOTE = "vote"
+
+# YOLO cls_name (Title Case) → FSM role 문자열 (lowercase) 변환
+_BACK_CLASS = "Card_Back"
 
 # ── 감지 파라미터 ───────────────────────────────────────────────────────────────
 _GRAB_DIST_THRESHOLD = 0.08   # 손목-카드 중심 최대 거리 (grab/release 판정)
@@ -53,6 +61,8 @@ class WerewolfRules:
     def __init__(self, card_tracker: CardTracker) -> None:
         self._card_tracker = card_tracker
         self._last_phase: str = ""
+        # ROLE_DETECTED 중복 발화 방지: 이미 감지된 actor_id 집합
+        self._reported_roles: set[str] = set()
         # CARD_PEEK 중복 발화 방지: (actor_id, card_owner_id, card_index)
         self._reported_peeks: set[tuple] = set()
         # CARD_SWAP 중복 발화 방지: (actor_id, id_a, id_b) — 두 id 정렬
@@ -78,6 +88,7 @@ class WerewolfRules:
         # 페이즈 전환 시 내부 상태 리셋 (중복 발화 방지 집합 초기화)
         if phase != self._last_phase:
             self._last_phase = phase
+            self._reported_roles.clear()
             self._reported_peeks.clear()
             self._reported_swaps.clear()
             self._swap_first_touch.clear()
@@ -86,7 +97,12 @@ class WerewolfRules:
         tracked = self._card_tracker.get_tracked_cards()
         candidates: list[tuple[str, dict, float]] = []
 
-        if phase in (_PHASE_NIGHT_SEER, _PHASE_NIGHT_INSOMNIAC):
+        if phase == _PHASE_ROLE_REGISTRATION:
+            c = self._check_role_detected(ctx, tracked)
+            if c:
+                candidates.append(c)
+
+        elif phase in (_PHASE_NIGHT_DOPPELGANGER, _PHASE_NIGHT_SEER, _PHASE_NIGHT_INSOMNIAC):
             c = self._check_card_peek(perception, ctx, tracked)
             if c:
                 candidates.append(c)
@@ -103,6 +119,35 @@ class WerewolfRules:
                     candidates.append(c)
 
         return candidates
+
+    # ── ROLE_DETECTED ────────────────────────────────────────────────────────────
+
+    def _check_role_detected(
+        self,
+        ctx: FusionContext,
+        tracked: list[TrackedCard],
+    ) -> tuple[str, dict, float] | None:
+        """역할 등록 단계: face_up 카드가 10프레임 이상 안정적으로 보이면 ROLE_DETECTED 발화.
+
+        active_player(현재 등록 중인 플레이어)당 1회만 발화. 역할명은 소문자로 정규화.
+        """
+        actor_id = ctx.active_player
+        if not actor_id or actor_id in self._reported_roles:
+            return None
+        for card in tracked:
+            if not card.face_up:
+                continue
+            if card.cls_name is None or card.cls_name == _BACK_CLASS:
+                continue
+            if card.stable_frames < 10:
+                continue
+            self._reported_roles.add(actor_id)
+            return (
+                ROLE_DETECTED,
+                {"actor_id": actor_id, "role": card.cls_name.lower()},
+                0.9,
+            )
+        return None
 
     # ── CARD_PEEK ────────────────────────────────────────────────────────────────
 
