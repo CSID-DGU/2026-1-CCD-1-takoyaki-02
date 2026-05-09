@@ -14,9 +14,12 @@ class LocalBridge(Bridge):
     핸들러 리스트를 유지하고 send 시 등록된 모든 핸들러를 순차 호출한다.
     """
 
+    _UNSET = object()  # game_type 미지정 sentinel
+
     def __init__(self) -> None:
         self._game_event_handlers: list[Callable[[GameEvent, int], None]] = []
-        self._fusion_context_handlers: list[Callable[[FusionContext, int], None]] = []
+        # (game_type, handler) — game_type 이 _UNSET 이면 모든 context 수신
+        self._fusion_context_handlers: list[tuple[object, Callable[[FusionContext, int], None]]] = []
         self._running = False
 
     def send_game_event(self, event: GameEvent, state_version: int) -> None:
@@ -24,14 +27,19 @@ class LocalBridge(Bridge):
             handler(event, state_version)
 
     def send_fusion_context(self, context: FusionContext, state_version: int) -> None:
-        for handler in self._fusion_context_handlers:
-            handler(context, state_version)
+        for registered_type, handler in self._fusion_context_handlers:
+            if registered_type is self._UNSET or registered_type == context.game_type:
+                handler(context, state_version)
 
     def on_game_event(self, handler: Callable[[GameEvent, int], None]) -> None:
         self._game_event_handlers.append(handler)
 
-    def on_fusion_context(self, handler: Callable[[FusionContext, int], None]) -> None:
-        self._fusion_context_handlers.append(handler)
+    def on_fusion_context(
+        self,
+        handler: Callable[[FusionContext, int], None],
+        game_type: object = _UNSET,
+    ) -> None:
+        self._fusion_context_handlers.append((game_type, handler))
 
     def start(self) -> None:
         self._running = True
