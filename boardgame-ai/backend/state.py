@@ -12,6 +12,7 @@ def build_state_snapshot(
     seat_step: str = "idle",
     sound: str | None = None,
     game_state: dict | None = None,
+    gesture_confirmed: str | None = None,
 ) -> dict:
     result: dict = {
         "phase": phase,
@@ -28,6 +29,8 @@ def build_state_snapshot(
         ],
         # 1회성 trigger: 프론트가 사운드 재생 후 무시
         "sound": sound,
+        # 1회성 trigger: OK 사인 감지 시 확인한 player_id
+        "gesture_confirmed": gesture_confirmed,
     }
     if game_state is not None:
         result["game_state"] = game_state
