@@ -169,6 +169,23 @@ const s = {
     cursor: clickable ? 'pointer' : 'default',
   }),
   bonusRow: { background: '#f3f8ef', color: '#4d7538', fontWeight: 800 },
+  bonusCell: {
+    display: 'flex',
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+    gap: 8,
+  },
+  bonusBadge: earned => ({
+    display: 'inline-flex',
+    alignItems: 'center',
+    height: 22,
+    padding: '0 8px',
+    borderRadius: 999,
+    background: earned ? '#1f7a4f' : '#e5eae2',
+    color: earned ? '#fff' : '#6a7167',
+    fontSize: 12,
+    fontWeight: 850,
+  }),
   totalRow: { fontWeight: 800 },
   modalShade: {
     position: 'fixed',
@@ -402,10 +419,19 @@ function ScoreTable({ state, currentOnly = false, compact = false, onScore }) {
         {CATEGORY_LABELS.map(([key, label]) => {
           if (key === 'bonus') {
             const subtotal = upperSubtotal(player?.scores || {})
+            const earned = subtotal >= 63
+            const remaining = Math.max(0, 63 - subtotal)
             return (
               <tr key={key} style={s.bonusRow}>
                 <td style={s.tdName}>{label}</td>
-                <td style={s.tdScore}>{Math.min(subtotal, 63)} / 63</td>
+                <td style={s.tdScore}>
+                  <div style={s.bonusCell}>
+                    <span>{subtotal} / 63</span>
+                    <span style={s.bonusBadge(earned)}>
+                      {earned ? '+35' : `${remaining}점 남음`}
+                    </span>
+                  </div>
+                </td>
               </tr>
             )
           }
