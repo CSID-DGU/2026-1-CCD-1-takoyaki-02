@@ -31,6 +31,19 @@ from games.werewolf.ontology import (
 from games.werewolf.state import WerewolfGameState, WerewolfPlayerState
 
 
+PASSIVE_PHASE_DURATION = 7   # 패시브 역할 안내 화면 표시 시간(초)
+ACTIVE_PHASE_TIMEOUT = 20    # 액티브 역할 카드 감지 대기 타임아웃(초)
+
+ACTIVE_NIGHT_PHASES = frozenset({
+    WerewolfPhase.NIGHT_DOPPELGANGER,
+    WerewolfPhase.NIGHT_SEER,
+    WerewolfPhase.NIGHT_ROBBER,
+    WerewolfPhase.NIGHT_TROUBLEMAKER,
+    WerewolfPhase.NIGHT_DRUNK,
+    WerewolfPhase.NIGHT_INSOMNIAC,
+})
+
+
 class WerewolfFSM(BaseFSM):
     def __init__(
         self,
@@ -41,6 +54,8 @@ class WerewolfFSM(BaseFSM):
         self.state = WerewolfGameState.new(players, center_cards)
         self._broadcast = broadcast
         self._timer_task: asyncio.Task[None] | None = None
+        self._passive_timer_task: asyncio.Task[None] | None = None
+        self._active_timer_task: asyncio.Task[None] | None = None
         self._seer_peeks: list[str] = []
 
     # ── Public API ──────────────────────────────────────────────────────────────
@@ -273,21 +288,25 @@ class WerewolfFSM(BaseFSM):
 
     def _enter_phase(self, phase: WerewolfPhase) -> list[WSMessage]:
         """페이즈 진입: state 업데이트 + FusionContext 발송."""
+        # 새 페이즈 진입 시 이전 액티브 타이머 취소
+        if self._active_timer_task and not self._active_timer_task.done():
+            self._active_timer_task.cancel()
+            self._active_timer_task = None
+
         self.state.phase = phase.value
         self.state.state_version += 1
         msgs: list[WSMessage] = [self._make_state_update()]
 
-        if phase == WerewolfPhase.NIGHT_WEREWOLF:
-            # 늑대인간들은 original_role로 서로를 인식 → 카드 행동 불필요, 즉시 전이
-            return msgs + self._advance_to_next_phase()
-
-        if phase == WerewolfPhase.NIGHT_MINION:
-            # 하수인은 늑대인간 목록 확인만 → 즉시 전이
-            return msgs + self._advance_to_next_phase()
-
-        if phase == WerewolfPhase.NIGHT_MASON:
-            # 두 메이슨이 서로를 확인만 → 즉시 전이
-            return msgs + self._advance_to_next_phase()
+        if phase in (
+            WerewolfPhase.NIGHT_WEREWOLF,
+            WerewolfPhase.NIGHT_MINION,
+            WerewolfPhase.NIGHT_MASON,
+        ):
+            # 패시브 역할: PASSIVE_PHASE_DURATION 초 동안 안내 화면 표시 후 자동 전이
+            self._passive_timer_task = asyncio.create_task(
+                self._run_passive_timer(phase)
+            )
+            return msgs
 
         if phase == WerewolfPhase.NIGHT_SEER:
             self._seer_peeks = []
@@ -301,6 +320,12 @@ class WerewolfFSM(BaseFSM):
 
         elif phase == WerewolfPhase.RESULT:
             return msgs  # 종료 상태; FusionContext 불필요
+
+        # 액티브 야간 역할: 카드 감지 우선, ACTIVE_PHASE_TIMEOUT 초 경과 시 자동 전이
+        if phase in ACTIVE_NIGHT_PHASES:
+            self._active_timer_task = asyncio.create_task(
+                self._run_active_timer(phase)
+            )
 
         msgs.append(
             WSMessage.make_fusion_context(
@@ -459,6 +484,28 @@ class WerewolfFSM(BaseFSM):
                 await self._broadcast(self._make_state_update())
 
             if WerewolfPhase(self.state.phase) == WerewolfPhase.DAY_DISCUSSION:
+                for msg in self._advance_to_next_phase():
+                    await self._broadcast(msg)
+        except asyncio.CancelledError:
+            pass
+
+    async def _run_passive_timer(self, phase: WerewolfPhase) -> None:
+        """패시브 역할 안내 화면을 PASSIVE_PHASE_DURATION 초 표시 후 다음 페이즈로 전이."""
+        try:
+            await asyncio.sleep(PASSIVE_PHASE_DURATION)
+            if WerewolfPhase(self.state.phase) == phase:
+                self.state.state_version += 1
+                for msg in self._advance_to_next_phase():
+                    await self._broadcast(msg)
+        except asyncio.CancelledError:
+            pass
+
+    async def _run_active_timer(self, phase: WerewolfPhase) -> None:
+        """액티브 역할 카드 감지 대기. ACTIVE_PHASE_TIMEOUT 초 경과 시 강제 전이."""
+        try:
+            await asyncio.sleep(ACTIVE_PHASE_TIMEOUT)
+            if WerewolfPhase(self.state.phase) == phase:
+                self.state.state_version += 1
                 for msg in self._advance_to_next_phase():
                     await self._broadcast(msg)
         except asyncio.CancelledError:

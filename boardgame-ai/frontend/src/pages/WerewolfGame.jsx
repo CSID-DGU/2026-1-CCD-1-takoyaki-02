@@ -157,6 +157,7 @@ export default function WerewolfGame({ players, onLobby, onRestart, wsState, sen
       <RoleRegConfirm
         player={players[playerIndex]}
         detectedRoleId={detectedRoleId ?? selectedRoles[playerIndex]}
+        wsState={wsState}
         onConfirm={() => {
           const next = playerIndex + 1
           if (next < players.length) {

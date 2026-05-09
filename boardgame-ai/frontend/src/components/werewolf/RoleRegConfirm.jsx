@@ -1,4 +1,6 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
+
+const CONFIRM_TIMEOUT = 7
 
 function WerewolfBg() {
   return (
@@ -107,9 +109,34 @@ const ROLES = [
   { id: 'villager_1',   name: '마을주민',   image: '/roles/villager.png',     gradient: 'linear-gradient(135deg, #1a5a1a, #0a2a0a)', desc: '특별한 능력이 없지만 마을 팀입니다.' },
 ]
 
-export default function RoleRegConfirm({ player, detectedRoleId, onConfirm }) {
+export default function RoleRegConfirm({ player, detectedRoleId, onConfirm, wsState }) {
   const detected = ROLES.find(r => r.id === detectedRoleId) ?? ROLES[1]
   const [selected, setSelected] = useState(detected)
+  const [countdown, setCountdown] = useState(CONFIRM_TIMEOUT)
+  const selectedRef = useRef(selected)
+  selectedRef.current = selected
+
+  // 7초 카운트다운 → 자동 확인
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setCountdown(prev => {
+        if (prev <= 1) {
+          clearInterval(interval)
+          onConfirm(selectedRef.current)
+          return 0
+        }
+        return prev - 1
+      })
+    }, 1000)
+    return () => clearInterval(interval)
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // OK 사인 감지 → 즉시 확인
+  useEffect(() => {
+    if (wsState?.gesture_confirmed === player?.player_id) {
+      onConfirm(selectedRef.current)
+    }
+  }, [wsState?.gesture_confirmed]) // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div style={{
@@ -145,7 +172,7 @@ export default function RoleRegConfirm({ player, detectedRoleId, onConfirm }) {
             boxShadow: '0 4px 0 #8A6A2A',
           }}
         >
-          확인 / 다음 →
+          확인 / 다음 → {countdown > 0 && <span style={{ fontSize: 13, opacity: 0.65 }}>({countdown})</span>}
         </button>
       </div>
 

@@ -42,6 +42,8 @@ class FusionEngine:
         self._seat_right_confirmed: dict[str, tuple[tuple[float, float], float]] = {}
         # 중간 이벤트 SEAT_RIGHT_REGISTERED 1회 발화 가드
         self._seat_right_event_emitted: set[str] = set()
+        # GESTURE_CONFIRMED 1회 발화 가드 (actor 당)
+        self._gesture_confirmed_emitted: set[str] = set()
         # update_context()는 백엔드(FastAPI/WS) 스레드에서, feed()는 비전 캡처 스레드에서
         # 호출될 수 있어 내부 상태 보호용 lock 필요. RLock으로 동일 스레드 재진입 허용.
         self._lock = threading.RLock()
@@ -56,6 +58,7 @@ class FusionEngine:
                 self._stab_candidates.clear()
                 self._seat_right_confirmed.clear()
                 self._seat_right_event_emitted.clear()
+                self._gesture_confirmed_emitted.clear()
             self._context = context
 
     def register_werewolf_rules(self, rules: object) -> None:
@@ -111,6 +114,12 @@ class FusionEngine:
         # ── 늑대인간 전용 ─────────────────────────────────────────────────────
         if ctx.game_type == "werewolf" and self._werewolf_rules is not None:
             candidates.extend(self._werewolf_rules.build_candidates(ctx, perception))
+
+        # ── GESTURE_CONFIRMED (OK 사인, phase 무관하게 expected_events에 있을 때 활성) ──
+        if ctx.expects(CommonEventType.GESTURE_CONFIRMED):
+            evt, data, conf = self._build_gesture_confirmed_candidate(ctx, perception)
+            if evt:
+                candidates.append((evt, data, conf))
 
         # ── 3조건 필터 → GameEvent 생성 ───────────────────────────────────────
         events: list[GameEvent] = []
@@ -185,6 +194,8 @@ class FusionEngine:
             # 중간 이벤트 1회 발화 가드
             if event_type == CommonEventType.SEAT_RIGHT_REGISTERED and actor_id:
                 self._seat_right_event_emitted.add(actor_id)
+            if event_type == CommonEventType.GESTURE_CONFIRMED and actor_id:
+                self._gesture_confirmed_emitted.add(actor_id)
             # 발화 후 카운터 리셋 (중복 발화 방지)
             self._stab_counters[event_type] = 0
 
@@ -284,6 +295,26 @@ class FusionEngine:
                     "_key": ("right", actor),
                 }
                 return CommonEventType.SEAT_RIGHT_REGISTERED, data_key, 0.9
+        return None, {}, 0.0
+
+    def _build_gesture_confirmed_candidate(
+        self,
+        ctx: FusionContext,
+        perception: FramePerception,
+    ) -> tuple[str | None, dict, float]:
+        """OK 사인 감지 → GESTURE_CONFIRMED. actor당 1회만 발화."""
+        for hand in perception.hands:
+            if hand.gesture != "ok_sign":
+                continue
+            actor = hand.player_id or ctx.active_player or ""
+            if not actor or actor in self._gesture_confirmed_emitted:
+                continue
+            data_key = {
+                "actor_id": actor,
+                "gesture": "ok_sign",
+                "_key": ("ok_confirm", actor),
+            }
+            return CommonEventType.GESTURE_CONFIRMED, data_key, 0.9
         return None, {}, 0.0
 
     def _build_seat_hand_candidate(

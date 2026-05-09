@@ -47,6 +47,8 @@ class Orchestrator:
         self._werewolf_fsm: WerewolfFSM | None = None
         # 역할 등록 단계 상태
         self._role_reg: dict | None = None
+        # OK 사인 one-shot: 브로드캐스트 한 번 후 자동 소멸
+        self._gesture_confirmed: str | None = None
 
     def set_broadcast(
         self,
@@ -78,6 +80,8 @@ class Orchestrator:
                 phase = self._phase
             if phase == _PHASE_ROLE_REGISTRATION:
                 self._handle_role_detected(event)
+        elif event.event_type == CommonEventType.GESTURE_CONFIRMED:
+            self._handle_gesture_confirmed(event)
         elif event.event_type in (
             WerewolfEventType.CARD_PEEK,
             WerewolfEventType.CARD_SWAP,
@@ -420,6 +424,7 @@ class Orchestrator:
             seat_step=self._seat_step,
             sound=sound,
             game_state=game_state,
+            gesture_confirmed=self._gesture_confirmed,
         )
 
     def _push_context(self, phase: str, active_player: str | None = None) -> None:
@@ -429,13 +434,19 @@ class Orchestrator:
                 CommonEventType.SEAT_RIGHT_REGISTERED,
                 CommonEventType.SEAT_REGISTERED,
             ]
+            allowed = [active_player] if active_player else []
+        elif phase == CommonPhase.PLAYER_SETUP:
+            expected = [CommonEventType.GESTURE_CONFIRMED]
+            # allowed_actors 비워두면 모든 플레이어 허용 (개발 모드 fallback)
+            allowed = []
         else:
             expected = []
+            allowed = [active_player] if active_player else []
         ctx = FusionContext(
             fsm_state=phase,
             game_type=None,
             active_player=active_player,
-            allowed_actors=[active_player] if active_player else [],
+            allowed_actors=allowed,
             expected_events=expected,
         )
         self._send_fusion_context(ctx, self._state_version)
@@ -451,6 +462,17 @@ class Orchestrator:
             result = cb(snapshot)
             if asyncio.iscoroutine(result):
                 await result
+
+    def _handle_gesture_confirmed(self, event: GameEvent) -> None:
+        """OK 사인 감지 → player_id를 one-shot으로 broadcast."""
+        actor_id = event.actor_id
+        if not actor_id:
+            return
+        with self._lock:
+            self._gesture_confirmed = actor_id
+            snapshot = self._snapshot()
+            self._gesture_confirmed = None
+        self._broadcast(snapshot)
 
     def _handle_werewolf_event(self, event: GameEvent) -> None:
         with self._lock:
