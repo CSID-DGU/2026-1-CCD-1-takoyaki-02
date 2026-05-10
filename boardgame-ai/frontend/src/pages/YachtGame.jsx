@@ -249,7 +249,7 @@ const s = {
     backdropFilter: 'blur(2px)',
   },
   leaderboard: {
-    width: 'min(920px, calc(100vw - 64px))',
+    width: 'min(1280px, calc(100vw - 40px))',
     background: '#fff',
     border: '1px solid #dfe3dc',
     borderRadius: 10,
@@ -522,9 +522,11 @@ function ScoreTable({ state, currentOnly = false, compact = false, onScore }) {
                 <td style={s.tdScore}>
                   <div style={s.bonusCell}>
                     <span>{subtotal} / 63</span>
-                    <span style={s.bonusBadge(earned)}>
-                      {earned ? '+35' : `${remaining}점 남음`}
-                    </span>
+                    {!compact && (
+                      <span style={s.bonusBadge(earned)}>
+                        {earned ? '+35' : `${remaining}점 남음`}
+                      </span>
+                    )}
                   </div>
                 </td>
               </tr>
