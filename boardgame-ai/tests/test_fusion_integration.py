@@ -10,6 +10,7 @@ from core.events import FusionContext
 from vision.fusion.engine import FusionEngine
 from vision.fusion.yacht_rules import (
     DICE_ESCAPED,
+    PHASE_AWAITING_KEEP,
     PHASE_AWAITING_ROLL,
     ROLL_CONFIRMED,
     ROLL_UNREADABLE,
@@ -34,6 +35,17 @@ def _ctx_seat_right(player_id: str = "p_1") -> FusionContext:
 def _ctx_awaiting_roll(player_id: str = "p_1") -> FusionContext:
     return FusionContext(
         fsm_state=PHASE_AWAITING_ROLL,
+        game_type="yacht",
+        active_player=player_id,
+        allowed_actors=[player_id],
+        expected_events=[ROLL_CONFIRMED, ROLL_UNREADABLE, DICE_ESCAPED],
+        params={"stabilization_frames": 3},
+    )
+
+
+def _ctx_awaiting_keep(player_id: str = "p_1") -> FusionContext:
+    return FusionContext(
+        fsm_state=PHASE_AWAITING_KEEP,
         game_type="yacht",
         active_player=player_id,
         allowed_actors=[player_id],
@@ -170,6 +182,19 @@ def test_dice_rolled_event_emitted() -> None:
     e = rolled[0]
     assert e.actor_id == "p_1"
     assert e.data["dice_values"] == [4, 4, 4, 4, 4]
+
+
+def test_dice_rolled_event_emitted_while_awaiting_keep() -> None:
+    """킵 선택 UI가 열린 상태에서도 물리 굴림은 바로 인식한다."""
+    engine = FusionEngine()
+    engine.update_context(_ctx_awaiting_keep())
+
+    dice = _stable_dice(n=5, pip=5)
+    events = engine.feed(_frame(0, dice=dice, roll_actor_id="p_1", roll_just_confirmed=True))
+
+    rolled = [e for e in events if e.event_type == ROLL_CONFIRMED]
+    assert len(rolled) == 1
+    assert rolled[0].data["dice_values"] == [5, 5, 5, 5, 5]
 
 
 def test_dice_rolled_not_fired_without_actor() -> None:
