@@ -38,6 +38,17 @@ const s = {
     color: '#555',
     width: 'fit-content',
   },
+  exitButton: {
+    border: '1px solid #d7d7d9',
+    borderRadius: 8,
+    background: '#fff',
+    color: '#333',
+    padding: '11px 22px',
+    fontSize: 17,
+    fontWeight: 700,
+    cursor: 'pointer',
+    boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
+  },
   footer: { fontSize: 18, color: '#aaa' },
 }
 
@@ -63,7 +74,7 @@ function GameCard({ icon, name, info1, info2, onClick }) {
   )
 }
 
-export default function Lobby({ players, send, onSelectYacht, onSelectWerewolf }) {
+export default function Lobby({ players, send, onSelectYacht, onSelectWerewolf, onExit }) {
   return (
     <div style={s.page}>
       <div style={s.title}>보드게임 AI 테이블</div>
@@ -90,6 +101,7 @@ export default function Lobby({ players, send, onSelectYacht, onSelectWerewolf }
           }}
         />
       </div>
+      <button style={s.exitButton} onClick={onExit}>나가기</button>
     </div>
   )
 }
