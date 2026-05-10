@@ -123,7 +123,7 @@ const s = {
     gap: 14,
     marginBottom: 18,
   },
-  die: kept => ({
+  die: (kept, interactive = false) => ({
     width: 50,
     height: 50,
     border: kept ? '1px solid #1f7a4f' : '1px solid #d0d5cd',
@@ -132,7 +132,10 @@ const s = {
     color: kept ? '#fff' : '#1b1f19',
     fontSize: 21,
     fontWeight: 800,
-    cursor: 'pointer',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    cursor: interactive ? 'pointer' : 'default',
     boxShadow: kept ? '0 8px 16px rgba(31,122,79,0.16)' : '0 4px 10px rgba(31,35,29,0.05)',
   }),
   actionRow: { display: 'flex', gap: 10, flexWrap: 'wrap' },
@@ -151,6 +154,55 @@ const s = {
   scoreWrap: {
     padding: '28px 28px 28px 0',
     boxSizing: 'border-box',
+  },
+  scoreHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+    position: 'relative',
+  },
+  helpButton: {
+    width: 24,
+    height: 24,
+    borderRadius: '50%',
+    border: '1px solid #cfd6cc',
+    background: '#fff',
+    color: '#394237',
+    fontSize: 14,
+    fontWeight: 800,
+    cursor: 'help',
+    boxShadow: '0 3px 8px rgba(31,35,29,0.06)',
+    padding: 0,
+    flexShrink: 0,
+  },
+  scoreHelpPopover: {
+    position: 'absolute',
+    top: 32,
+    right: 0,
+    width: 400,
+    zIndex: 20,
+    padding: '16px 18px',
+    border: '1px solid #d8ded5',
+    borderRadius: 10,
+    background: '#fff',
+    boxShadow: '0 18px 42px rgba(31,35,29,0.16)',
+    color: '#273024',
+  },
+  helpList: {
+    display: 'grid',
+    gap: 7,
+    margin: 0,
+    padding: 0,
+    listStyle: 'none',
+    fontSize: 13,
+    lineHeight: 1.35,
+  },
+  helpItemName: {
+    display: 'inline-block',
+    minWidth: 104,
+    fontWeight: 800,
+    color: '#1f6f49',
   },
   scoreboard: {
     borderCollapse: 'separate',
@@ -197,7 +249,7 @@ const s = {
     backdropFilter: 'blur(2px)',
   },
   leaderboard: {
-    width: 'min(920px, calc(100vw - 64px))',
+    width: 'min(1280px, calc(100vw - 40px))',
     background: '#fff',
     border: '1px solid #dfe3dc',
     borderRadius: 10,
@@ -276,6 +328,9 @@ export default function YachtGame({ players, onExit, onChangePlayers }) {
     return latest?.payload?.text || latest?.payload?.message || state?.last_message
   }, [messages, state?.last_message])
   const canUndo = state?.can_undo ?? true
+  const canManualRoll =
+    ['AWAITING_ROLL', 'AWAITING_KEEP'].includes(state?.phase) &&
+    Number(state?.remaining_rolls || 0) > 0
 
   if (!state) {
     return (
@@ -318,7 +373,7 @@ export default function YachtGame({ players, onExit, onChangePlayers }) {
   return (
     <div style={s.page}>
       <div style={s.phaseText}>
-        {state.phase === 'AWAITING_ROLL' ? 'AWAITING_ROLL' : 'SCORE_RECORDED'}
+        {state.phase}
       </div>
       <div style={s.shell}>
         <header style={s.header}>
@@ -350,9 +405,9 @@ export default function YachtGame({ players, onExit, onChangePlayers }) {
             {(state.dice_values?.length ? state.dice_values : ['-', '-', '-', '-', '-']).map((value, index) => (
               <button
                 key={index}
-                style={s.die(Boolean(state.keep_mask?.[index]))}
+                style={s.die(Boolean(state.keep_mask?.[index]), canToggleKeep(state))}
                 onClick={() => toggleKeep(index, state, send)}
-                disabled={!state.dice_values?.length}
+                disabled={!canToggleKeep(state)}
                 title="보관"
               >
                 {value}
@@ -362,16 +417,8 @@ export default function YachtGame({ players, onExit, onChangePlayers }) {
 
           <div style={s.actionRow}>
             <button style={s.buttonSmall} onClick={() => setLeaderboardOpen(true)}>리더보드 보기</button>
-            {state.phase === 'AWAITING_ROLL' && (
+            {canManualRoll && (
               <button style={{ ...s.buttonSmall, ...s.primaryButton }} onClick={() => send('ROLL_DICE')}>굴리기</button>
-            )}
-            {state.phase === 'AWAITING_KEEP' && (
-              <button
-                style={{ ...s.buttonSmall, ...s.primaryButton }}
-                onClick={() => send('DICE_REROLL_REQUESTED', { keep_mask: state.keep_mask })}
-              >
-                다시 굴리기
-              </button>
             )}
           </div>
 
@@ -404,7 +451,34 @@ export default function YachtGame({ players, onExit, onChangePlayers }) {
   )
 }
 
+function ScoreHelp() {
+  const rows = [
+    ['Aces-Sixes', '해당 눈의 주사위만 모두 더합니다'],
+    ['상단 보너스', 'Aces부터 Sixes 합계가 63점 이상이면 35점'],
+    ['Full House', '같은 눈 3개와 같은 눈 2개 조합이면 총합'],
+    ['4 of a Kind', '같은 눈 4개 이상이면 총합'],
+    ['S. Straight', '연속된 숫자 4개 이상이면 15점'],
+    ['L. Straight', '1-5 또는 2-6이면 30점'],
+    ['Yacht', '같은 눈 5개면 50점'],
+    ['Choice', '아무 조합이나 주사위 총합'],
+  ]
+
+  return (
+    <div style={s.scoreHelpPopover}>
+      <ul style={s.helpList}>
+        {rows.map(([name, desc]) => (
+          <li key={name}>
+            <span style={s.helpItemName}>{name}</span>
+            {desc}
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+}
+
 function ScoreTable({ state, currentOnly = false, compact = false, onScore }) {
+  const [scoreHelpOpen, setScoreHelpOpen] = useState(false)
   const players = currentOnly
     ? state.players.filter(player => player.player_id === state.current_player_id)
     : state.players
@@ -413,7 +487,28 @@ function ScoreTable({ state, currentOnly = false, compact = false, onScore }) {
   return (
     <table style={s.scoreboard}>
       <thead>
-        <tr><th colSpan="2" style={s.th}>점수판 · {player?.playername || '-'}</th></tr>
+        <tr>
+          <th colSpan="2" style={s.th}>
+            <div style={s.scoreHeader}>
+              <span>점수판 · {player?.playername || '-'}</span>
+              {!compact && (
+                <>
+                  <button
+                    style={s.helpButton}
+                    aria-label="족보 설명"
+                    onMouseEnter={() => setScoreHelpOpen(true)}
+                    onMouseLeave={() => setScoreHelpOpen(false)}
+                    onFocus={() => setScoreHelpOpen(true)}
+                    onBlur={() => setScoreHelpOpen(false)}
+                  >
+                    ?
+                  </button>
+                  {scoreHelpOpen && <ScoreHelp />}
+                </>
+              )}
+            </div>
+          </th>
+        </tr>
       </thead>
       <tbody>
         {CATEGORY_LABELS.map(([key, label]) => {
@@ -427,9 +522,11 @@ function ScoreTable({ state, currentOnly = false, compact = false, onScore }) {
                 <td style={s.tdScore}>
                   <div style={s.bonusCell}>
                     <span>{subtotal} / 63</span>
-                    <span style={s.bonusBadge(earned)}>
-                      {earned ? '+35' : `${remaining}점 남음`}
-                    </span>
+                    {!compact && (
+                      <span style={s.bonusBadge(earned)}>
+                        {earned ? '+35' : `${remaining}점 남음`}
+                      </span>
+                    )}
                   </div>
                 </td>
               </tr>
@@ -478,8 +575,12 @@ function normalizePlayers(players) {
   }))
 }
 
+function canToggleKeep(state) {
+  return Boolean(state.dice_values?.length) && state.phase !== 'AWAITING_SCORE'
+}
+
 function toggleKeep(index, state, send) {
-  if (!state.dice_values?.length || state.phase === 'AWAITING_SCORE') return
+  if (!canToggleKeep(state)) return
   const keep = [...state.keep_mask]
   keep[index] = !keep[index]
   send('DICE_KEEP_SELECTED', { keep_mask: keep })

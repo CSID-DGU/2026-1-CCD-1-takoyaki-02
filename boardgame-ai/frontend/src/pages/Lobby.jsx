@@ -12,19 +12,20 @@ const s = {
   title: { fontSize: 48, fontWeight: 700, marginBottom: 14 },
   subtitle: { fontSize: 22, color: '#555', marginBottom: 56 },
   cards: { display: 'flex', gap: 36, marginBottom: 64 },
-  card: {
+  card: disabled => ({
     width: 320,
     padding: 40,
     background: '#fff',
     border: '1px solid #e0e0e0',
     borderRadius: 22,
-    cursor: 'pointer',
+    cursor: disabled ? 'not-allowed' : 'pointer',
+    opacity: disabled ? 0.45 : 1,
     boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
     display: 'flex',
     flexDirection: 'column',
     gap: 10,
     transition: 'box-shadow 0.15s, border-color 0.15s',
-  },
+  }),
   icon: { fontSize: 48, marginBottom: 8 },
   gameName: { fontSize: 26, fontWeight: 600 },
   gameInfo: { fontSize: 19, color: '#666' },
@@ -38,19 +39,32 @@ const s = {
     color: '#555',
     width: 'fit-content',
   },
+  exitButton: {
+    border: '1px solid #d7d7d9',
+    borderRadius: 8,
+    background: '#fff',
+    color: '#333',
+    padding: '11px 22px',
+    fontSize: 17,
+    fontWeight: 700,
+    cursor: 'pointer',
+    boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
+  },
   footer: { fontSize: 18, color: '#aaa' },
 }
 
-function GameCard({ icon, name, info1, info2, onClick }) {
+function GameCard({ icon, name, info1, info2, onClick, disabled = false }) {
   return (
     <div
-      style={s.card}
-      onClick={onClick}
+      style={s.card(disabled)}
+      onClick={disabled ? undefined : onClick}
       onMouseEnter={e => {
+        if (disabled) return
         e.currentTarget.style.boxShadow = '0 4px 16px rgba(0,0,0,0.12)'
         e.currentTarget.style.borderColor = '#bbb'
       }}
       onMouseLeave={e => {
+        if (disabled) return
         e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.06)'
         e.currentTarget.style.borderColor = '#e0e0e0'
       }}
@@ -63,7 +77,9 @@ function GameCard({ icon, name, info1, info2, onClick }) {
   )
 }
 
-export default function Lobby({ players, send, onSelectYacht, onSelectWerewolf }) {
+export default function Lobby({ players, send, onSelectYacht, onSelectWerewolf, onExit }) {
+  const yachtDisabled = players.length >= 7
+
   return (
     <div style={s.page}>
       <div style={s.title}>보드게임 AI 테이블</div>
@@ -72,8 +88,9 @@ export default function Lobby({ players, send, onSelectYacht, onSelectWerewolf }
         <GameCard
           icon="🎲"
           name="요트 다이스"
-          info1="2-5인 플레이어"
+          info1="1-6인 플레이어"
           info2="주사위 자동 인식"
+          disabled={yachtDisabled}
           onClick={() => {
             send?.('select_game', { game_type: 'yacht' })
             onSelectYacht()
@@ -90,6 +107,7 @@ export default function Lobby({ players, send, onSelectYacht, onSelectWerewolf }
           }}
         />
       </div>
+      <button style={s.exitButton} onClick={onExit}>나가기</button>
     </div>
   )
 }
