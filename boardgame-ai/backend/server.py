@@ -31,8 +31,6 @@ from bridge.local_bridge import LocalBridge
 from core.envelope import WSMessage
 from core.events import GameEvent
 from games.yacht import YachtEventType, YachtFSM, YachtGameState, YachtInputType
-from vision.config import VisionConfig
-from games.yacht import YachtEventType, YachtFSM, YachtInputType
 from vision.camera import CameraManager
 from vision.yacht.config import VisionConfig
 
@@ -131,11 +129,11 @@ async def yacht_socket(websocket: WebSocket) -> None:
 
 
 class YachtSession:
-    def __init__(self, websocket: WebSocket, bridge: LocalBridge) -> None:
+    def __init__(self, websocket: WebSocket, bridge: LocalBridge | None = None) -> None:
         self.websocket = websocket
         self.fsm: YachtFSM | None = None
         self.undo_stack: list[YachtGameState] = []
-        self._bridge = bridge
+        self._bridge = bridge or LocalBridge()
         # FSM 상태 변경 직렬화 — 비전 스레드와 WS 스레드가 동시에 호출 가능
         self._fsm_lock = threading.Lock()
 
@@ -166,23 +164,22 @@ class YachtSession:
             return
 
         if input_type == "ROLL_DICE":
-            previous_state = deepcopy(self.fsm.state)
-            dice_values = payload.get("dice_values") or self.roll_dice(
-                self.fsm.state.dice_values,
-                self.fsm.state.keep_mask,
-            )
-            event = GameEvent(
-                event_type=YachtEventType.ROLL_CONFIRMED.value,
-                actor_id=self.fsm.state.current_player.player_id,
-                confidence=1.0,
-                frame_id=-1,
-                data={"dice_values": dice_values, "keep_mask": self.fsm.state.keep_mask},
-            )
-            messages = self.fsm.handle_event(event)
-            if self.roll_was_recorded(previous_state):
-                self.undo_stack.append(previous_state)
             with self._fsm_lock:
+                previous_state = deepcopy(self.fsm.state)
+                dice_values = payload.get("dice_values") or self.roll_dice(
+                    self.fsm.state.dice_values,
+                    self.fsm.state.keep_mask,
+                )
+                event = GameEvent(
+                    event_type=YachtEventType.ROLL_CONFIRMED.value,
+                    actor_id=self.fsm.state.current_player.player_id,
+                    confidence=1.0,
+                    frame_id=-1,
+                    data={"dice_values": dice_values, "keep_mask": self.fsm.state.keep_mask},
+                )
                 messages = self.fsm.handle_event(event)
+                if self.roll_was_recorded(previous_state):
+                    self.undo_stack.append(previous_state)
             await self.send_many(messages)
             return
 
@@ -210,10 +207,11 @@ class YachtSession:
             return
 
         if input_type == YachtInputType.SCORE_CATEGORY_SELECTED.value:
-            previous_state = deepcopy(self.fsm.state)
-            messages = self.fsm.handle_input(input_type, payload, player_id)
-            if self.score_was_recorded(previous_state, payload.get("category")):
-                self.undo_stack = []
+            with self._fsm_lock:
+                previous_state = deepcopy(self.fsm.state)
+                messages = self.fsm.handle_input(input_type, payload, player_id)
+                if self.score_was_recorded(previous_state, payload.get("category")):
+                    self.undo_stack = []
             await self.send_many(messages)
             return
 
@@ -229,12 +227,12 @@ class YachtSession:
                 return
             restored_state = self.undo_stack.pop()
             player_name = restored_state.current_player.playername
-            await self.send_many(
-                self.fsm.restore_state(
+            with self._fsm_lock:
+                messages = self.fsm.restore_state(
                     restored_state,
                     f"{player_name}님의 주사위 굴림을 되돌렸습니다.",
                 )
-            )
+            await self.send_many(messages)
             return
 
         if input_type == "RESTART":
@@ -248,11 +246,8 @@ class YachtSession:
 
     async def start_game(self, payload: dict[str, Any]) -> None:
         players = normalize_players(payload.get("players"))
-        self.fsm = YachtFSM(players)
-        self.undo_stack = []
-        await self.send_many(self.fsm.start())
         with self._fsm_lock:
-            # on_fusion_context 콜백 주입 → FSM이 phase 전환마다 비전에도 직접 알림
+            self.undo_stack = []
             self.fsm = YachtFSM(
                 players,
                 on_fusion_context=self._bridge.send_fusion_context,

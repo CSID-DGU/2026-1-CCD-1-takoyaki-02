@@ -123,7 +123,7 @@ const s = {
     gap: 14,
     marginBottom: 18,
   },
-  die: kept => ({
+  die: (kept, interactive = false) => ({
     width: 50,
     height: 50,
     border: kept ? '1px solid #1f7a4f' : '1px solid #d0d5cd',
@@ -132,7 +132,10 @@ const s = {
     color: kept ? '#fff' : '#1b1f19',
     fontSize: 21,
     fontWeight: 800,
-    cursor: 'pointer',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    cursor: interactive ? 'pointer' : 'default',
     boxShadow: kept ? '0 8px 16px rgba(31,122,79,0.16)' : '0 4px 10px rgba(31,35,29,0.05)',
   }),
   actionRow: { display: 'flex', gap: 10, flexWrap: 'wrap' },
@@ -276,6 +279,9 @@ export default function YachtGame({ players, onExit, onChangePlayers }) {
     return latest?.payload?.text || latest?.payload?.message || state?.last_message
   }, [messages, state?.last_message])
   const canUndo = state?.can_undo ?? true
+  const canManualRoll =
+    ['AWAITING_ROLL', 'AWAITING_KEEP'].includes(state?.phase) &&
+    Number(state?.remaining_rolls || 0) > 0
 
   if (!state) {
     return (
@@ -318,7 +324,7 @@ export default function YachtGame({ players, onExit, onChangePlayers }) {
   return (
     <div style={s.page}>
       <div style={s.phaseText}>
-        {state.phase === 'AWAITING_ROLL' ? 'AWAITING_ROLL' : 'SCORE_RECORDED'}
+        {state.phase}
       </div>
       <div style={s.shell}>
         <header style={s.header}>
@@ -350,9 +356,9 @@ export default function YachtGame({ players, onExit, onChangePlayers }) {
             {(state.dice_values?.length ? state.dice_values : ['-', '-', '-', '-', '-']).map((value, index) => (
               <button
                 key={index}
-                style={s.die(Boolean(state.keep_mask?.[index]))}
+                style={s.die(Boolean(state.keep_mask?.[index]), canToggleKeep(state))}
                 onClick={() => toggleKeep(index, state, send)}
-                disabled={!state.dice_values?.length}
+                disabled={!canToggleKeep(state)}
                 title="보관"
               >
                 {value}
@@ -362,16 +368,8 @@ export default function YachtGame({ players, onExit, onChangePlayers }) {
 
           <div style={s.actionRow}>
             <button style={s.buttonSmall} onClick={() => setLeaderboardOpen(true)}>리더보드 보기</button>
-            {state.phase === 'AWAITING_ROLL' && (
+            {canManualRoll && (
               <button style={{ ...s.buttonSmall, ...s.primaryButton }} onClick={() => send('ROLL_DICE')}>굴리기</button>
-            )}
-            {state.phase === 'AWAITING_KEEP' && (
-              <button
-                style={{ ...s.buttonSmall, ...s.primaryButton }}
-                onClick={() => send('DICE_REROLL_REQUESTED', { keep_mask: state.keep_mask })}
-              >
-                다시 굴리기
-              </button>
             )}
           </div>
 
@@ -478,8 +476,12 @@ function normalizePlayers(players) {
   }))
 }
 
+function canToggleKeep(state) {
+  return Boolean(state.dice_values?.length) && state.phase !== 'AWAITING_SCORE'
+}
+
 function toggleKeep(index, state, send) {
-  if (!state.dice_values?.length || state.phase === 'AWAITING_SCORE') return
+  if (!canToggleKeep(state)) return
   const keep = [...state.keep_mask]
   keep[index] = !keep[index]
   send('DICE_KEEP_SELECTED', { keep_mask: keep })

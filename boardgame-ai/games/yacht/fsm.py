@@ -106,7 +106,7 @@ class YachtFSM(BaseFSM):
         expected_events: list[str] = []
         reject_events: list[str] = []
 
-        if phase == YachtPhase.AWAITING_ROLL:
+        if phase in (YachtPhase.AWAITING_ROLL, YachtPhase.AWAITING_KEEP):
             expected_events = [
                 YachtEventType.ROLL_CONFIRMED.value,
                 YachtEventType.ROLL_UNREADABLE.value,
@@ -153,7 +153,12 @@ class YachtFSM(BaseFSM):
         )
 
     def _handle_roll_confirmed(self, event: GameEvent) -> list[WSMessage]:
-        if self.state.phase != YachtPhase.AWAITING_ROLL.value:
+        if self.state.phase not in (
+            YachtPhase.AWAITING_ROLL.value,
+            YachtPhase.AWAITING_KEEP.value,
+        ):
+            return []
+        if self.state.roll_count >= 3:
             return []
         if not self._is_current_actor(event.actor_id):
             return self._warn_and_keep_roll_phase(
@@ -180,7 +185,12 @@ class YachtFSM(BaseFSM):
         return self._state_context_tts(self.state.last_message)
 
     def _handle_roll_unreadable(self, event: GameEvent) -> list[WSMessage]:
-        if self.state.phase != YachtPhase.AWAITING_ROLL.value:
+        if self.state.phase not in (
+            YachtPhase.AWAITING_ROLL.value,
+            YachtPhase.AWAITING_KEEP.value,
+        ):
+            return []
+        if self.state.roll_count >= 3:
             return []
         if not self._is_current_actor(event.actor_id):
             return []
@@ -299,7 +309,7 @@ class YachtFSM(BaseFSM):
         values = ", ".join(str(v) for v in self.state.dice_values)
         if self.state.phase == YachtPhase.AWAITING_SCORE.value:
             return f"주사위 결과는 {values}입니다. 점수 칸을 선택해주세요."
-        return f"주사위 결과는 {values}입니다. " "보관할 주사위를 고르거나 점수 칸을 선택해주세요."
+        return f"주사위 결과는 {values}입니다. 다시 굴리거나 점수 칸을 선택해주세요."
 
     def _normalize_keep_mask(self, keep_mask: Any) -> list[bool]:
         if not isinstance(keep_mask, list) or len(keep_mask) != 5:

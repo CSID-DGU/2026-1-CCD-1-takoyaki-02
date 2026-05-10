@@ -45,6 +45,20 @@ def test_roll_confirmed_moves_to_keep_before_third_roll():
     assert _messages_of(msgs, MsgType.STATE_UPDATE.value)
 
 
+def test_roll_confirmed_can_follow_previous_roll_without_reroll_request():
+    fsm = YachtFSM(["p1"])
+    fsm.start()
+
+    fsm.handle_event(_event(YachtEventType.ROLL_CONFIRMED.value, dice=[1, 2, 3, 4, 5]))
+    msgs = fsm.handle_event(_event(YachtEventType.ROLL_CONFIRMED.value, dice=[2, 2, 3, 4, 6]))
+    ctx = _messages_of(msgs, MsgType.FUSION_CONTEXT.value)[0].payload
+
+    assert fsm.state.roll_count == 2
+    assert fsm.state.dice_values == [2, 2, 3, 4, 6]
+    assert fsm.state.phase == YachtPhase.AWAITING_KEEP.value
+    assert YachtEventType.ROLL_CONFIRMED.value in ctx["expected_events"]
+
+
 def test_reroll_returns_to_awaiting_roll_with_same_player():
     fsm = YachtFSM(["p1", "p2"])
     fsm.start()
