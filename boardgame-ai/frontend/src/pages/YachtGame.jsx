@@ -155,6 +155,55 @@ const s = {
     padding: '28px 28px 28px 0',
     boxSizing: 'border-box',
   },
+  scoreHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+    position: 'relative',
+  },
+  helpButton: {
+    width: 24,
+    height: 24,
+    borderRadius: '50%',
+    border: '1px solid #cfd6cc',
+    background: '#fff',
+    color: '#394237',
+    fontSize: 14,
+    fontWeight: 800,
+    cursor: 'help',
+    boxShadow: '0 3px 8px rgba(31,35,29,0.06)',
+    padding: 0,
+    flexShrink: 0,
+  },
+  scoreHelpPopover: {
+    position: 'absolute',
+    top: 32,
+    right: 0,
+    width: 400,
+    zIndex: 20,
+    padding: '16px 18px',
+    border: '1px solid #d8ded5',
+    borderRadius: 10,
+    background: '#fff',
+    boxShadow: '0 18px 42px rgba(31,35,29,0.16)',
+    color: '#273024',
+  },
+  helpList: {
+    display: 'grid',
+    gap: 7,
+    margin: 0,
+    padding: 0,
+    listStyle: 'none',
+    fontSize: 13,
+    lineHeight: 1.35,
+  },
+  helpItemName: {
+    display: 'inline-block',
+    minWidth: 104,
+    fontWeight: 800,
+    color: '#1f6f49',
+  },
   scoreboard: {
     borderCollapse: 'separate',
     borderSpacing: 0,
@@ -402,7 +451,34 @@ export default function YachtGame({ players, onExit, onChangePlayers }) {
   )
 }
 
+function ScoreHelp() {
+  const rows = [
+    ['Aces-Sixes', '해당 눈의 주사위만 모두 더합니다'],
+    ['상단 보너스', 'Aces부터 Sixes 합계가 63점 이상이면 35점'],
+    ['Full House', '같은 눈 3개와 같은 눈 2개 조합이면 총합'],
+    ['4 of a Kind', '같은 눈 4개 이상이면 총합'],
+    ['S. Straight', '연속된 숫자 4개 이상이면 15점'],
+    ['L. Straight', '1-5 또는 2-6이면 30점'],
+    ['Yacht', '같은 눈 5개면 50점'],
+    ['Choice', '아무 조합이나 주사위 총합'],
+  ]
+
+  return (
+    <div style={s.scoreHelpPopover}>
+      <ul style={s.helpList}>
+        {rows.map(([name, desc]) => (
+          <li key={name}>
+            <span style={s.helpItemName}>{name}</span>
+            {desc}
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+}
+
 function ScoreTable({ state, currentOnly = false, compact = false, onScore }) {
+  const [scoreHelpOpen, setScoreHelpOpen] = useState(false)
   const players = currentOnly
     ? state.players.filter(player => player.player_id === state.current_player_id)
     : state.players
@@ -411,7 +487,28 @@ function ScoreTable({ state, currentOnly = false, compact = false, onScore }) {
   return (
     <table style={s.scoreboard}>
       <thead>
-        <tr><th colSpan="2" style={s.th}>점수판 · {player?.playername || '-'}</th></tr>
+        <tr>
+          <th colSpan="2" style={s.th}>
+            <div style={s.scoreHeader}>
+              <span>점수판 · {player?.playername || '-'}</span>
+              {!compact && (
+                <>
+                  <button
+                    style={s.helpButton}
+                    aria-label="족보 설명"
+                    onMouseEnter={() => setScoreHelpOpen(true)}
+                    onMouseLeave={() => setScoreHelpOpen(false)}
+                    onFocus={() => setScoreHelpOpen(true)}
+                    onBlur={() => setScoreHelpOpen(false)}
+                  >
+                    ?
+                  </button>
+                  {scoreHelpOpen && <ScoreHelp />}
+                </>
+              )}
+            </div>
+          </th>
+        </tr>
       </thead>
       <tbody>
         {CATEGORY_LABELS.map(([key, label]) => {
