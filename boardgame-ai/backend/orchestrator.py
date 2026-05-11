@@ -12,7 +12,7 @@ import threading
 from collections.abc import Callable
 
 from backend.state import build_state_snapshot
-from core.constants import CommonEventType, CommonPhase
+from core.constants import CommonEventType, CommonPhase, MsgType
 from core.envelope import WSMessage
 from core.events import FusionContext, GameEvent
 from core.models import SeatZone
@@ -44,6 +44,7 @@ class Orchestrator:
         self._seat_step = "idle"
         self._pending_register_id: str | None = None
         self._players_listener: Callable[[list], None] | None = None
+        self._pipeline_switcher: Callable[[str | None], None] | None = None
         self._werewolf_fsm: WerewolfFSM | None = None
         # 역할 등록 단계 상태
         self._role_reg: dict | None = None
@@ -57,6 +58,13 @@ class Orchestrator:
     ) -> None:
         self._broadcast_cb = cb
         self._loop = loop
+
+    def set_pipeline_switcher(self, cb: Callable[[str | None], None]) -> None:
+        """게임 모드 전환 시 활성 파이프라인을 교체할 콜백 등록.
+
+        콜백 인자: game_type ("werewolf" | "yacht" | None). None = 로비/초기화.
+        """
+        self._pipeline_switcher = cb
 
     def set_players_listener(self, cb: Callable[[list], None]) -> None:
         self._players_listener = cb
@@ -252,9 +260,12 @@ class Orchestrator:
                 center_cards=center_roles,
                 broadcast=self._ww_broadcast,
             )
-            self._werewolf_fsm.start()
+            msgs = self._werewolf_fsm.start()
             snapshot = self._snapshot()
 
+        if self._pipeline_switcher is not None:
+            self._pipeline_switcher("werewolf")
+        self._dispatch_fsm_messages(msgs)
         self._broadcast(snapshot)
 
     def current_snapshot(self) -> dict:
@@ -311,6 +322,9 @@ class Orchestrator:
             with self._lock:
                 self._werewolf_fsm = None
                 snapshot = self._snapshot()
+            if self._pipeline_switcher is not None:
+                self._pipeline_switcher(None)
+            self._push_context(CommonPhase.PLAYER_SETUP)
             self._broadcast(snapshot)
         elif input_type in (
             WerewolfInputType.ADD_30_SEC,
@@ -471,8 +485,19 @@ class Orchestrator:
 
     # ── 늑대인간 게임 ──────────────────────────────────────────────────────────
 
-    async def _ww_broadcast(self, _msg: WSMessage) -> None:
+    def _dispatch_fsm_messages(self, messages: list[WSMessage]) -> None:
+        """FSM 반환 메시지에서 FusionContext를 추출해 비전 파이프라인에 전달."""
+        for msg in messages:
+            if msg.msg_type == MsgType.FUSION_CONTEXT.value:
+                ctx = FusionContext.from_dict(msg.payload)
+                self._send_fusion_context(ctx, msg.state_version)
+
+    async def _ww_broadcast(self, msg: WSMessage) -> None:
         """FSM 타이머가 asyncio 루프에서 직접 호출하는 broadcast 콜백."""
+        if msg.msg_type == MsgType.FUSION_CONTEXT.value:
+            ctx = FusionContext.from_dict(msg.payload)
+            self._send_fusion_context(ctx, msg.state_version)
+            return
         with self._lock:
             snapshot = self._snapshot()
         cb = self._broadcast_cb
@@ -496,16 +521,18 @@ class Orchestrator:
         with self._lock:
             if self._werewolf_fsm is None:
                 return
-            self._werewolf_fsm.handle_event(event)
+            msgs = self._werewolf_fsm.handle_event(event)
             snapshot = self._snapshot()
+        self._dispatch_fsm_messages(msgs)
         self._broadcast(snapshot)
 
     def _handle_werewolf_input(self, input_type: str, data: dict, player_id: str | None) -> None:
         with self._lock:
             if self._werewolf_fsm is None:
                 return
-            self._werewolf_fsm.handle_input(input_type, data, player_id)
+            msgs = self._werewolf_fsm.handle_input(input_type, data, player_id)
             snapshot = self._snapshot()
+        self._dispatch_fsm_messages(msgs)
         self._broadcast(snapshot)
 
     def _broadcast(self, snapshot: dict) -> None:

@@ -60,6 +60,7 @@ class WerewolfVisionPipeline:
         self._bridge = bridge
         self._players = players
         self._running = False
+        self._active = False  # start_werewolf_game() 호출 시 True로 전환
         self._frame_id = 0
 
         # 카드 파이프라인 (늑대인간 전용)
@@ -115,6 +116,9 @@ class WerewolfVisionPipeline:
                 except queue.Empty:
                     continue
 
+                if not self._active:
+                    continue  # 비활성 상태: 카메라 버퍼 소진만, ML 처리 스킵
+
                 if self._config.frame_skip > 0:
                     skip_counter += 1
                     if skip_counter <= self._config.frame_skip:
@@ -132,6 +136,9 @@ class WerewolfVisionPipeline:
 
     def stop(self) -> None:
         self._running = False
+
+    def set_active(self, enabled: bool) -> None:
+        self._active = enabled
 
     def update_players(self, players: list[Player]) -> None:
         """백엔드에서 플레이어 목록이 갱신될 때 호출."""
