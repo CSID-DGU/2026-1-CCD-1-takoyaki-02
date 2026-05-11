@@ -47,6 +47,7 @@ class VisionPipeline:
         self._bridge = bridge
         self._players = players
         self._running = False
+        self._active = True  # False이면 프레임 처리 스킵 (큐 소진만)
         self._frame_id = 0
 
         self._yolo = YoloDetector(
@@ -99,6 +100,9 @@ class VisionPipeline:
                 except queue.Empty:
                     continue
 
+                if not self._active:
+                    continue  # 비활성 상태: 큐 소진만, ML 처리 스킵
+
                 if self._config.frame_skip > 0:
                     skip_counter += 1
                     if skip_counter <= self._config.frame_skip:
@@ -121,6 +125,9 @@ class VisionPipeline:
 
     def stop(self) -> None:
         self._running = False
+
+    def set_active(self, enabled: bool) -> None:
+        self._active = enabled
 
     def update_players(self, players: list[Player]) -> None:
         self._players = players

@@ -55,7 +55,13 @@ async def lifespan(app: FastAPI):
         werewolf_runner.update_players(players)
         lobby_runner.update_players(players)
 
+    # 게임 모드 전환 시 활성 파이프라인 교체 (None = 로비)
+    def _on_game_switch(game_type: str | None) -> None:
+        vision_runner.set_active(game_type != "werewolf")
+        werewolf_runner.set_active(game_type == "werewolf")
+
     orchestrator.set_players_listener(_on_players_changed)
+    orchestrator.set_pipeline_switcher(_on_game_switch)
 
     yacht_queue = camera.subscribe()
     werewolf_queue = camera.subscribe()
