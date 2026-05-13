@@ -1,4 +1,4 @@
-"""VisionPipeline(요트)을 백그라운드 스레드로 실행하는 어댑터."""
+"""YachtVisionPipeline(요트)을 백그라운드 스레드로 실행하는 어댑터."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from vision.yacht.config import VisionConfig
 from vision.yacht.pipeline import VisionPipeline
 
 
-class VisionRunner:
+class YachtRunner:
     def __init__(self, config: VisionConfig, bridge: LocalBridge) -> None:
         self._config = config
         self._bridge = bridge
@@ -22,7 +22,7 @@ class VisionRunner:
         weights = Path(self._config.weights_path)
         if not weights.exists():
             print(
-                f"[vision_runner] 가중치 파일 없음: {weights} — "
+                f"[yacht_runner] 가중치 파일 없음: {weights} — "
                 "비전 파이프라인 없이 백엔드만 시작합니다."
             )
             return
@@ -36,10 +36,10 @@ class VisionRunner:
             target=self._pipeline.start,
             args=(frame_queue,),
             daemon=True,
-            name="vision-pipeline",
+            name="yacht-vision-pipeline",
         )
         self._thread.start()
-        print(f"[vision_runner] 요트 비전 파이프라인 시작 (weights={weights})")
+        print(f"[yacht_runner] 요트 비전 파이프라인 시작 (weights={weights})")
 
     def stop(self) -> None:
         if self._pipeline is not None:

@@ -20,7 +20,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from backend.lobby_runner import LobbyRunner
 from backend.orchestrator import Orchestrator
 from backend.routes.players import router as players_router
-from backend.vision_runner import VisionRunner
+from backend.yacht_runner import YachtRunner
 from backend.werewolf_runner import WerewolfRunner
 from backend.ws.tablet import manager as ws_manager
 from backend.ws.tablet import tablet_ws_handler
@@ -46,18 +46,18 @@ async def lifespan(app: FastAPI):
     bridge.on_game_event(orchestrator.handle_game_event)
 
     camera = CameraManager(source=0, resolution=(1920, 1080), fps=30)
-    vision_runner = VisionRunner(config=config, bridge=bridge)
+    yacht_runner = YachtRunner(config=config, bridge=bridge)
     werewolf_runner = WerewolfRunner(bridge=bridge)
     lobby_runner = LobbyRunner(bridge=bridge)
 
     def _on_players_changed(players: list) -> None:
-        vision_runner.update_players(players)
+        yacht_runner.update_players(players)
         werewolf_runner.update_players(players)
         lobby_runner.update_players(players)
 
     # 게임 모드 전환 시 활성 파이프라인 교체 (None = 로비)
     def _on_game_switch(game_type: str | None) -> None:
-        vision_runner.set_active(game_type != "werewolf")
+        yacht_runner.set_active(game_type != "werewolf")
         werewolf_runner.set_active(game_type == "werewolf")
 
     orchestrator.set_players_listener(_on_players_changed)
@@ -68,20 +68,20 @@ async def lifespan(app: FastAPI):
     lobby_queue = camera.subscribe()
 
     camera.start()
-    vision_runner.start(yacht_queue)
+    yacht_runner.start(yacht_queue)
     werewolf_runner.start(werewolf_queue)
     lobby_runner.start(lobby_queue)
 
     app.state.orchestrator = orchestrator
     app.state.camera = camera
-    app.state.vision_runner = vision_runner
+    app.state.yacht_runner = yacht_runner
     app.state.werewolf_runner = werewolf_runner
     app.state.lobby_runner = lobby_runner
 
     yield
 
     camera.stop()
-    vision_runner.stop()
+    yacht_runner.stop()
     werewolf_runner.stop()
     lobby_runner.stop()
 
