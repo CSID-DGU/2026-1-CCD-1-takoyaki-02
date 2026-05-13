@@ -1,4 +1,5 @@
-import { useState, useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { useWebSocket } from '../hooks/useWebSocket'
 import RoleRegistration from '../components/werewolf/RoleRegistration'
 import RoleRegShowCard from '../components/werewolf/RoleRegShowCard'
 import RoleRegConfirm from '../components/werewolf/RoleRegConfirm'
@@ -9,7 +10,6 @@ import VoteCountdown from '../components/werewolf/VoteCountdown'
 import VoteResult from '../components/werewolf/VoteResult'
 import GameEndWW from '../components/werewolf/GameEndWW'
 
-// 백엔드 night phase → roleId 매핑
 const NIGHT_PHASE_ROLES = {
   night_doppelganger: 'doppelganger',
   night_werewolf: 'werewolf',
@@ -22,6 +22,8 @@ const NIGHT_PHASE_ROLES = {
   night_insomniac: 'insomniac',
 }
 
+const normalizeRoleId = (id) => (id ?? '').replace(/_\d+$/, '')
+
 const loadingStyle = {
   minHeight: '100vh',
   background: '#0d1520',
@@ -32,50 +34,63 @@ const loadingStyle = {
   fontFamily: "'Segoe UI', sans-serif",
 }
 
-const normalizeRoleId = (id) => (id ?? '').replace(/_\d+$/, '')
-
-export default function WerewolfGame({ players, onLobby, onRestart, wsState, send }) {
-  const [localPhase, setLocalPhase] = useState('role_registration')
-  const [selectedRoles, setSelectedRoles] = useState([])
-  const [playerIndex, setPlayerIndex] = useState(0)
-  const [detectedRoleId, setDetectedRoleId] = useState(null)
-  const [gameSent, setGameSent] = useState(false)
-  // vote_result 전환 화면 표시용
+// wsState: /ws/tablet 상태 (gesture_confirmed 등 로비 이벤트용)
+export default function WerewolfGame({ players, onLobby, onRestart, wsState }) {
+  const { state: wwState, send } = useWebSocket('/ws/werewolf')
   const [showVoteResult, setShowVoteResult] = useState(false)
 
-  const gameState = wsState?.game_state
-  const backendPhase = gameState?.phase
+  // 역할 감지 상태: 백엔드 role_reg.detected_role 변화 추적
+  const [detectedRoleId, setDetectedRoleId] = useState(null)
+  const prevDetectedRef = useRef(null)
+  const prevPlayerRef = useRef(null)
 
-  // ── 백엔드 game_state가 도착하면 FSM 기반으로 렌더링 ──────────────────
+  const phase = wwState?.phase
+  const roleReg = wwState?.role_reg
 
-  if (gameState) {
-    // 야간 역할 안내
-    if (NIGHT_PHASE_ROLES[backendPhase]) {
+  useEffect(() => {
+    // 플레이어가 바뀌면 이전 감지 초기화
+    if (roleReg?.player_id !== prevPlayerRef.current) {
+      prevPlayerRef.current = roleReg?.player_id ?? null
+      prevDetectedRef.current = null
+      setDetectedRoleId(null)
+    }
+    // 새 역할 감지 시 상태 업데이트
+    const detected = roleReg?.detected_role
+    if (detected && detected !== prevDetectedRef.current) {
+      prevDetectedRef.current = detected
+      setDetectedRoleId(detected)
+    }
+  }, [roleReg?.player_id, roleReg?.detected_role])
+
+  // ── 게임 FSM 단계 ──────────────────────────────────────────────────────
+
+  if (phase && phase !== 'role_registration') {
+    if (NIGHT_PHASE_ROLES[phase]) {
       return (
         <NightRoleAnnounce
-          roleId={NIGHT_PHASE_ROLES[backendPhase]}
-          onComplete={() => {}}
+          roleId={NIGHT_PHASE_ROLES[phase]}
+          onComplete={() => send('start_now', {})}
         />
       )
     }
 
-    if (backendPhase === 'night_start') {
-      return <NightStart onComplete={() => {}} />
+    if (phase === 'night_start') {
+      return <NightStart onComplete={() => send('start_now', {})} />
     }
 
-    if (backendPhase === 'day_discussion') {
+    if (phase === 'day_discussion') {
       return (
         <DayDiscussion
-          timeLeft={gameState.timer_remaining}
+          timeLeft={wwState.timer_remaining}
           onAddTime={() => send('add_30_sec', {})}
           onVote={() => send('start_now', {})}
         />
       )
     }
 
-    if (backendPhase === 'vote') {
+    if (phase === 'vote') {
       const votes = Object.fromEntries(
-        (gameState.players ?? [])
+        (wwState.players ?? [])
           .filter(p => p.voted_for != null)
           .map(p => [p.player_id, p.voted_for])
       )
@@ -97,19 +112,19 @@ export default function WerewolfGame({ players, onLobby, onRestart, wsState, sen
       )
     }
 
-    if (backendPhase === 'result') {
+    if (phase === 'result') {
       const finalRoles = Object.fromEntries(
-        (gameState.players ?? []).map(p => [p.player_id, p.current_role])
+        (wwState.players ?? []).map(p => [p.player_id, p.current_role])
       )
       const handleEnd = (cb) => {
-        send('reset_game', {})
+        send('RESTART', {})
         cb()
       }
       return (
         <GameEndWW
           players={players}
           finalRoles={finalRoles}
-          winner={gameState.winner ?? 'village'}
+          winner={wwState.winner ?? 'village'}
           onLobby={() => handleEnd(onLobby)}
           onRestart={() => handleEnd(onRestart)}
         />
@@ -119,71 +134,54 @@ export default function WerewolfGame({ players, onLobby, onRestart, wsState, sen
     return <div style={loadingStyle}>게임 진행 중...</div>
   }
 
-  // ── 게임 시작 요청 후 백엔드 응답 대기 중 ────────────────────────────
+  // ── 역할 등록 단계 ─────────────────────────────────────────────────────
 
-  if (gameSent) {
-    return <div style={loadingStyle}>게임 준비 중...</div>
+  if (phase === 'role_registration') {
+    const currentPlayer = players.find(p => p.player_id === roleReg?.player_id)
+
+    // 역할 감지됨 → 확인 화면
+    if (detectedRoleId && currentPlayer) {
+      return (
+        <RoleRegConfirm
+          player={currentPlayer}
+          detectedRoleId={detectedRoleId}
+          wsState={wsState}
+          onConfirm={(selectedRole) => {
+            send('CONFIRM_ROLE', { role: selectedRole?.id ?? detectedRoleId }, currentPlayer.player_id)
+          }}
+        />
+      )
+    }
+
+    // 카드 스캔 화면
+    if (currentPlayer) {
+      return (
+        <RoleRegShowCard
+          player={currentPlayer}
+          onBack={() => {
+            send('RESTART', {})
+            onRestart()
+          }}
+          onExit={onRestart}
+          onDetected={(roleId) => setDetectedRoleId(roleId)}
+        />
+      )
+    }
   }
 
-  // ── 프리게임: 역할 등록 (로컬 단계) ─────────────────────────────────
+  // ── 초기: 역할 선택 ────────────────────────────────────────────────────
 
-  if (localPhase === 'role_registration') {
-    return (
-      <RoleRegistration
-        players={players}
-        onExit={onRestart}
-        onStart={(roles) => {
-          setSelectedRoles(roles)
-          setPlayerIndex(0)
-          setLocalPhase('role_reg_show_card')
-        }}
-      />
-    )
-  }
-
-  if (localPhase === 'role_reg_show_card') {
-    return (
-      <RoleRegShowCard
-        player={players[playerIndex]}
-        onBack={() => {
-          setDetectedRoleId(null)
-          setLocalPhase('role_registration')
-        }}
-        onExit={onRestart}
-        onDetected={(roleId) => {
-          setDetectedRoleId(roleId)
-          setLocalPhase('role_reg_confirm')
-        }}
-      />
-    )
-  }
-
-  if (localPhase === 'role_reg_confirm') {
-    return (
-      <RoleRegConfirm
-        player={players[playerIndex]}
-        detectedRoleId={detectedRoleId ?? selectedRoles[playerIndex]}
-        wsState={wsState}
-        onConfirm={() => {
-          const next = playerIndex + 1
-          if (next < players.length) {
-            setPlayerIndex(next)
-            setDetectedRoleId(null)
-            setLocalPhase('role_reg_show_card')
-          } else {
-            // 모든 플레이어 확인 완료 → 백엔드로 게임 시작 요청
-            const playerRoles = players.map((p, i) => ({
-              player_id: p.player_id,
-              role: normalizeRoleId(selectedRoles[i] ?? 'villager_1'),
-            }))
-            const centerRoles = selectedRoles.slice(players.length).map(normalizeRoleId)
-            send('start_werewolf_game', { player_roles: playerRoles, center_roles: centerRoles })
-            setGameSent(true)
-          }
-        }}
-      />
-    )
-  }
-
-  return <div style={loadingStyle}>게임 준비 중...</div>
+  return (
+    <RoleRegistration
+      players={players}
+      onExit={onRestart}
+      onStart={(roles) => {
+        const playerOrder = players.map(p => p.player_id)
+        send('START_ROLE_REGISTRATION', {
+          selected_roles: roles.map(normalizeRoleId),
+          player_order: playerOrder,
+        })
+      }}
+    />
+  )
 }
