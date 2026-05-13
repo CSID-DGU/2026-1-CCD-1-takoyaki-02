@@ -47,7 +47,7 @@ class VisionPipeline:
         self._bridge = bridge
         self._players = players
         self._running = False
-        self._active = True  # False이면 프레임 처리 스킵 (큐 소진만)
+        self._active = False  # 요트 게임 시작 시 True로 전환
         self._frame_id = 0
 
         self._yolo = YoloDetector(
