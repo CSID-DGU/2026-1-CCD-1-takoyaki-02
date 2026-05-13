@@ -25,7 +25,7 @@ export default function RoleRegistration({ players = [], onStart, onExit }) {
   const [selected, setSelected] = useState([])
   const [activeTeam, setActiveTeam] = useState('전체')
 
-  const needed = (players.length || 3) + 3
+  const needed = players.length + 3
   const done = selected.length === needed
 
   const selectedRoles = selected

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useWebSocket } from '../hooks/useWebSocket'
 
 const CATEGORY_LABELS = [
@@ -308,9 +308,12 @@ const s = {
 export default function YachtGame({ players, onExit, onChangePlayers }) {
   const { state, connected, messages, send } = useWebSocket('/ws/yacht')
   const [leaderboardOpen, setLeaderboardOpen] = useState(false)
+  const startedRef = useRef(false)
 
   useEffect(() => {
     if (!connected) return
+    if (startedRef.current) return
+    startedRef.current = true
     send('START_YACHT', { players: normalizePlayers(players) })
   }, [connected])
 
