@@ -57,7 +57,8 @@ async def lifespan(app: FastAPI):
 
     # 게임 모드 전환 시 활성 파이프라인 교체 (None = 로비)
     def _on_game_switch(game_type: str | None) -> None:
-        yacht_runner.set_active(game_type != "werewolf")
+        lobby_runner.set_active(game_type is None)
+        yacht_runner.set_active(game_type == "yacht")
         werewolf_runner.set_active(game_type == "werewolf")
 
     orchestrator.set_players_listener(_on_players_changed)
@@ -77,6 +78,7 @@ async def lifespan(app: FastAPI):
     app.state.yacht_runner = yacht_runner
     app.state.werewolf_runner = werewolf_runner
     app.state.lobby_runner = lobby_runner
+    app.state.pipeline_switcher = _on_game_switch
 
     yield
 
@@ -112,7 +114,7 @@ async def ws_tablet(websocket: WebSocket) -> None:
 @app.websocket("/ws/yacht")
 async def yacht_socket(websocket: WebSocket) -> None:
     await websocket.accept()
-    session = YachtSession(websocket)
+    session = YachtSession(websocket, app.state.pipeline_switcher)
     await session.send_hello()
 
     try:
@@ -120,13 +122,15 @@ async def yacht_socket(websocket: WebSocket) -> None:
             data = await websocket.receive_json()
             await session.handle_client_message(data)
     except WebSocketDisconnect:
+        app.state.pipeline_switcher(None)
         return
 
 
 class YachtSession:
-    def __init__(self, websocket: WebSocket) -> None:
+    def __init__(self, websocket: WebSocket, pipeline_switcher=None) -> None:
         self.websocket = websocket
         self.fsm: YachtFSM | None = None
+        self._pipeline_switcher = pipeline_switcher
 
     async def send_hello(self) -> None:
         await self.send(WSMessage.make_hello({"game_type": "yacht"}))
@@ -184,6 +188,8 @@ class YachtSession:
         await self.send(WSMessage.make_error("UNKNOWN_INPUT", f"알 수 없는 입력입니다: {input_type}"))
 
     async def start_game(self, payload: dict[str, Any]) -> None:
+        if self._pipeline_switcher is not None:
+            self._pipeline_switcher("yacht")
         players = normalize_players(payload.get("players"))
         self.fsm = YachtFSM(players)
         await self.send_many(self.fsm.start())
