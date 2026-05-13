@@ -1,3 +1,5 @@
+from copy import deepcopy
+
 from core.constants import MsgType
 from core.events import GameEvent
 from games.yacht import YachtEventType, YachtFSM, YachtInputType, YachtPhase
@@ -41,6 +43,20 @@ def test_roll_confirmed_moves_to_keep_before_third_roll():
     assert fsm.state.dice_values == [1, 2, 3, 4, 5]
     assert fsm.state.phase == YachtPhase.AWAITING_KEEP.value
     assert _messages_of(msgs, MsgType.STATE_UPDATE.value)
+
+
+def test_roll_confirmed_can_follow_previous_roll_without_reroll_request():
+    fsm = YachtFSM(["p1"])
+    fsm.start()
+
+    fsm.handle_event(_event(YachtEventType.ROLL_CONFIRMED.value, dice=[1, 2, 3, 4, 5]))
+    msgs = fsm.handle_event(_event(YachtEventType.ROLL_CONFIRMED.value, dice=[2, 2, 3, 4, 6]))
+    ctx = _messages_of(msgs, MsgType.FUSION_CONTEXT.value)[0].payload
+
+    assert fsm.state.roll_count == 2
+    assert fsm.state.dice_values == [2, 2, 3, 4, 6]
+    assert fsm.state.phase == YachtPhase.AWAITING_KEEP.value
+    assert YachtEventType.ROLL_CONFIRMED.value in ctx["expected_events"]
 
 
 def test_reroll_returns_to_awaiting_roll_with_same_player():
@@ -88,6 +104,23 @@ def test_score_selection_records_score_and_advances_player():
     assert fsm.state.current_player.player_id == "p2"
     assert fsm.state.phase == YachtPhase.AWAITING_ROLL.value
     assert _messages_of(msgs, MsgType.FUSION_CONTEXT.value)[0].payload["active_player"] == "p2"
+
+
+def test_restore_state_undoes_one_dice_roll():
+    fsm = YachtFSM(["p1", "p2"])
+    fsm.start()
+    previous_state = deepcopy(fsm.state)
+
+    fsm.handle_event(_event(YachtEventType.ROLL_CONFIRMED.value, dice=[1, 1, 3, 4, 6]))
+    msgs = fsm.restore_state(previous_state, "p1님의 주사위 굴림을 되돌렸습니다.")
+    ctx = _messages_of(msgs, MsgType.FUSION_CONTEXT.value)[0].payload
+
+    assert "ones" not in fsm.state.players[0].scores
+    assert fsm.state.current_player.player_id == "p1"
+    assert fsm.state.roll_count == 0
+    assert fsm.state.dice_values == []
+    assert fsm.state.phase == YachtPhase.AWAITING_ROLL.value
+    assert ctx["active_player"] == "p1"
 
 
 def test_unreadable_roll_waits_for_manual_resolution():

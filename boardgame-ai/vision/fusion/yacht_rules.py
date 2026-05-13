@@ -52,7 +52,7 @@ class YachtRules:
         """
         candidates: list[tuple[str, object, float]] = []
 
-        if ctx.fsm_state == PHASE_AWAITING_ROLL:
+        if ctx.fsm_state in (PHASE_AWAITING_ROLL, PHASE_AWAITING_KEEP):
             c = self._check_roll_event(perception, ctx)
             if c:
                 candidates.append(c)

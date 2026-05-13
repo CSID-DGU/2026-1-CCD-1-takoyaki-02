@@ -23,121 +23,256 @@ const DISPLAY_CATEGORIES = CATEGORY_LABELS.filter(([key]) => key !== 'bonus').ma
 const s = {
   page: {
     minHeight: '100vh',
-    background: '#f4f4f4',
-    color: '#111',
-    fontFamily: 'Arial, "Segoe UI", sans-serif',
-    padding: 24,
+    background: '#f6f7f4',
+    color: '#171917',
+    fontFamily: '"Segoe UI", Arial, sans-serif',
+    padding: 28,
     boxSizing: 'border-box',
   },
   shell: {
     width: 'min(1120px, calc(100vw - 48px))',
     minHeight: 600,
     margin: '0 auto',
-    background: '#fff',
-    border: '2px solid #555',
+    background: 'rgba(255,255,255,0.96)',
+    border: '1px solid #dfe3dc',
+    borderRadius: 10,
+    boxShadow: '0 18px 42px rgba(31,35,29,0.08)',
     display: 'grid',
     gridTemplateColumns: '1.05fr 0.95fr',
+    overflow: 'hidden',
   },
   header: {
     gridColumn: '1 / -1',
-    height: 66,
+    height: 72,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
     padding: '0 28px',
     boxSizing: 'border-box',
+    borderBottom: '1px solid #edf0ea',
   },
-  title: { fontSize: 21, fontWeight: 600 },
+  title: { fontSize: 22, fontWeight: 750, letterSpacing: 0 },
   headerActions: { display: 'flex', gap: 12 },
   button: {
-    border: 'none',
-    background: '#dedede',
-    color: '#111',
-    padding: '9px 17px',
-    fontSize: 18,
-    fontWeight: 600,
+    border: '1px solid #d6dbd3',
+    borderRadius: 8,
+    background: '#f7f8f5',
+    color: '#1c211a',
+    padding: '9px 16px',
+    fontSize: 16,
+    fontWeight: 700,
     cursor: 'pointer',
+  },
+  buttonDisabled: {
+    opacity: 0.45,
+    cursor: 'not-allowed',
   },
   buttonSmall: {
-    border: 'none',
-    background: '#e6e6e6',
-    color: '#111',
-    padding: '8px 13px',
-    fontSize: 17,
+    border: '1px solid #d6dbd3',
+    borderRadius: 8,
+    background: '#f7f8f5',
+    color: '#1c211a',
+    padding: '9px 14px',
+    fontSize: 15,
+    fontWeight: 700,
     cursor: 'pointer',
   },
-  main: { padding: '10px 28px 28px', boxSizing: 'border-box' },
-  turnRow: { display: 'flex', alignItems: 'center', gap: 28, marginBottom: 42 },
-  turnBadge: { background: '#d8d8d8', padding: '10px 18px', fontSize: 18 },
-  roundText: { fontSize: 18, fontWeight: 600 },
-  clips: { display: 'flex', gap: 7, alignItems: 'center', marginBottom: 22 },
+  primaryButton: {
+    background: '#1f7a4f',
+    borderColor: '#1f7a4f',
+    color: '#fff',
+    boxShadow: '0 8px 18px rgba(31,122,79,0.18)',
+  },
+  main: { padding: '28px', boxSizing: 'border-box' },
+  phaseText: {
+    color: '#8b9288',
+    width: 'min(1120px, calc(100vw - 48px))',
+    margin: '0 auto 10px',
+    fontSize: 12,
+    fontWeight: 800,
+    letterSpacing: 1,
+  },
+  turnRow: { display: 'flex', alignItems: 'center', gap: 16, marginBottom: 38 },
+  turnBadge: {
+    background: '#ecf4ed',
+    color: '#1f6f49',
+    border: '1px solid #d5e7d8',
+    borderRadius: 999,
+    padding: '10px 18px',
+    fontSize: 17,
+    fontWeight: 800,
+  },
+  roundText: { fontSize: 16, fontWeight: 750, color: '#555d52' },
+  clips: { display: 'flex', gap: 8, alignItems: 'center', marginBottom: 18, color: '#626a5f', fontWeight: 700 },
   clip: active => ({
-    width: 18,
-    height: 18,
+    width: 14,
+    height: 14,
     borderRadius: '50%',
-    background: active ? '#15bd42' : '#d9d9d9',
-    boxShadow: active ? 'inset 0 -2px 4px rgba(0,0,0,0.2)' : 'inset 0 2px 4px rgba(0,0,0,0.12)',
+    background: active ? '#1f7a4f' : '#dce1d9',
+    boxShadow: active ? '0 0 0 4px rgba(31,122,79,0.12)' : 'none',
   }),
   diceTray: {
     width: 365,
-    minHeight: 106,
-    background: '#d7d7d7',
+    minHeight: 118,
+    background: '#f0f2ee',
+    border: '1px solid #dfe3dc',
+    borderRadius: 10,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 18,
-    marginBottom: 16,
+    gap: 14,
+    marginBottom: 18,
   },
-  die: kept => ({
-    width: 44,
-    height: 44,
-    border: 'none',
-    background: kept ? '#18bf68' : '#bfbfbf',
+  die: (kept, interactive = false) => ({
+    width: 50,
+    height: 50,
+    border: kept ? '1px solid #1f7a4f' : '1px solid #d0d5cd',
+    borderRadius: 8,
+    background: kept ? '#1f7a4f' : '#fff',
+    color: kept ? '#fff' : '#1b1f19',
     fontSize: 21,
-    fontWeight: 700,
-    cursor: 'pointer',
+    fontWeight: 800,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    cursor: interactive ? 'pointer' : 'default',
+    boxShadow: kept ? '0 8px 16px rgba(31,122,79,0.16)' : '0 4px 10px rgba(31,35,29,0.05)',
   }),
-  hint: { marginTop: 54, fontSize: 18, lineHeight: 1.35 },
-  scoreWrap: { padding: '10px 28px 28px 0', boxSizing: 'border-box' },
-  scoreboard: { borderCollapse: 'collapse', width: '100%', fontSize: 15 },
-  th: { background: '#f2f1e9', textAlign: 'left', padding: '10px 12px', fontWeight: 700 },
-  tdName: { padding: '9px 12px', borderBottom: '1px solid #e4e4e4', fontWeight: 700 },
-  tdScore: { padding: '9px 12px', borderBottom: '1px solid #e4e4e4', textAlign: 'right' },
+  actionRow: { display: 'flex', gap: 10, flexWrap: 'wrap' },
+  rollMessage: {
+    marginTop: 42,
+    maxWidth: 430,
+    padding: '14px 16px',
+    border: '1px solid #dfe8db',
+    borderRadius: 10,
+    background: '#f7faf5',
+    color: '#364034',
+    fontSize: 16,
+    fontWeight: 650,
+    lineHeight: 1.45,
+  },
+  scoreWrap: {
+    padding: '28px 28px 28px 0',
+    boxSizing: 'border-box',
+  },
+  scoreHeader: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+    position: 'relative',
+  },
+  helpButton: {
+    width: 24,
+    height: 24,
+    borderRadius: '50%',
+    border: '1px solid #cfd6cc',
+    background: '#fff',
+    color: '#394237',
+    fontSize: 14,
+    fontWeight: 800,
+    cursor: 'help',
+    boxShadow: '0 3px 8px rgba(31,35,29,0.06)',
+    padding: 0,
+    flexShrink: 0,
+  },
+  scoreHelpPopover: {
+    position: 'absolute',
+    top: 32,
+    right: 0,
+    width: 400,
+    zIndex: 20,
+    padding: '16px 18px',
+    border: '1px solid #d8ded5',
+    borderRadius: 10,
+    background: '#fff',
+    boxShadow: '0 18px 42px rgba(31,35,29,0.16)',
+    color: '#273024',
+  },
+  helpList: {
+    display: 'grid',
+    gap: 7,
+    margin: 0,
+    padding: 0,
+    listStyle: 'none',
+    fontSize: 13,
+    lineHeight: 1.35,
+  },
+  helpItemName: {
+    display: 'inline-block',
+    minWidth: 104,
+    fontWeight: 800,
+    color: '#1f6f49',
+  },
+  scoreboard: {
+    borderCollapse: 'separate',
+    borderSpacing: 0,
+    width: '100%',
+    fontSize: 15,
+    overflow: 'hidden',
+    border: '1px solid #e2e6df',
+    borderRadius: 10,
+  },
+  th: { background: '#f4f6f1', textAlign: 'left', padding: '12px 14px', fontWeight: 800, color: '#343a31' },
+  tdName: { padding: '10px 14px', borderBottom: '1px solid #edf0ea', fontWeight: 700 },
+  tdScore: { padding: '10px 14px', borderBottom: '1px solid #edf0ea', textAlign: 'right', fontVariantNumeric: 'tabular-nums' },
   scoreRow: clickable => ({
     background: clickable ? '#dff0ff' : '#fff',
     cursor: clickable ? 'pointer' : 'default',
   }),
-  bonusRow: { background: '#eef8e5', color: '#477232', fontWeight: 700 },
+  bonusRow: { background: '#f3f8ef', color: '#4d7538', fontWeight: 800 },
+  bonusCell: {
+    display: 'flex',
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+    gap: 8,
+  },
+  bonusBadge: earned => ({
+    display: 'inline-flex',
+    alignItems: 'center',
+    height: 22,
+    padding: '0 8px',
+    borderRadius: 999,
+    background: earned ? '#1f7a4f' : '#e5eae2',
+    color: earned ? '#fff' : '#6a7167',
+    fontSize: 12,
+    fontWeight: 850,
+  }),
   totalRow: { fontWeight: 800 },
-  footerLine: { minHeight: 24, color: '#777', fontSize: 14, marginTop: 12 },
   modalShade: {
     position: 'fixed',
     inset: 0,
-    background: 'rgba(0,0,0,0.08)',
+    background: 'rgba(22,27,20,0.18)',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
+    backdropFilter: 'blur(2px)',
   },
   leaderboard: {
-    width: 'min(920px, calc(100vw - 64px))',
+    width: 'min(1280px, calc(100vw - 40px))',
     background: '#fff',
-    border: '2px solid #555',
+    border: '1px solid #dfe3dc',
+    borderRadius: 10,
+    overflow: 'hidden',
+    boxShadow: '0 20px 60px rgba(31,35,29,0.16)',
   },
   leaderboardHeader: {
-    height: 72,
-    background: '#d9d9d9',
+    height: 68,
+    background: '#f4f6f1',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    fontSize: 22,
+    fontSize: 20,
+    fontWeight: 800,
     position: 'relative',
+    borderBottom: '1px solid #e2e6df',
   },
   close: {
     position: 'absolute',
     right: 22,
-    top: 16,
-    color: 'red',
-    fontSize: 28,
+    top: 15,
+    color: '#6e766a',
+    fontSize: 24,
     border: 0,
     background: 'transparent',
     cursor: 'pointer',
@@ -147,7 +282,9 @@ const s = {
     minHeight: 560,
     margin: '0 auto',
     background: '#fff',
-    border: '2px solid #555',
+    border: '1px solid #dfe3dc',
+    borderRadius: 10,
+    boxShadow: '0 18px 42px rgba(31,35,29,0.08)',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
@@ -158,7 +295,9 @@ const s = {
   rankRow: {
     display: 'flex',
     justifyContent: 'space-between',
-    background: '#d9d9d9',
+    background: '#f4f6f1',
+    border: '1px solid #e2e6df',
+    borderRadius: 8,
     padding: '15px 22px',
     marginBottom: 14,
     fontSize: 22,
@@ -184,6 +323,14 @@ export default function YachtGame({ players, onExit, onChangePlayers }) {
     () => [...(state?.players || [])].sort((a, b) => b.total - a.total),
     [state],
   )
+  const statusMessage = useMemo(() => {
+    const latest = messages.find(m => m.msg_type === 'tts_play' || m.msg_type === 'error')
+    return latest?.payload?.text || latest?.payload?.message || state?.last_message
+  }, [messages, state?.last_message])
+  const canUndo = state?.can_undo ?? true
+  const canManualRoll =
+    ['AWAITING_ROLL', 'AWAITING_KEEP'].includes(state?.phase) &&
+    Number(state?.remaining_rolls || 0) > 0
 
   if (!state) {
     return (
@@ -225,14 +372,20 @@ export default function YachtGame({ players, onExit, onChangePlayers }) {
 
   return (
     <div style={s.page}>
-      <div style={{ color: '#b8b8b8', width: 'min(1120px, calc(100vw - 48px))', margin: '0 auto 8px' }}>
-        {state.phase === 'AWAITING_ROLL' ? 'AWAITING_ROLL' : 'SCORE_RECORDED'}
+      <div style={s.phaseText}>
+        {state.phase}
       </div>
       <div style={s.shell}>
         <header style={s.header}>
           <div style={s.title}>요트다이스</div>
           <div style={s.headerActions}>
-            <button style={s.button} onClick={() => send('RESTART')}>되돌리기</button>
+            <button
+              style={{ ...s.button, ...(canUndo ? {} : s.buttonDisabled) }}
+              onClick={() => send('UNDO_ROUND')}
+              disabled={!canUndo}
+            >
+              되돌리기
+            </button>
             <button style={s.button} onClick={onExit}>나가기</button>
           </div>
         </header>
@@ -252,9 +405,9 @@ export default function YachtGame({ players, onExit, onChangePlayers }) {
             {(state.dice_values?.length ? state.dice_values : ['-', '-', '-', '-', '-']).map((value, index) => (
               <button
                 key={index}
-                style={s.die(Boolean(state.keep_mask?.[index]))}
+                style={s.die(Boolean(state.keep_mask?.[index]), canToggleKeep(state))}
                 onClick={() => toggleKeep(index, state, send)}
-                disabled={!state.dice_values?.length}
+                disabled={!canToggleKeep(state)}
                 title="보관"
               >
                 {value}
@@ -262,33 +415,18 @@ export default function YachtGame({ players, onExit, onChangePlayers }) {
             ))}
           </div>
 
-          <div style={{ display: 'flex', gap: 12 }}>
+          <div style={s.actionRow}>
             <button style={s.buttonSmall} onClick={() => setLeaderboardOpen(true)}>리더보드 보기</button>
-            {state.phase === 'AWAITING_ROLL' && (
-              <button style={s.buttonSmall} onClick={() => send('ROLL_DICE')}>굴리기</button>
-            )}
-            {state.phase === 'AWAITING_KEEP' && (
-              <button
-                style={s.buttonSmall}
-                onClick={() => send('DICE_REROLL_REQUESTED', { keep_mask: state.keep_mask })}
-              >
-                다시 굴리기
-              </button>
+            {canManualRoll && (
+              <button style={{ ...s.buttonSmall, ...s.primaryButton }} onClick={() => send('ROLL_DICE')}>굴리기</button>
             )}
           </div>
 
-          <div style={s.hint}>
-            {state.phase === 'AWAITING_ROLL'
-              ? '미사용 족보: 검은 글씨 → 이미 사용했거나 불가능: 회색'
-              : '가능한 족보: 파란색 배경 → 클릭하면 점수 기록'}
-          </div>
+          <div style={s.rollMessage}>{statusMessage}</div>
         </main>
 
         <aside style={s.scoreWrap}>
           <ScoreTable state={state} currentOnly onScore={(category) => scoreCategory(category, state, send)} />
-          <div style={s.footerLine}>
-            {messages.find(m => m.msg_type === 'tts_play')?.payload?.text || state.last_message}
-          </div>
         </aside>
       </div>
 
@@ -313,7 +451,34 @@ export default function YachtGame({ players, onExit, onChangePlayers }) {
   )
 }
 
+function ScoreHelp() {
+  const rows = [
+    ['Aces-Sixes', '해당 눈의 주사위만 모두 더합니다'],
+    ['상단 보너스', 'Aces부터 Sixes 합계가 63점 이상이면 35점'],
+    ['Full House', '같은 눈 3개와 같은 눈 2개 조합이면 총합'],
+    ['4 of a Kind', '같은 눈 4개 이상이면 총합'],
+    ['S. Straight', '연속된 숫자 4개 이상이면 15점'],
+    ['L. Straight', '1-5 또는 2-6이면 30점'],
+    ['Yacht', '같은 눈 5개면 50점'],
+    ['Choice', '아무 조합이나 주사위 총합'],
+  ]
+
+  return (
+    <div style={s.scoreHelpPopover}>
+      <ul style={s.helpList}>
+        {rows.map(([name, desc]) => (
+          <li key={name}>
+            <span style={s.helpItemName}>{name}</span>
+            {desc}
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+}
+
 function ScoreTable({ state, currentOnly = false, compact = false, onScore }) {
+  const [scoreHelpOpen, setScoreHelpOpen] = useState(false)
   const players = currentOnly
     ? state.players.filter(player => player.player_id === state.current_player_id)
     : state.players
@@ -322,33 +487,67 @@ function ScoreTable({ state, currentOnly = false, compact = false, onScore }) {
   return (
     <table style={s.scoreboard}>
       <thead>
-        <tr><th colSpan="2" style={s.th}>점수판 · {player?.playername || '-'}</th></tr>
+        <tr>
+          <th colSpan="2" style={s.th}>
+            <div style={s.scoreHeader}>
+              <span>점수판 · {player?.playername || '-'}</span>
+              {!compact && (
+                <>
+                  <button
+                    style={s.helpButton}
+                    aria-label="족보 설명"
+                    onMouseEnter={() => setScoreHelpOpen(true)}
+                    onMouseLeave={() => setScoreHelpOpen(false)}
+                    onFocus={() => setScoreHelpOpen(true)}
+                    onBlur={() => setScoreHelpOpen(false)}
+                  >
+                    ?
+                  </button>
+                  {scoreHelpOpen && <ScoreHelp />}
+                </>
+              )}
+            </div>
+          </th>
+        </tr>
       </thead>
       <tbody>
         {CATEGORY_LABELS.map(([key, label]) => {
           if (key === 'bonus') {
             const subtotal = upperSubtotal(player?.scores || {})
+            const earned = subtotal >= 63
+            const remaining = Math.max(0, 63 - subtotal)
             return (
               <tr key={key} style={s.bonusRow}>
                 <td style={s.tdName}>{label}</td>
-                <td style={s.tdScore}>{Math.min(subtotal, 63)} / 63</td>
+                <td style={s.tdScore}>
+                  <div style={s.bonusCell}>
+                    <span>{subtotal} / 63</span>
+                    {!compact && (
+                      <span style={s.bonusBadge(earned)}>
+                        {earned ? '+35' : `${remaining}점 남음`}
+                      </span>
+                    )}
+                  </div>
+                </td>
               </tr>
             )
           }
 
           const score = player?.scores?.[key]
-          const available = state.available_categories?.includes(key)
+          const hasScore = score != null
+          const available = compact ? hasScore : state.available_categories?.includes(key)
           const canScore =
             !compact &&
             player?.player_id === state.current_player_id &&
             available &&
             state.dice_values?.length
+          const displayScore = hasScore ? score : (compact ? '—' : predictedScore(key, state))
 
           return (
             <tr key={key} style={s.scoreRow(canScore)} onClick={canScore ? () => onScore(key) : undefined}>
-              <td style={{ ...s.tdName, color: score == null && !available ? '#aaa' : '#111' }}>{label}</td>
-              <td style={{ ...s.tdScore, color: score == null ? '#999' : '#111' }}>
-                {score ?? predictedScore(key, state)}
+              <td style={{ ...s.tdName, color: !hasScore && !available ? '#aaa' : '#111' }}>{label}</td>
+              <td style={{ ...s.tdScore, color: hasScore ? '#111' : '#999' }}>
+                {displayScore}
               </td>
             </tr>
           )
@@ -376,8 +575,12 @@ function normalizePlayers(players) {
   }))
 }
 
+function canToggleKeep(state) {
+  return Boolean(state.dice_values?.length) && state.phase !== 'AWAITING_SCORE'
+}
+
 function toggleKeep(index, state, send) {
-  if (!state.dice_values?.length || state.phase === 'AWAITING_SCORE') return
+  if (!canToggleKeep(state)) return
   const keep = [...state.keep_mask]
   keep[index] = !keep[index]
   send('DICE_KEEP_SELECTED', { keep_mask: keep })

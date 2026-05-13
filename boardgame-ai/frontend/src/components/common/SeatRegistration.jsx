@@ -55,6 +55,17 @@ const s = {
     background: '#fff',
     cursor: 'pointer',
   },
+  saveBtn: {
+    fontSize: 12,
+    padding: '5px 10px',
+    border: '1px solid #111',
+    borderRadius: 6,
+    background: '#111',
+    color: '#fff',
+    cursor: 'pointer',
+    whiteSpace: 'nowrap',
+    flexShrink: 0,
+  },
   deleteBtn: {
     fontSize: 12,
     padding: '5px 10px',
@@ -63,6 +74,8 @@ const s = {
     background: '#fff',
     color: '#d44',
     cursor: 'pointer',
+    whiteSpace: 'nowrap',
+    flexShrink: 0,
   },
   addBtn: {
     alignSelf: 'center',
@@ -159,6 +172,8 @@ const s = {
     cursor: 'pointer',
     fontSize: 14,
     fontWeight: 500,
+    whiteSpace: 'nowrap',
+    flexShrink: 0,
   },
   nameInput: {
     width: '100%',
@@ -284,13 +299,7 @@ export default function SeatRegistration({
 
   const cancelRegistration = () => {
     if (!registeringId) return
-    const target = players.find((p) => p.player_id === registeringId)
-    const isTemp = !target || !target.playername
-    if (isTemp) {
-      send('player_remove', { player_id: registeringId })
-    } else {
-      send('cancel_seat_registration', {})
-    }
+    send('cancel_seat_registration', { player_id: registeringId })
   }
 
   const finalizePlayer = (player_id, name) => {
@@ -349,11 +358,11 @@ export default function SeatRegistration({
                     value={editName}
                     onChange={(e) => setEditName(e.target.value)}
                     onKeyDown={(e) => e.key === 'Enter' && confirmEdit(p.player_id)}
-                    style={{ ...s.nameInput, marginBottom: 0 }}
+                    style={{ ...s.nameInput, flex: 1, minWidth: 0, marginBottom: 0 }}
                     autoFocus
                     placeholder="이름 입력"
                   />
-                  <button style={s.primaryBtn} onClick={() => confirmEdit(p.player_id)}>
+                  <button style={s.saveBtn} onClick={() => confirmEdit(p.player_id)}>
                     저장
                   </button>
                   <button style={s.deleteBtn} onClick={() => deletePlayer(p.player_id)}>

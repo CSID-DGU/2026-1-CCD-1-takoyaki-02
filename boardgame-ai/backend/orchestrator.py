@@ -169,6 +169,9 @@ class Orchestrator:
             self._pm.remove_player(player_id)
             if self._pending_register_id == player_id:
                 self._pending_register_id = None
+            if self._pm.state.registering_player_id == player_id:
+                self._pm.state.registering_player_id = None
+                self._pm.state.pending_wrists = {}
             if (
                 self._pm.state.registering_player_id is None
                 and self._phase == CommonPhase.SEAT_REGISTER
@@ -185,16 +188,28 @@ class Orchestrator:
         with self._lock:
             return [p.to_dict() for p in self._pm.state.players]
 
-    def cancel_seat_registration(self) -> None:
+    def cancel_seat_registration(self, player_id: str | None = None) -> None:
         with self._lock:
+            target_id = player_id or self._pending_register_id or self._pm.state.registering_player_id
             self._pm.state.registering_player_id = None
             self._pm.state.pending_wrists = {}
             self._pending_register_id = None
             if self._phase == CommonPhase.SEAT_REGISTER:
                 self._phase = CommonPhase.PLAYER_SETUP
                 self._seat_step = "idle"
+            if target_id:
+                self._pm.state.players = [
+                    player
+                    for player in self._pm.state.players
+                    if not (
+                        player.player_id == target_id
+                        and not player.playername
+                        and player.seat_zone is None
+                    )
+                ]
             snapshot = self._snapshot()
         self._push_context(CommonPhase.PLAYER_SETUP)
+        self._notify_players()
         self._broadcast(snapshot)
 
     def start_seat_registration(self, player_id: str) -> None:
@@ -226,7 +241,7 @@ class Orchestrator:
             if pid:
                 self.start_seat_registration(pid)
         elif input_type == "cancel_seat_registration":
-            self.cancel_seat_registration()
+            self.cancel_seat_registration(data.get("player_id"))
         elif input_type == "player_add":
             name = data.get("playername", "")
             if name:
@@ -293,6 +308,9 @@ class Orchestrator:
             active_player=active_player,
             allowed_actors=allowed,
             expected_events=expected,
+            params={"gesture_stabilization_frames": 3}
+            if phase == CommonPhase.SEAT_REGISTER
+            else {},
         )
         self._send_fusion_context(ctx, self._state_version)
 

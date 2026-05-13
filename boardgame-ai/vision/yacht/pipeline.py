@@ -84,6 +84,7 @@ class VisionPipeline:
         self._last_event_data: dict | None = None
         self._event_banner_ttl: int = 0
         self._fsm_state_version: int = 0
+        self._has_context: bool = False
 
         self._bridge.on_fusion_context(self._on_fusion_context, game_type="yacht")
 
@@ -175,7 +176,7 @@ class VisionPipeline:
             "roll_state": self._roll_attributor.state.name,
         }
 
-        if frame_id % 30 == 0:
+        if frame_id % 30 == 0 and self._has_context:
             hand_info = [(h.handedness, h.player_id, h.gesture) for h in hands]
             dice_info = [(d.track_id, d.pip_count, d.stable_frames) for d in dice_states]
             print(
@@ -209,6 +210,7 @@ class VisionPipeline:
             cv2.imshow("VisionPipeline", vis)
 
     def _on_fusion_context(self, ctx: FusionContext, state_version: int) -> None:
+        self._has_context = True
         self._fusion.update_context(ctx)
         self._fsm_state_version = state_version
 

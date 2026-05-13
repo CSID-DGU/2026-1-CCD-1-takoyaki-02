@@ -43,7 +43,8 @@ async def lifespan(app: FastAPI):
     bridge.on_game_event(orchestrator.handle_game_event)
 
     camera = CameraManager(source=0, resolution=(1920, 1080), fps=30)
-    yacht_runner = YachtRunner(config=config, bridge=bridge)
+    # 비전 → 활성 YachtSession.fsm 라우터. LocalBridge에 자동 핸들러 등록됨.
+    yacht_runner = YachtRunner(config=config, bridge=bridge, loop=loop)
     werewolf_runner = WerewolfRunner(bridge=bridge)
     lobby_runner = LobbyRunner(bridge=bridge)
 
@@ -112,14 +113,23 @@ async def ws_tablet(websocket: WebSocket) -> None:
 @app.websocket("/ws/yacht")
 async def yacht_socket(websocket: WebSocket) -> None:
     await websocket.accept()
-    session = YachtSession(websocket, app.state.pipeline_switcher)
-    await session.send_hello()
+    session = YachtSession(
+        websocket=websocket,
+        pipeline_switcher=app.state.pipeline_switcher,
+        bridge=app.state.bridge,
+    )
+    # 비전 → 활성 세션 라우팅 활성화. send_hello/receive loop 어디서 예외가 나도
+    # finally에서 반드시 deregister 되도록 register 직후부터 try 진입.
+    app.state.yacht_runner.register_session(session)
     try:
+        await session.send_hello()
         while True:
             data = await websocket.receive_json()
             await session.handle_client_message(data)
     except WebSocketDisconnect:
         app.state.pipeline_switcher(None)
+    finally:
+        app.state.yacht_runner.deregister_session(session)
 
 
 @app.websocket("/ws/werewolf")
