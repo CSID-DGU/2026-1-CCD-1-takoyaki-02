@@ -31,7 +31,7 @@ from vision.yacht.config import VisionConfig
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
 
     bridge = LocalBridge()
     config = VisionConfig()

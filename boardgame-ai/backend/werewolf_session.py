@@ -83,9 +83,12 @@ class WerewolfSession:
     def get_vision_event_handler(self) -> Callable[[GameEvent, int], None]:
         """비전 스레드에서 호출될 동기 핸들러 반환. 이벤트를 asyncio 루프에 스케줄."""
         def handler(event: GameEvent, state_version: int) -> None:
-            asyncio.run_coroutine_threadsafe(
-                self._handle_vision_event(event), self._loop
-            )
+            try:
+                asyncio.run_coroutine_threadsafe(
+                    self._handle_vision_event(event), self._loop
+                )
+            except RuntimeError:
+                pass  # 루프 종료 후 호출 시 무시
         return handler
 
     # ── 역할 등록 (pre-game) ──────────────────────────────────────────────────
@@ -220,7 +223,10 @@ class WerewolfSession:
 
     async def _broadcast_msg(self, msg: WSMessage) -> None:
         """WerewolfFSM 타이머가 호출하는 broadcast 콜백."""
-        await self.send_many([msg])
+        try:
+            await self.send_many([msg])
+        except Exception:
+            pass  # disconnect 후 타이머가 남아 있을 때 조용히 종료
 
     async def send_many(self, messages: list[WSMessage]) -> None:
         for msg in messages:
