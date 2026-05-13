@@ -77,4 +77,3 @@ async def test_yacht_session_score_selection_clears_dice_undo_history():
     assert scored["current_player_id"] == "p2"
     assert scored["players"][0]["scores"] == {"ones": 2}
     assert scored["can_undo"] is False
-
