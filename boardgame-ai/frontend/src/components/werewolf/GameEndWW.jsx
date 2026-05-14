@@ -40,7 +40,7 @@ const WINNER_CONFIG = {
   },
 }
 
-export default function GameEndWW({ players = [], finalRoles = {}, winner = 'village', onLobby, onRestart }) {
+export default function GameEndWW({ players = [], finalRoles = {}, winner = 'village', onChangePlayers, onChangeGame, onRestart }) {
   const cfg = WINNER_CONFIG[winner] ?? WINNER_CONFIG.village
 
   return (
@@ -136,8 +136,11 @@ export default function GameEndWW({ players = [], finalRoles = {}, winner = 'vil
 
           {/* 하단 버튼 */}
           <div style={{ ...styles.btnRow, animation: 'fadeUp 0.5s ease-out 0.6s both' }}>
-            <button onClick={onLobby} style={styles.btnSecondary}>
-              로비
+            <button onClick={onChangePlayers} style={styles.btnSecondary}>
+              플레이어 변경
+            </button>
+            <button onClick={onChangeGame} style={styles.btnSecondary}>
+              게임 변경
             </button>
             <button onClick={onRestart} style={{ ...styles.btnPrimary, background: `linear-gradient(135deg, ${cfg.teamColor}, #8a5010)` }}>
               게임 재시작

@@ -7,6 +7,7 @@ import YachtGame from './pages/YachtGame'
 
 export default function App() {
   const [page, setPage] = useState('seat')
+  const [gameKey, setGameKey] = useState(0)
   const { state, connected, send } = useWebSocket('/ws/tablet')
 
   const players = state?.players ?? []
@@ -47,10 +48,12 @@ export default function App() {
   if (page === 'yacht') return <YachtGame players={gamePlayers} onExit={() => setPage('lobby')} onChangePlayers={() => setPage('seat')} />
   if (page === 'werewolf') return (
     <WerewolfGame
+      key={gameKey}
       players={gamePlayers}
       wsState={state}
-      onLobby={() => setPage('seat')}
-      onRestart={() => setPage('lobby')}
+      onChangePlayers={() => setPage('seat')}
+      onChangeGame={() => setPage('lobby')}
+      onRestart={() => setGameKey(k => k + 1)}
     />
   )
   return null
