@@ -35,7 +35,7 @@ const loadingStyle = {
 }
 
 // wsState: /ws/tablet 상태 (gesture_confirmed 등 로비 이벤트용)
-export default function WerewolfGame({ players, onLobby, onRestart, wsState }) {
+export default function WerewolfGame({ players, onChangePlayers, onChangeGame, onRestart, wsState }) {
   const { state: wwState, send } = useWebSocket('/ws/werewolf')
   const [showVoteResult, setShowVoteResult] = useState(false)
 
@@ -108,6 +108,7 @@ export default function WerewolfGame({ players, onLobby, onRestart, wsState }) {
           players={players}
           votes={votes}
           onComplete={() => setShowVoteResult(true)}
+          send={send}
         />
       )
     }
@@ -116,17 +117,15 @@ export default function WerewolfGame({ players, onLobby, onRestart, wsState }) {
       const finalRoles = Object.fromEntries(
         (wwState.players ?? []).map(p => [p.player_id, p.current_role])
       )
-      const handleEnd = (cb) => {
-        send('RESTART', {})
-        cb()
-      }
+      const resetAndCall = (cb) => { send('reset_game', {}); cb() }
       return (
         <GameEndWW
           players={players}
           finalRoles={finalRoles}
           winner={wwState.winner ?? 'village'}
-          onLobby={() => handleEnd(onLobby)}
-          onRestart={() => handleEnd(onRestart)}
+          onChangePlayers={() => resetAndCall(onChangePlayers)}
+          onChangeGame={() => resetAndCall(onChangeGame)}
+          onRestart={() => resetAndCall(onRestart)}
         />
       )
     }
