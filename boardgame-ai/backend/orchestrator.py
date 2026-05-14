@@ -12,6 +12,7 @@ import contextlib
 import threading
 from collections.abc import Callable
 
+from audio.manager import AudioManager
 from backend.state import build_state_snapshot
 from core.constants import CommonEventType, CommonPhase
 from core.envelope import WSMessage
@@ -36,6 +37,7 @@ class Orchestrator:
         self._pipeline_switcher: Callable[[str | None], None] | None = None
         self._werewolf_event_handler: Callable[[GameEvent, int], None] | None = None
         self._gesture_confirmed: str | None = None
+        self._audio_manager: AudioManager | None = None
 
     def set_broadcast(
         self,
@@ -56,6 +58,10 @@ class Orchestrator:
     ) -> None:
         """WerewolfSession이 활성화될 때 비전 이벤트 포워딩 핸들러 등록."""
         self._werewolf_event_handler = handler
+
+    def set_audio_manager(self, audio_manager: AudioManager) -> None:
+        """오디오 매니저 주입. 좌석 등록 완료/플레이어 변경 시 캐시 prewarm/wipe에 사용."""
+        self._audio_manager = audio_manager
 
     def _notify_players(self) -> None:
         if self._players_listener is None:
@@ -115,6 +121,28 @@ class Orchestrator:
         self._push_context(CommonPhase.PLAYER_SETUP)
         self._notify_players()
         self._broadcast(snapshot)
+        # 좌석 등록 완료 시점에 session prewarm 트리거(멱등). 매번 호출돼도
+        # session_id가 결정적이라 두 번째부터는 캐시 hit으로 무료.
+        self._prewarm_audio_session()
+
+    def _prewarm_audio_session(self) -> None:
+        if self._audio_manager is None:
+            return
+        names = [
+            p.playername for p in self._pm.state.players
+            if p.seat_zone is not None and p.playername
+        ]
+        if not names or self._loop is None:
+            return
+        # 비전 스레드에서 호출될 수 있으니 asyncio 루프에 스케줄.
+        asyncio.run_coroutine_threadsafe(
+            self._prewarm_audio_session_async(names), self._loop
+        )
+
+    async def _prewarm_audio_session_async(self, names: list[str]) -> None:
+        if self._audio_manager is None:
+            return
+        self._audio_manager.prewarm_session_async(names)
 
     def _handle_gesture_confirmed(self, event: GameEvent) -> None:
         actor_id = event.actor_id

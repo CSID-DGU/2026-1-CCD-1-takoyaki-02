@@ -13,7 +13,8 @@ uvicorn[standard]
 websockets
 
 # 오디오
-# (미정)
+google-cloud-texttospeech>=2.16
+aiofiles>=23.0
 
 # 유틸
 python-dotenv

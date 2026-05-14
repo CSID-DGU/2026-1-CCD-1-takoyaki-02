@@ -31,11 +31,23 @@ class ConnectionManager:
         self._connections = [c for c in self._connections if c is not ws]
 
     async def broadcast(self, snapshot: dict) -> None:
+        """state_update 봉투로 snapshot을 모든 클라이언트에 전송."""
         msg = json.dumps({"msg_type": "state_update", "state": snapshot})
+        await self._broadcast_raw(msg)
+
+    async def broadcast_message(self, message: dict) -> None:
+        """임의의 WSMessage(dict 직렬화 형태)를 모든 클라이언트에 전송.
+
+        AudioManager가 attach_broadcast로 활용할 수 있다. 좌석 등록 효과음 마이그레이션
+        (state.sound → sfx_play 메시지)은 M3에서 진행 예정.
+        """
+        await self._broadcast_raw(json.dumps(message))
+
+    async def _broadcast_raw(self, payload: str) -> None:
         dead: list[WebSocket] = []
         for ws in list(self._connections):
             try:
-                await ws.send_text(msg)
+                await ws.send_text(payload)
             except Exception:
                 dead.append(ws)
         for ws in dead:

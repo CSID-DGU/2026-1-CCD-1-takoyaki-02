@@ -7,7 +7,7 @@ import uuid
 from dataclasses import dataclass, field
 from typing import Any
 
-from core.audio import TTSRequest
+from core.audio import SFXRequest, TTSRequest
 from core.constants import MsgType
 from core.events import FusionContext, GameEvent
 
@@ -75,6 +75,53 @@ class WSMessage:
             payload={"playback_id": playback_id},
             state_version=state_version,
             msg_id=f"int_{uuid.uuid4().hex[:12]}",
+        )
+
+    @classmethod
+    def make_sfx_play(cls, request: SFXRequest, state_version: int = 0) -> WSMessage:
+        return cls(
+            msg_type=MsgType.SFX_PLAY.value,
+            payload=request.to_dict(),
+            state_version=state_version,
+            msg_id=f"sfx_{uuid.uuid4().hex[:12]}",
+        )
+
+    @classmethod
+    def make_bgm_play(
+        cls,
+        name: str,
+        audio_url: str,
+        loop: bool = True,
+        gain_db: float = -6.0,
+        fade_ms: int = 500,
+        state_version: int = 0,
+    ) -> WSMessage:
+        return cls(
+            msg_type=MsgType.BGM_PLAY.value,
+            payload={
+                "name": name,
+                "audio_url": audio_url,
+                "loop": loop,
+                "gain_db": gain_db,
+                "fade_ms": fade_ms,
+            },
+            state_version=state_version,
+            msg_id=f"bgm_{uuid.uuid4().hex[:12]}",
+        )
+
+    @classmethod
+    def make_bgm_duck(
+        cls,
+        on: bool,
+        attenuation_db: float = -12.0,
+        ramp_ms: int = 150,
+        state_version: int = 0,
+    ) -> WSMessage:
+        return cls(
+            msg_type=MsgType.BGM_DUCK.value,
+            payload={"on": on, "attenuation_db": attenuation_db, "ramp_ms": ramp_ms},
+            state_version=state_version,
+            msg_id=f"duck_{uuid.uuid4().hex[:12]}",
         )
 
     @classmethod

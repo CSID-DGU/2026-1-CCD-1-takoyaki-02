@@ -2,11 +2,28 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 
 const RECONNECT_DELAY_MS = 2000
 
-export function useWebSocket(path) {
+const AUDIO_MSG_TYPES = new Set([
+  'tts_play',
+  'tts_interrupt',
+  'sfx_play',
+  'bgm_play',
+  'bgm_duck',
+])
+
+/**
+ * useWebSocket(path, options?)
+ * options:
+ *   onAudioMessage(msg) — audio 관련 메시지 수신 시 호출. 기본은 no-op.
+ *                         보통 useAudioPlayer(send).enqueue를 넘김.
+ */
+export function useWebSocket(path, options = {}) {
+  const { onAudioMessage } = options
   const [state, setState] = useState(null)
   const [connected, setConnected] = useState(false)
   const [messages, setMessages] = useState([])
   const ws = useRef(null)
+  const onAudioRef = useRef(onAudioMessage)
+  useEffect(() => { onAudioRef.current = onAudioMessage }, [onAudioMessage])
 
   useEffect(() => {
     let destroyed = false
@@ -32,6 +49,9 @@ export function useWebSocket(path) {
           const msg = JSON.parse(e.data)
           setMessages(prev => [msg, ...prev].slice(0, 20))
           if (msg.msg_type === 'state_update') setState(msg.state ?? msg.payload)
+          if (AUDIO_MSG_TYPES.has(msg.msg_type) && onAudioRef.current) {
+            try { onAudioRef.current(msg) } catch (_) {}
+          }
         } catch (_) {}
       }
     }

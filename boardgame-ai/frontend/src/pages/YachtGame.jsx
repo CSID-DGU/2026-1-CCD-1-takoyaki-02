@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useWebSocket } from '../hooks/useWebSocket'
+import { audio as audioApi } from '../hooks/useAudioPlayer'
 
 const CATEGORY_LABELS = [
   ['ones', 'Aces'],
@@ -306,7 +307,9 @@ const s = {
 }
 
 export default function YachtGame({ players, onExit, onChangePlayers }) {
-  const { state, connected, messages, send } = useWebSocket('/ws/yacht')
+  const { state, connected, messages, send } = useWebSocket('/ws/yacht', {
+    onAudioMessage: audioApi.enqueue,
+  })
   const [leaderboardOpen, setLeaderboardOpen] = useState(false)
   const startedRef = useRef(false)
 

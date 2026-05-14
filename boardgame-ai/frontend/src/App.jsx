@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useWebSocket } from './hooks/useWebSocket'
+import { useAudioPlayer, audio as audioApi } from './hooks/useAudioPlayer'
 import SeatRegistration from './components/common/SeatRegistration'
 import Lobby from './pages/Lobby'
 import WerewolfGame from './pages/WerewolfGame'
@@ -7,7 +8,11 @@ import YachtGame from './pages/YachtGame'
 
 export default function App() {
   const [page, setPage] = useState('seat')
-  const { state, connected, send } = useWebSocket('/ws/tablet')
+  const { state, connected, send } = useWebSocket('/ws/tablet', {
+    onAudioMessage: audioApi.enqueue,
+  })
+  // App 레벨 싱글톤 audio. send를 넘겨 audio_ack가 backend로 흐르도록.
+  useAudioPlayer(send)
 
   const players = state?.players ?? []
   const gamePlayers = players.filter(p => p.playername && p.registered)

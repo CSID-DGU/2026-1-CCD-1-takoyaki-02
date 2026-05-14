@@ -10,10 +10,21 @@ from typing import Any
 
 from fastapi import WebSocket
 
+from audio.manager import AudioManager
 from bridge.local_bridge import LocalBridge
+from core.constants import MsgType
 from core.envelope import WSMessage
 from core.events import GameEvent
 from games.yacht import YachtEventType, YachtFSM, YachtGameState, YachtInputType
+
+# AudioManager가 가로채는 msg_type 집합. session.send()에서 분기 기준.
+_AUDIO_MSG_TYPES = {
+    MsgType.TTS_PLAY.value,
+    MsgType.TTS_INTERRUPT.value,
+    MsgType.SFX_PLAY.value,
+    MsgType.BGM_PLAY.value,
+    MsgType.BGM_DUCK.value,
+}
 
 
 class YachtSession:
@@ -22,12 +33,16 @@ class YachtSession:
         websocket: WebSocket,
         pipeline_switcher: Callable[[str | None], None] | None = None,
         bridge: LocalBridge | None = None,
+        audio_manager: AudioManager | None = None,
     ) -> None:
         self.websocket = websocket
         self.fsm: YachtFSM | None = None
         self.undo_stack: list[YachtGameState] = []
         self._pipeline_switcher = pipeline_switcher
         self._bridge = bridge
+        self._audio_manager = audio_manager
+        if audio_manager is not None:
+            audio_manager.attach_broadcast(self._send_raw, session_id=audio_manager.get_session_id())
         # FSM 상태 변경 직렬화 — 비전 스레드와 WS 스레드가 동시에 호출 가능
         self._fsm_lock = threading.Lock()
 
@@ -184,6 +199,14 @@ class YachtSession:
             await self.send(message)
 
     async def send(self, message: WSMessage) -> None:
+        """FSM이 만든 메시지를 라우팅. audio 관련은 AudioManager 거쳐 audio_url 채워진 후 broadcast."""
+        if message.msg_type in _AUDIO_MSG_TYPES and self._audio_manager is not None:
+            await self._audio_manager.handle_outbound(message)
+            return
+        await self._send_raw(message)
+
+    async def _send_raw(self, message: WSMessage) -> None:
+        """AudioManager가 합성 후 다시 부르는 콜백. 또는 audio가 아닌 일반 메시지 직송."""
         if message.msg_type == "state_update":
             message.payload["can_undo"] = bool(self.undo_stack)
         await self.websocket.send_json(message.to_dict())
