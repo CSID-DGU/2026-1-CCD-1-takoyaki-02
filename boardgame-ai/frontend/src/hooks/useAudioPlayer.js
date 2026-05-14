@@ -1,32 +1,30 @@
 /**
  * useAudioPlayer — 태블릿 브라우저 오디오 재생 싱글톤.
  *
- * M1 범위:
- * - HTML5 Audio API로 wav/mp3 재생.
- * - 단순 FIFO 큐 (우선순위는 M2에서 추가).
- * - iPad Safari autoplay 차단 우회: 첫 사용자 인터랙션 시 무음 unlock.
- * - 재생 완료 시 backend로 audio_ack 전송 (제공된 send 함수 사용).
+ * 모델: backend AudioManager가 ack-driven 푸시. 따라서 frontend는
+ * 한 번에 한 메시지만 받고 즉시 재생. 큐는 운영하지 않음 (backend가 큐).
  *
- * 사용:
- *   const audio = useAudioPlayer()   // App에 한 번만 마운트
- *   audio.enqueue(msg)               // 페이지/훅에서 호출
- *   audio.interrupt(playback_id)
- *
- * 메시지 형식: backend가 보내는 tts_play / sfx_play / bgm_play / bgm_duck WSMessage.
+ * 동작:
+ * - tts_play / sfx_play: audio_url 즉시 재생. ended 시 audio_ack 전송.
+ * - tts_interrupt: 현재 재생을 150ms fade-out 후 정지, audio_ack(status=interrupted).
+ * - bgm_play / bgm_duck: 별도 BGM Audio 인스턴스, TTS와 독립적 재생.
+ * - iPad Safari autoplay 차단 우회: 첫 user interaction에 무음 unlock.
  */
 
 import { useEffect, useRef } from 'react'
 
-// 모듈 레벨 싱글톤. React 컴포넌트가 리렌더돼도 같은 인스턴스.
+const FADE_OUT_MS = 150 // 인터럽트 시 음량 감쇠 시간. 너무 길면 다음 발화 지연됨.
+
 const player = {
-  queue: [],          // 대기 중인 audio 메시지
-  current: null,      // {playback_id, audio, type} 재생 중
-  audio: null,        // 재생용 Audio 인스턴스 (한 개 재사용)
-  unlocked: false,    // 사용자 인터랙션 이후 true
-  ackSenders: new Set(), // audio_ack를 보낼 send 함수 (여러 ws 대응)
+  current: null,       // {playback_id, type, t0, fadeTimer}
+  audio: null,         // 단일 재사용 Audio 인스턴스 (TTS/SFX 공용)
+  unlocked: false,
+  ackSenders: new Set(),
   bgmAudio: null,
   bgmGainDb: 0,
   duckGainDb: 0,
+  // backend가 다음을 푸시하기 전 우리에게 새 메시지가 빨리 오는 race 케이스용 슬롯
+  pendingNext: null,
 }
 
 function dbToGain(db) {
@@ -61,61 +59,112 @@ function sendAck(playback_id, status, t0) {
   for (const send of player.ackSenders) {
     try {
       send('audio_ack', data)
-    } catch (e) {
-      // 무시 — ws가 닫혔을 수 있음
-    }
+    } catch (_) {}
   }
 }
 
-async function playNext() {
-  if (player.current || player.queue.length === 0) return
-  const msg = player.queue.shift()
+async function playMessage(msg) {
   const payload = msg.payload || {}
   const audio_url = payload.audio_url
   const playback_id = payload.playback_id || `pb_${Math.random().toString(36).slice(2, 10)}`
+
   if (!audio_url) {
-    // 합성 실패한 text-only TTS. 그냥 ack만 보내고 다음으로.
+    // 합성 실패한 text-only — ack만 보내 backend 큐 진행.
     sendAck(playback_id, 'error', Date.now() / 1000)
-    setTimeout(playNext, 0)
     return
   }
 
   const el = ensureAudioElement()
+  el.volume = 1.0
   el.src = audio_url
   const t0 = Date.now() / 1000
-  player.current = { playback_id, type: msg.msg_type, t0 }
+  player.current = { playback_id, type: msg.msg_type, t0, fadeTimer: null }
 
-  // TTS 중에는 BGM 더킹
   if (msg.msg_type === 'tts_play') {
+    // TTS 중 BGM 더킹
     player.duckGainDb = -12
     applyBgmGain()
   }
 
-  const cleanup = (status) => {
-    player.current = null
-    if (msg.msg_type === 'tts_play') {
+  const onEnded = (status) => {
+    // 멱등성: 이미 인터럽트로 정리됐으면 무시
+    if (!player.current || player.current.playback_id !== playback_id) return
+    if (player.current.fadeTimer) {
+      clearInterval(player.current.fadeTimer)
+    }
+    if (player.current.type === 'tts_play') {
       player.duckGainDb = 0
       applyBgmGain()
     }
+    player.current = null
     sendAck(playback_id, status, t0)
-    setTimeout(playNext, 50)
+    // pending 메시지가 있으면 즉시 처리
+    if (player.pendingNext) {
+      const next = player.pendingNext
+      player.pendingNext = null
+      playMessage(next)
+    }
   }
 
-  el.onended = () => cleanup('played')
-  el.onerror = () => cleanup('error')
+  el.onended = () => onEnded('played')
+  el.onerror = () => onEnded('error')
 
   try {
     await el.play()
   } catch (err) {
-    // autoplay 차단 등. 큐 앞쪽에 다시 넣고 unlock 대기.
-    console.warn('audio.play() blocked:', err)
-    player.queue.unshift(msg)
-    player.current = null
-    if (msg.msg_type === 'tts_play') {
-      player.duckGainDb = 0
-      applyBgmGain()
-    }
+    // autoplay 차단 등. 일단 ack로 backend 진행시킴 (block 해제는 unlock에서).
+    onEnded('error')
   }
+}
+
+/**
+ * 현재 재생을 150ms fade-out 후 정지. ack(status=interrupted) 발행.
+ * 멱등: 이미 정리됐거나 다른 playback_id면 no-op.
+ */
+function fadeOutInterrupt(playback_id) {
+  if (!player.current) return
+  if (playback_id && player.current.playback_id !== playback_id) return
+
+  const cur = player.current
+  const el = player.audio
+  if (!el) {
+    // 안전망
+    player.current = null
+    sendAck(cur.playback_id, 'interrupted', cur.t0)
+    return
+  }
+
+  // 이미 fade 중이면 그대로 둠
+  if (cur.fadeTimer) return
+
+  const startVolume = el.volume
+  const startTime = performance.now()
+  cur.fadeTimer = setInterval(() => {
+    if (!player.current || player.current.playback_id !== cur.playback_id) {
+      clearInterval(cur.fadeTimer)
+      return
+    }
+    const elapsed = performance.now() - startTime
+    const ratio = Math.min(1, elapsed / FADE_OUT_MS)
+    el.volume = Math.max(0, startVolume * (1 - ratio))
+    if (ratio >= 1) {
+      clearInterval(cur.fadeTimer)
+      try { el.pause() } catch (_) {}
+      try { el.currentTime = 0 } catch (_) {}
+      el.volume = 1.0
+      if (cur.type === 'tts_play') {
+        player.duckGainDb = 0
+        applyBgmGain()
+      }
+      player.current = null
+      sendAck(cur.playback_id, 'interrupted', cur.t0)
+      if (player.pendingNext) {
+        const next = player.pendingNext
+        player.pendingNext = null
+        playMessage(next)
+      }
+    }
+  }, 16) // ~60fps ramp
 }
 
 function enqueue(msg) {
@@ -131,17 +180,25 @@ function enqueue(msg) {
   }
   if (t === 'tts_interrupt') {
     const pbid = (msg.payload || {}).playback_id
-    interrupt(pbid)
+    fadeOutInterrupt(pbid)
     return
   }
   if (t !== 'tts_play' && t !== 'sfx_play') return
-  player.queue.push(msg)
-  if (player.unlocked) {
-    playNext()
+  if (!player.unlocked) {
+    // unlock 전엔 슬롯에 보관, 첫 인터랙션 후 재생
+    player.pendingNext = msg
+    return
   }
+  if (player.current) {
+    // backend가 ack-driven이라 보통 도착 안 함. 도착하면 인터럽트 의도일 가능성 높음.
+    // 안전책: 슬롯에 넣고 현재 끝나면 처리.
+    player.pendingNext = msg
+    return
+  }
+  playMessage(msg)
 }
 
-function handleBgmPlay({ audio_url, loop = true, gain_db = -6, fade_ms = 500 }) {
+function handleBgmPlay({ audio_url, loop = true, gain_db = -6 }) {
   if (!audio_url) return
   const el = ensureBgmElement()
   el.src = audio_url
@@ -158,52 +215,26 @@ function handleBgmDuck({ on, attenuation_db = -12 }) {
   applyBgmGain()
 }
 
-function interrupt(playback_id) {
-  // 현재 재생 중이 일치하거나 playback_id 없으면 즉시 중단
-  if (!player.current) return
-  if (playback_id && player.current.playback_id !== playback_id) {
-    // 큐에서 제거
-    player.queue = player.queue.filter(
-      (m) => (m.payload || {}).playback_id !== playback_id,
-    )
-    return
-  }
-  if (player.audio) {
-    player.audio.pause()
-    // onended는 안 부르므로 수동 cleanup 트리거
-    const status = 'interrupted'
-    const t0 = player.current.t0
-    const pbid = player.current.playback_id
-    const type = player.current.type
-    player.current = null
-    if (type === 'tts_play') {
-      player.duckGainDb = 0
-      applyBgmGain()
-    }
-    sendAck(pbid, status, t0)
-    setTimeout(playNext, 0)
-  }
-}
-
 function unlock() {
   if (player.unlocked) return
   player.unlocked = true
-  // 무음 wav를 한 번 재생해 Safari/iPad의 autoplay 정책을 해제
   const el = ensureAudioElement()
   const prev = el.src
-  // 1-sample 무음 wav data URI
   el.src = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA='
   el.play().then(() => {
     el.pause()
     el.src = prev || ''
   }).catch(() => {})
-  // 큐에 남은 거 진행
-  setTimeout(playNext, 50)
+  // unlock 직전에 도착한 메시지 처리
+  if (player.pendingNext && !player.current) {
+    const next = player.pendingNext
+    player.pendingNext = null
+    playMessage(next)
+  }
 }
 
 /**
- * App에 한 번만 마운트되는 훅. send 함수(useWebSocket의 send)를 전달해
- * audio_ack가 backend로 가도록 함.
+ * App에 한 번만 마운트. send 함수(useWebSocket의 send)를 받아 audio_ack를 backend로.
  */
 export function useAudioPlayer(send) {
   const registered = useRef(false)
@@ -212,7 +243,6 @@ export function useAudioPlayer(send) {
       player.ackSenders.add(send)
       registered.current = true
     }
-    // 첫 사용자 인터랙션으로 unlock
     const onFirstInteraction = () => {
       unlock()
       window.removeEventListener('pointerdown', onFirstInteraction)
@@ -232,8 +262,7 @@ export function useAudioPlayer(send) {
     }
   }, [send])
 
-  return { enqueue, interrupt, unlock }
+  return { enqueue, interrupt: fadeOutInterrupt, unlock }
 }
 
-// 페이지/훅에서 useAudioPlayer 마운트 없이도 enqueue만 호출하고 싶을 때.
-export const audio = { enqueue, interrupt, unlock }
+export const audio = { enqueue, interrupt: fadeOutInterrupt, unlock }

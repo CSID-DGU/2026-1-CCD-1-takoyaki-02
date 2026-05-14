@@ -14,7 +14,7 @@ class AudioType(StrEnum):
 
 
 class AudioPriority(IntEnum):
-    CRITICAL = 1  # 규칙 위반
+    CRITICAL = 1  # 규칙 위반. 현재 재생 즉시 인터럽트(fade-out), 큐의 interruptible 항목 제거.
     HIGH = 2  # 템포
     NORMAL = 3  # 일반 멘트
     LOW = 4  # BGM

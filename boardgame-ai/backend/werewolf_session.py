@@ -61,6 +61,14 @@ class WerewolfSession:
         payload = dict(data.get("data", {}))
         player_id = data.get("player_id")
 
+        # frontend가 오디오 재생 끝/중단을 통보. AudioManager 큐 진행 트리거.
+        if input_type == "audio_ack" and self._audio_manager is not None:
+            pbid = str(payload.get("playback_id", ""))
+            status = str(payload.get("status", ""))
+            if pbid:
+                await self._audio_manager.handle_ack(pbid, status)
+            return
+
         if input_type == "START_ROLE_REGISTRATION":
             await self._start_role_registration(payload)
             return
