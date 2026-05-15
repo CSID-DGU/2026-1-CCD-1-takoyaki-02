@@ -1,7 +1,7 @@
 """요트다이스 전용 Fusion 규칙.
 
 event_type 문자열 상수만 여기서 정의.
-실제 FSM enum은 FSM 팀(강병진) 영역이므로 import 하지 않음 (core 규칙).
+실제 FSM enum은 FSM 팀 영역이므로 import 하지 않음 (core 규칙).
 
 지원 이벤트:
   ROLL_CONFIRMED  : 굴림 완료 + 모든 주사위 pip 확정 (정상 경로)

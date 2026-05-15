@@ -1,4 +1,4 @@
-from core.audio import AudioPriority, AudioType, TTSRequest
+from core.audio import AudioPriority, AudioType, SFXRequest, TTSRequest
 from core.constants import (
     DEFAULT_PARAMS,
     AgentRole,
@@ -26,6 +26,7 @@ __all__ = [
     "Player",
     "SeatZone",
     "TTSRequest",
+    "SFXRequest",
     "AudioType",
     "AudioPriority",
     "PlayerManager",

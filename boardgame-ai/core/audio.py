@@ -14,7 +14,7 @@ class AudioType(StrEnum):
 
 
 class AudioPriority(IntEnum):
-    CRITICAL = 1  # 규칙 위반
+    CRITICAL = 1  # 규칙 위반. 현재 재생 즉시 인터럽트(fade-out), 큐의 interruptible 항목 제거.
     HIGH = 2  # 템포
     NORMAL = 3  # 일반 멘트
     LOW = 4  # BGM
@@ -23,12 +23,14 @@ class AudioPriority(IntEnum):
 @dataclass
 class TTSRequest:
     text: str
-    audio_url: str | None = None  # 미리 캐시된 wav 경로
+    audio_url: str | None = None  # 미리 캐시된 wav 경로. AudioManager가 합성 후 채움.
     audio_type: AudioType = AudioType.TTS
     priority: AudioPriority = AudioPriority.NORMAL
     agent: str = "narrator"  # AgentRole.value
     interruptible: bool = True
     playback_id: str | None = None
+    sequence_id: str | None = None  # 같은 sequence는 ack 받기 전 다음 항목 대기
+    seq_index: int = 0
     state_version: int = 0
 
     def to_dict(self) -> dict[str, Any]:
@@ -40,6 +42,8 @@ class TTSRequest:
             "agent": self.agent,
             "interruptible": self.interruptible,
             "playback_id": self.playback_id,
+            "sequence_id": self.sequence_id,
+            "seq_index": self.seq_index,
             "state_version": self.state_version,
         }
 
@@ -53,5 +57,42 @@ class TTSRequest:
             agent=d.get("agent", "narrator"),
             interruptible=bool(d.get("interruptible", True)),
             playback_id=d.get("playback_id"),
+            sequence_id=d.get("sequence_id"),
+            seq_index=int(d.get("seq_index", 0)),
             state_version=int(d.get("state_version", 0)),
+        )
+
+
+@dataclass
+class SFXRequest:
+    name: str  # SFX_REGISTRY 키
+    audio_url: str | None = None
+    priority: AudioPriority = AudioPriority.NORMAL
+    interruptible: bool = True
+    playback_id: str | None = None
+    sequence_id: str | None = None
+    seq_index: int = 0
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "name": self.name,
+            "audio_url": self.audio_url,
+            "audio_type": AudioType.SFX.value,
+            "priority": self.priority.value,
+            "interruptible": self.interruptible,
+            "playback_id": self.playback_id,
+            "sequence_id": self.sequence_id,
+            "seq_index": self.seq_index,
+        }
+
+    @classmethod
+    def from_dict(cls, d: dict[str, Any]) -> SFXRequest:
+        return cls(
+            name=d["name"],
+            audio_url=d.get("audio_url"),
+            priority=AudioPriority(d.get("priority", AudioPriority.NORMAL.value)),
+            interruptible=bool(d.get("interruptible", True)),
+            playback_id=d.get("playback_id"),
+            sequence_id=d.get("sequence_id"),
+            seq_index=int(d.get("seq_index", 0)),
         )

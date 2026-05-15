@@ -11,6 +11,7 @@ def build_state_snapshot(
     registering_player_id: str | None = None,
     seat_step: str = "idle",
     sound: str | None = None,
+    sound_seq: int = 0,
     game_state: dict | None = None,
     gesture_confirmed: str | None = None,
 ) -> dict:
@@ -27,8 +28,9 @@ def build_state_snapshot(
             }
             for p in players
         ],
-        # 1회성 trigger: 프론트가 사운드 재생 후 무시
+        # 1회성 trigger: 프론트가 sound_seq 값 변경 감지 시 재생
         "sound": sound,
+        "sound_seq": sound_seq,
         # 1회성 trigger: OK 사인 감지 시 확인한 player_id
         "gesture_confirmed": gesture_confirmed,
     }

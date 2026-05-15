@@ -22,6 +22,9 @@ class MsgType(StrEnum):
     AGENT_MESSAGE = "agent_message"
     TTS_PLAY = "tts_play"
     TTS_INTERRUPT = "tts_interrupt"
+    SFX_PLAY = "sfx_play"
+    BGM_PLAY = "bgm_play"
+    BGM_DUCK = "bgm_duck"
     GAME_RESULT = "game_result"
     HELLO = "hello"
     ERROR = "error"
@@ -79,6 +82,8 @@ class InputType(StrEnum):
     RESTART = "restart"
     # 좌석 폴백
     MANUAL_SEAT_FALLBACK = "manual_seat_fallback"
+    # 오디오 재생 ack (frontend → backend)
+    AUDIO_ACK = "audio_ack"
 
 
 DEFAULT_PARAMS: dict[str, float | int] = {

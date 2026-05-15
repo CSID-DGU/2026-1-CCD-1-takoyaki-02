@@ -9,12 +9,22 @@ from typing import Any
 
 from fastapi import WebSocket
 
+from audio.manager import AudioManager
 from core.constants import MsgType
 from core.envelope import WSMessage
 from core.events import FusionContext, GameEvent
 from games.werewolf.fsm import WerewolfFSM
 from games.werewolf.ontology import WerewolfEventType, WerewolfInputType
 from games.werewolf.state import WerewolfPlayerState
+
+# AudioManager가 가로채는 msg_type 집합. yacht_session.py와 동일.
+_AUDIO_MSG_TYPES = {
+    MsgType.TTS_PLAY.value,
+    MsgType.TTS_INTERRUPT.value,
+    MsgType.SFX_PLAY.value,
+    MsgType.BGM_PLAY.value,
+    MsgType.BGM_DUCK.value,
+}
 
 
 def _normalize_role(role_id: str) -> str:
@@ -28,6 +38,7 @@ class WerewolfSession:
         send_fusion_context_fn: Callable[[FusionContext, int], None],
         loop: asyncio.AbstractEventLoop,
         pipeline_switcher: Callable[[str | None], None] | None = None,
+        audio_manager: AudioManager | None = None,
     ) -> None:
         self.websocket = websocket
         self._send_fusion_context = send_fusion_context_fn
@@ -36,6 +47,9 @@ class WerewolfSession:
         self._fsm: WerewolfFSM | None = None
         self._state_version: int = 0
         self._role_reg: dict | None = None
+        self._audio_manager = audio_manager
+        if audio_manager is not None:
+            audio_manager.attach_broadcast(self._send_raw, session_id=audio_manager.get_session_id())
 
     # ── 공개 인터페이스 ────────────────────────────────────────────────────────
 
@@ -46,6 +60,14 @@ class WerewolfSession:
         input_type = str(data.get("input_type", ""))
         payload = dict(data.get("data", {}))
         player_id = data.get("player_id")
+
+        # frontend가 오디오 재생 끝/중단을 통보. AudioManager 큐 진행 트리거.
+        if input_type == "audio_ack" and self._audio_manager is not None:
+            pbid = str(payload.get("playback_id", ""))
+            status = str(payload.get("status", ""))
+            if pbid:
+                await self._audio_manager.handle_ack(pbid, status)
+            return
 
         if input_type == "START_ROLE_REGISTRATION":
             await self._start_role_registration(payload)
@@ -222,7 +244,7 @@ class WerewolfSession:
         ))
 
     async def _broadcast_msg(self, msg: WSMessage) -> None:
-        """WerewolfFSM 타이머가 호출하는 broadcast 콜백."""
+        """WerewolfFSM 타이머가 호출하는 broadcast 콜백. audio 메시지도 여기서 흐를 수 있음."""
         try:
             await self.send_many([msg])
         except Exception:
@@ -237,4 +259,11 @@ class WerewolfSession:
                 await self.send(msg)
 
     async def send(self, message: WSMessage) -> None:
+        """audio 메시지면 AudioManager 거쳐 audio_url 채운 후 broadcast."""
+        if message.msg_type in _AUDIO_MSG_TYPES and self._audio_manager is not None:
+            await self._audio_manager.handle_outbound(message)
+            return
+        await self._send_raw(message)
+
+    async def _send_raw(self, message: WSMessage) -> None:
         await self.websocket.send_json(message.to_dict())
