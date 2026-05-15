@@ -20,11 +20,12 @@ export default function App() {
   const seatStep = state?.seat_step ?? 'idle'
 
   useEffect(() => {
+    // sound_seq가 바뀔 때마다 재생 (오른손/왼손 각각 트리거됨).
     if (state?.sound === 'registered') {
-      const audio = new Audio('/sounds/registered.mp3')
+      const audio = new Audio('/sfx/hand_register.mp3')
       audio.play().catch(() => {})
     }
-  }, [state?.sound])
+  }, [state?.sound_seq])
 
   if (page === 'seat') {
     return (

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useWebSocket } from '../hooks/useWebSocket'
-import { audio as audioApi } from '../hooks/useAudioPlayer'
+import { audio as audioApi, useAudioPlayer } from '../hooks/useAudioPlayer'
 import RoleRegistration from '../components/werewolf/RoleRegistration'
 import RoleRegShowCard from '../components/werewolf/RoleRegShowCard'
 import RoleRegConfirm from '../components/werewolf/RoleRegConfirm'
@@ -40,6 +40,8 @@ export default function WerewolfGame({ players, onLobby, onRestart, wsState }) {
   const { state: wwState, send } = useWebSocket('/ws/werewolf', {
     onAudioMessage: audioApi.enqueue,
   })
+  // /ws/werewolf 채널로도 audio_ack가 흐르도록 등록.
+  useAudioPlayer(send)
   const [showVoteResult, setShowVoteResult] = useState(false)
 
   // 역할 감지 상태: 백엔드 role_reg.detected_role 변화 추적

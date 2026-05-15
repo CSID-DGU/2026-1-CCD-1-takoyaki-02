@@ -104,9 +104,18 @@ def expand_session_lines(player_names: list[str]) -> list[tuple[str, str]]:
 # 키 → 정적 파일 경로. frontend는 audio_url로 접근.
 
 SFX_REGISTRY: dict[str, str] = {
-    "registered": "/sfx/registered.mp3",  # 좌석 등록 완료 (기존 호환 — frontend/public/sounds/)
-    # 각 게임 담당자가 자기 게임 SFX 키를 여기 추가.
-    # 파일은 audio/assets/sfx/ 에 두면 /sfx/<filename>로 서빙됨.
+    # 자산 파일 위치: audio/assets/sfx/<filename>. 서버가 /sfx/<filename>로 서빙.
+    "hand_register": "/sfx/hand_register.mp3",  # 좌석 등록 완료
+    "dice_roll": "/sfx/dice_roll.mp3",          # 주사위 굴림
+    "score_select": "/sfx/score_select.mp3",    # 점수판 카테고리 선택
+    "game_start": "/sfx/game_start.mp3",        # 게임 시작 알림
+    "game_end": "/sfx/game_end.mp3",            # 결과 발표 징글
+}
+
+# BGM 레지스트리. 자산 파일: audio/assets/bgm/<filename>. 서버 /bgm/<filename>.
+BGM_REGISTRY: dict[str, str] = {
+    "lobby_loop": "/bgm/lobby_loop.mp3",  # 로비/게임 진행 중 배경음 (loop)
+    "game_outro": "/bgm/game_outro.mp3",  # 우승자 발표 후 배경음
 }
 
 

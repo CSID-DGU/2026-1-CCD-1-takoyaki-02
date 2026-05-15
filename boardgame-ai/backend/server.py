@@ -145,6 +145,72 @@ def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
+# ── 오디오 디버그 엔드포인트 ────────────────────────────────────────────────────
+# 시스템 검증용. 게임 FSM이 사운드 트리거를 박기 전이라도 BGM/SFX/TTS가
+# 정상 작동하는지 확인할 수 있다. 브라우저에서 좌석 등록 → 게임 페이지(yacht)
+# 진입 후, 다른 탭에서 아래 URL 한 번씩 호출하면 태블릿 브라우저에서 들림.
+
+# stop은 /bgm/{name}보다 먼저 정의해야 정적 경로가 우선 매칭됨.
+@app.post("/debug/audio/bgm-stop")
+async def debug_bgm_stop() -> dict[str, str]:
+    """BGM 정지."""
+    await app.state.audio_manager.stop_bgm()
+    return {"status": "stopped"}
+
+
+@app.post("/debug/audio/bgm/{name}")
+async def debug_bgm_play(name: str) -> dict[str, str]:
+    """BGM 시작. name = 'lobby_loop' | 'game_outro' (catalog.BGM_REGISTRY 키)."""
+    await app.state.audio_manager.play_bgm(name)
+    return {"status": "ok", "bgm": name}
+
+
+@app.post("/debug/audio/sfx/{name}")
+async def debug_sfx_play(name: str) -> dict[str, str]:
+    """SFX 재생. name = catalog.SFX_REGISTRY 키 (hand_register/dice_roll/...)."""
+    pbid = await app.state.audio_manager.enqueue_sfx(name)
+    return {"status": "ok", "sfx": name, "playback_id": pbid}
+
+
+@app.post("/debug/audio/tts")
+async def debug_tts(text: str = "안녕하세요. 오디오 시스템 테스트입니다.") -> dict[str, str]:
+    """임의 문장 TTS 합성·재생. ?text= 쿼리로 문장 지정."""
+    pbid = await app.state.audio_manager.enqueue_tts(text=text)
+    return {"status": "ok", "text": text, "playback_id": pbid}
+
+
+@app.post("/debug/audio/scenario")
+async def debug_audio_scenario() -> dict[str, list[str]]:
+    """엔드투엔드 시나리오: BGM 시작 → SFX → TTS → CRITICAL 인터럽트.
+
+    실제 게임 흐름을 흉내 — TTS 재생 중 CRITICAL이 들어와 fade-out되는지
+    체감으로 확인 가능. 합성·네트워크 지연 고려해 충분히 기다린 후 인터럽트.
+    """
+    from core.audio import AudioPriority
+
+    mgr = app.state.audio_manager
+    log: list[str] = []
+    await mgr.stop_bgm()  # 이전 시나리오 잔재 정리
+    log.append("BGM 정지 (이전 잔재 정리)")
+    await mgr.play_bgm("lobby_loop")
+    log.append("BGM 시작 (lobby_loop)")
+    await mgr.enqueue_sfx("hand_register", priority=AudioPriority.HIGH)
+    log.append("SFX (hand_register)")
+    await mgr.enqueue_tts(
+        text="이것은 오디오 시스템 검증을 위한 일반 멘트입니다. 잠시 후 긴급 알림이 끼어듭니다.",
+    )
+    log.append("TTS (long)")
+    # 합성·다운로드·재생 시작 지연 + 충분한 청취 시간 확보. 4초 후 인터럽트.
+    import asyncio as _asyncio
+    await _asyncio.sleep(4.0)
+    await mgr.enqueue_tts(
+        text="긴급 알림입니다.",
+        priority=AudioPriority.CRITICAL,
+    )
+    log.append("CRITICAL TTS (현재 멘트 인터럽트되어야 함)")
+    return {"steps": log}
+
+
 @app.websocket("/ws/tablet")
 async def ws_tablet(websocket: WebSocket) -> None:
     await tablet_ws_handler(websocket, app.state.orchestrator)
@@ -171,6 +237,8 @@ async def yacht_socket(websocket: WebSocket) -> None:
         app.state.pipeline_switcher(None)
     finally:
         app.state.yacht_runner.deregister_session(session)
+        # 오디오 큐 정리 — 끊긴 세션이 ack 못 보내므로 _current가 stuck되는 것 방지.
+        app.state.audio_manager.detach_broadcast()
 
 
 @app.websocket("/ws/werewolf")
@@ -192,3 +260,4 @@ async def werewolf_socket(websocket: WebSocket) -> None:
     except WebSocketDisconnect:
         app.state.orchestrator.set_werewolf_event_handler(None)
         app.state.pipeline_switcher(None)
+        app.state.audio_manager.detach_broadcast()

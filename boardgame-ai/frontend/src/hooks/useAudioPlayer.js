@@ -185,13 +185,12 @@ function enqueue(msg) {
   }
   if (t !== 'tts_play' && t !== 'sfx_play') return
   if (!player.unlocked) {
-    // unlock 전엔 슬롯에 보관, 첫 인터랙션 후 재생
     player.pendingNext = msg
     return
   }
   if (player.current) {
-    // backend가 ack-driven이라 보통 도착 안 함. 도착하면 인터럽트 의도일 가능성 높음.
-    // 안전책: 슬롯에 넣고 현재 끝나면 처리.
+    // backend가 ack-driven이라 보통 안 오지만, CRITICAL 인터럽트 직후엔
+    // 진행 중인 fade-out과 새 메시지가 겹침. 슬롯에 저장하고 fade 끝나면 처리.
     player.pendingNext = msg
     return
   }
@@ -199,7 +198,15 @@ function enqueue(msg) {
 }
 
 function handleBgmPlay({ audio_url, loop = true, gain_db = -6 }) {
-  if (!audio_url) return
+  // 빈 audio_url은 정지 신호.
+  if (!audio_url) {
+    if (player.bgmAudio) {
+      try { player.bgmAudio.pause() } catch (_) {}
+      try { player.bgmAudio.currentTime = 0 } catch (_) {}
+      player.bgmAudio.src = ''
+    }
+    return
+  }
   const el = ensureBgmElement()
   el.src = audio_url
   el.loop = !!loop

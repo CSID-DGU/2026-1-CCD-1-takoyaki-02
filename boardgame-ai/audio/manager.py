@@ -4,7 +4,7 @@ M1 기능:
 - FSM의 tts_play/sfx_play를 가로채 합성/캐시 → audio_url 채워 broadcast.
 - 캐시 hit (static/session)이면 즉시, miss면 비동기 합성.
 - prewarm_session_async(): 좌석 등록 hook용 fire-and-forget.
-- enqueue_llm_line(): 승경팀 LLM 멘트 진입점.
+- enqueue_llm_line(): LLM 멘트 진입점.
 
 M2 추가:
 - 우선순위 큐 (priority 오름차순, 동순위는 도착순).
@@ -63,6 +63,7 @@ class _QueueItem:
     interruptible: bool
     sequence_id: str | None = None
     seq_index: int = 0
+    state_version: int = 0  # FSM 진행 단계. 사용자가 다음 단계 가면 옛 항목은 stale.
 
 
 class AudioManager:
@@ -101,8 +102,16 @@ class AudioManager:
         logger.info("AudioManager broadcast attached (session_id=%s)", session_id)
 
     def detach_broadcast(self) -> None:
+        """세션 disconnect 시 호출. 큐·현재 재생 모두 정리해 다음 세션이 깨끗하게 시작.
+
+        끊긴 세션이 frontend ack을 보낼 수 없으므로 _current를 그대로 두면
+        새 세션에서도 큐 진행이 막힘. 강제 비움.
+        """
         self._broadcast = None
         self._active_session_id = None
+        self._current = None
+        self._queue.clear()
+        logger.info("AudioManager broadcast detached + queue cleared")
 
     def get_session_id(self) -> str | None:
         return self._active_session_id
@@ -164,6 +173,7 @@ class AudioManager:
             interruptible=request.interruptible,
             sequence_id=request.sequence_id,
             seq_index=request.seq_index,
+            state_version=request.state_version,
         )
         await self._enqueue(item)
 
@@ -184,9 +194,31 @@ class AudioManager:
         await self._enqueue(item)
 
     async def _enqueue(self, item: _QueueItem) -> None:
-        """큐에 항목 삽입. CRITICAL이면 현재 재생 인터럽트."""
+        """큐에 항목 삽입. CRITICAL이면 현재 재생 인터럽트.
+
+        새 state_version의 항목이 들어오면 큐의 옛 interruptible 항목은 자동 폐기.
+        사용자가 게임 흐름을 빠르게 진행시킬 때 옛 안내가 쌓이지 않게 함.
+        """
         self._queue.append(item)
         self._queue.sort(key=lambda q: (q.priority, q.seq_arrival))
+
+        # 새 진행 단계(state_version) 도착 → 큐의 stale interruptible 항목 폐기 +
+        # 재생 중 항목이 stale이고 interruptible이면 fade-out 인터럽트.
+        # 정책: 일반 진행 멘트(NORMAL/HIGH)에만 적용. CRITICAL은 항상 보존.
+        if item.state_version > 0 and item.priority != AudioPriority.CRITICAL:
+            self._drop_stale_versions(item.state_version)
+            if (
+                self._current is not None
+                and self._current.interruptible
+                and self._current.priority != AudioPriority.CRITICAL
+                and self._current.state_version > 0
+                and self._current.state_version < item.state_version
+            ):
+                logger.info(
+                    "interrupting stale current playback (v=%d < %d)",
+                    self._current.state_version, item.state_version,
+                )
+                await self._interrupt_current("stale_state_version")
 
         if (
             item.priority == AudioPriority.CRITICAL
@@ -198,6 +230,22 @@ class AudioManager:
             self._drop_interruptible_from_queue()
 
         await self._maybe_push_next()
+
+    def _drop_stale_versions(self, current_version: int) -> None:
+        """현재보다 오래된 state_version의 interruptible 항목을 큐에서 제거."""
+        before = len(self._queue)
+        self._queue = [
+            q for q in self._queue
+            if (q.state_version >= current_version)
+            or (not q.interruptible)
+            or (q.priority == AudioPriority.CRITICAL)
+        ]
+        dropped = before - len(self._queue)
+        if dropped:
+            logger.info(
+                "queue: dropped %d stale items (state_version < %d)",
+                dropped, current_version,
+            )
 
     def _drop_interruptible_from_queue(self) -> None:
         """interruptible=True 항목만 큐에서 제거. CRITICAL/non-interruptible은 보존."""
@@ -361,6 +409,35 @@ class AudioManager:
         assert req.playback_id is not None
         return req.playback_id
 
+    async def play_bgm(
+        self,
+        name: str,
+        loop: bool = True,
+        gain_db: float = -6.0,
+        fade_ms: int = 500,
+    ) -> None:
+        """BGM 트랙 시작 (또는 교체). 큐 외부, 항상 즉시 broadcast.
+
+        TTS와 동시 재생되며 TTS 시작 시 자동으로 ducking됨.
+        """
+        from audio.catalog import BGM_REGISTRY
+
+        audio_url = BGM_REGISTRY.get(name)
+        if audio_url is None:
+            logger.warning("play_bgm: unknown BGM name=%r", name)
+            return
+        msg = WSMessage.make_bgm_play(
+            name=name, audio_url=audio_url, loop=loop, gain_db=gain_db, fade_ms=fade_ms,
+        )
+        await self._send(msg)
+
+    async def stop_bgm(self, fade_ms: int = 500) -> None:
+        """BGM 정지. 빈 audio_url로 bgm_play를 보내 frontend가 멈춤 처리."""
+        msg = WSMessage.make_bgm_play(
+            name="", audio_url="", loop=False, gain_db=-60.0, fade_ms=fade_ms,
+        )
+        await self._send(msg)
+
     async def enqueue_llm_line(
         self,
         agent: str,
@@ -369,7 +446,7 @@ class AudioManager:
         sequence_id: str | None = None,
         seq_index: int = 0,
     ) -> str:
-        """LLM 멀티에이전트 멘트 진입점 (승경팀용)."""
+        """LLM 멀티에이전트 멘트 진입점."""
         return await self.enqueue_tts(
             text=text,
             agent=agent,
