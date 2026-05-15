@@ -1,7 +1,8 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 
-export default function VoteCountdown({ players = [], votes = {}, onComplete }) {
+export default function VoteCountdown({ players = [], votes = {}, onComplete, send }) {
   // votes: { player_id: target_player_id } — 지목 완료된 플레이어 매핑
+  const [selectedVoter, setSelectedVoter] = useState(null)
 
   const doneCount = Object.keys(votes).length
   const total = players.length
@@ -10,6 +11,21 @@ export default function VoteCountdown({ players = [], votes = {}, onComplete }) 
   useEffect(() => {
     if (allDone) onComplete?.()
   }, [allDone])
+
+  const handleCardClick = (playerId) => {
+    if (!send) return
+    if (!selectedVoter) {
+      // 이미 투표 완료된 플레이어는 투표자로 선택 불가
+      if (votes[playerId] !== undefined) return
+      setSelectedVoter(playerId)
+    } else if (selectedVoter === playerId) {
+      // 같은 카드 재클릭 → 선택 취소
+      setSelectedVoter(null)
+    } else {
+      send('werewolf_vote_player', { player_id: selectedVoter, target_id: playerId })
+      setSelectedVoter(null)
+    }
+  }
 
   return (
     <>
@@ -69,8 +85,23 @@ export default function VoteCountdown({ players = [], votes = {}, onComplete }) 
 
         {/* 안내 텍스트 */}
         <div style={styles.guideBox}>
-          <div style={styles.guideLine}>지목할 플레이어를 손가락으로 가리키세요.</div>
-          <div style={styles.guideLineSub}>자기 자신 지목은 기권입니다.</div>
+          {selectedVoter ? (
+            <>
+              <div style={styles.guideLine}>
+                지목할 상대를 선택하세요.
+              </div>
+              <div style={styles.guideLineSub}>
+                투표자: <span style={{ color: '#ff9980', fontWeight: 700 }}>
+                  {players.find(p => p.player_id === selectedVoter)?.playername}
+                </span>　|　카드를 다시 누르면 취소
+              </div>
+            </>
+          ) : (
+            <>
+              <div style={styles.guideLine}>지목할 플레이어를 손가락으로 가리키세요.</div>
+              <div style={styles.guideLineSub}>직접 선택: 투표자 카드를 먼저 누르세요. 자기 자신 지목은 기권입니다.</div>
+            </>
+          )}
         </div>
 
         {/* 진행 현황 */}
@@ -82,24 +113,33 @@ export default function VoteCountdown({ players = [], votes = {}, onComplete }) 
         <div style={styles.grid}>
           {players.map((p, i) => {
             const done = votes[p.player_id] !== undefined
+            const isSelected = selectedVoter === p.player_id
+            const clickable = send && (!done || !!selectedVoter)
+            const cardStyle = {
+              ...styles.card,
+              ...(isSelected ? styles.cardSelected : done ? styles.cardDone : styles.cardPending),
+              cursor: clickable ? 'pointer' : 'default',
+            }
             return (
               <div
                 key={p.player_id}
-                style={{ ...styles.card, ...(done ? styles.cardDone : styles.cardPending) }}
-                // 딜레이로 순서대로 등장
+                style={cardStyle}
+                onClick={() => handleCardClick(p.player_id)}
               >
                 {/* 번호 */}
-                <div style={{ ...styles.cardNum, color: done ? '#ff9980' : 'rgba(245,200,190,0.4)' }}>
+                <div style={{ ...styles.cardNum, color: isSelected ? '#ffe0b2' : done ? '#ff9980' : 'rgba(245,200,190,0.4)' }}>
                   {String(i + 1).padStart(2, '0')}
                 </div>
 
                 {/* 이름 */}
-                <div style={{ ...styles.cardName, color: done ? '#fff' : 'rgba(245,200,190,0.6)' }}>
+                <div style={{ ...styles.cardName, color: isSelected ? '#fff' : done ? '#fff' : 'rgba(245,200,190,0.6)' }}>
                   {p.playername}
                 </div>
 
                 {/* 상태 뱃지 */}
-                {done ? (
+                {isSelected ? (
+                  <div style={styles.badgeSelected}>선택됨</div>
+                ) : done ? (
                   <div style={styles.badgeDone}>
                     <span style={{ animation: 'checkPop 0.3s ease-out both' }}>✓</span> 완료
                   </div>
@@ -235,6 +275,12 @@ const styles = {
     boxShadow: '0 0 14px rgba(200,60,30,0.2)',
   },
 
+  cardSelected: {
+    background: 'rgba(255,140,60,0.22)',
+    border: '2px solid rgba(255,180,80,0.8)',
+    boxShadow: '0 0 20px rgba(255,140,60,0.35)',
+  },
+
   cardNum: {
     fontSize: 12,
     fontWeight: 700,
@@ -260,6 +306,15 @@ const styles = {
     fontSize: 13,
     color: 'rgba(245,200,190,0.4)',
     background: 'rgba(0,0,0,0.2)',
+    borderRadius: 20,
+    padding: '4px 14px',
+  },
+
+  badgeSelected: {
+    fontSize: 13,
+    fontWeight: 700,
+    color: '#ffe0b2',
+    background: 'rgba(255,140,60,0.35)',
     borderRadius: 20,
     padding: '4px 14px',
   },
