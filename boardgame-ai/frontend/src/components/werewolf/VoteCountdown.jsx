@@ -22,7 +22,7 @@ export default function VoteCountdown({ players = [], votes = {}, onComplete, se
       // 같은 카드 재클릭 → 선택 취소
       setSelectedVoter(null)
     } else {
-      send('werewolf_vote_player', { player_id: selectedVoter, target_id: playerId })
+      send('werewolf_vote_player', { target_id: playerId }, selectedVoter)
       setSelectedVoter(null)
     }
   }

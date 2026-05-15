@@ -10,6 +10,7 @@ import DayDiscussion from '../components/werewolf/DayDiscussion'
 import VoteCountdown from '../components/werewolf/VoteCountdown'
 import VoteResult from '../components/werewolf/VoteResult'
 import GameEndWW from '../components/werewolf/GameEndWW'
+import PhaseTransition from '../components/werewolf/PhaseTransition'
 
 const NIGHT_PHASE_ROLES = {
   night_doppelganger: 'doppelganger',
@@ -35,6 +36,17 @@ const loadingStyle = {
   fontFamily: "'Segoe UI', sans-serif",
 }
 
+const NIGHT_PHASES = new Set(['night_start', ...Object.keys(NIGHT_PHASE_ROLES)])
+
+function getTransitionType(from, to) {
+  if (!from || !to) return null
+  if (NIGHT_PHASES.has(from) && NIGHT_PHASES.has(to)) return 'eye_close'
+  if (NIGHT_PHASES.has(from) && to === 'day_discussion')  return 'dawn'
+  if (from === 'day_discussion'  && to === 'vote')        return 'red_vignette'
+  if (from === 'vote'            && to === 'result')      return 'flash_fade'
+  return 'fade'
+}
+
 // wsState: /ws/tablet 상태 (gesture_confirmed 등 로비 이벤트용)
 export default function WerewolfGame({ players, onChangePlayers, onChangeGame, onRestart, wsState }) {
   const { state: wwState, send } = useWebSocket('/ws/werewolf', {
@@ -48,6 +60,13 @@ export default function WerewolfGame({ players, onChangePlayers, onChangeGame, o
   const [detectedRoleId, setDetectedRoleId] = useState(null)
   const prevDetectedRef = useRef(null)
   const prevPlayerRef = useRef(null)
+
+  // 트랜지션 상태
+  const [transitioning, setTransitioning] = useState(false)
+  const [transitionType, setTransitionType] = useState('fade')
+  const [transitionKey, setTransitionKey] = useState(0)
+  const [displayedPhase, setDisplayedPhase] = useState(null)
+  const prevPhaseRef = useRef(null)
 
   const phase = wwState?.phase
   const roleReg = wwState?.role_reg
@@ -67,23 +86,42 @@ export default function WerewolfGame({ players, onChangePlayers, onChangeGame, o
     }
   }, [roleReg?.player_id, roleReg?.detected_role])
 
-  // ── 게임 FSM 단계 ──────────────────────────────────────────────────────
+  // phase가 바뀌면 트랜지션 시작
+  useEffect(() => {
+    if (!phase || phase === 'role_registration') return
+    const from = prevPhaseRef.current
+    const to = phase
+    prevPhaseRef.current = to
 
-  if (phase && phase !== 'role_registration') {
-    if (NIGHT_PHASE_ROLES[phase]) {
+    const type = getTransitionType(from, to)
+    if (!type) {
+      setDisplayedPhase(to)
+      return
+    }
+    if (from) setDisplayedPhase(from)
+    setTransitionType(type)
+    setTransitionKey(k => k + 1)
+    setTransitioning(true)
+  }, [phase])
+
+  // ── 게임 FSM 단계 렌더링 ──────────────────────────────────────────────
+  const renderGamePhase = (ph) => {
+    if (!ph) return <div style={loadingStyle}>게임 진행 중...</div>
+
+    if (NIGHT_PHASE_ROLES[ph]) {
       return (
         <NightRoleAnnounce
-          roleId={NIGHT_PHASE_ROLES[phase]}
+          roleId={NIGHT_PHASE_ROLES[ph]}
           onComplete={() => send('start_now', {})}
         />
       )
     }
 
-    if (phase === 'night_start') {
+    if (ph === 'night_start') {
       return <NightStart onComplete={() => send('start_now', {})} />
     }
 
-    if (phase === 'day_discussion') {
+    if (ph === 'day_discussion') {
       return (
         <DayDiscussion
           timeLeft={wwState.timer_remaining}
@@ -93,7 +131,7 @@ export default function WerewolfGame({ players, onChangePlayers, onChangeGame, o
       )
     }
 
-    if (phase === 'vote') {
+    if (ph === 'vote') {
       const votes = Object.fromEntries(
         (wwState.players ?? [])
           .filter(p => p.voted_for != null)
@@ -118,7 +156,7 @@ export default function WerewolfGame({ players, onChangePlayers, onChangeGame, o
       )
     }
 
-    if (phase === 'result') {
+    if (ph === 'result') {
       const finalRoles = Object.fromEntries(
         (wwState.players ?? []).map(p => [p.player_id, p.current_role])
       )
@@ -136,6 +174,24 @@ export default function WerewolfGame({ players, onChangePlayers, onChangeGame, o
     }
 
     return <div style={loadingStyle}>게임 진행 중...</div>
+  }
+
+  // ── 게임 진행 중 (트랜지션 포함) ──────────────────────────────────────
+
+  if (phase && phase !== 'role_registration') {
+    return (
+      <>
+        {renderGamePhase(displayedPhase)}
+        {transitioning && (
+          <PhaseTransition
+            key={transitionKey}
+            type={transitionType}
+            onMidpoint={() => setDisplayedPhase(phase)}
+            onDone={() => setTransitioning(false)}
+          />
+        )}
+      </>
+    )
   }
 
   // ── 역할 등록 단계 ─────────────────────────────────────────────────────

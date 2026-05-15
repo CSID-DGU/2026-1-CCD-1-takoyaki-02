@@ -453,6 +453,11 @@ class WerewolfFSM(BaseFSM):
         current = WerewolfPhase(self.state.phase)
         if current in PASSIVE_NIGHT_PHASES:
             return self._advance_to_next_phase()
+        if current in ACTIVE_NIGHT_PHASES:
+            if self._active_timer_task and not self._active_timer_task.done():
+                self._active_timer_task.cancel()
+                self._active_timer_task = None
+            return self._advance_to_next_phase()
         if current == WerewolfPhase.DAY_DISCUSSION:
             if self._timer_task and not self._timer_task.done():
                 self._timer_task.cancel()

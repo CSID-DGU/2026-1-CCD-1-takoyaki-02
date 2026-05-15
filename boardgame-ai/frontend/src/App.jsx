@@ -6,8 +6,24 @@ import Lobby from './pages/Lobby'
 import WerewolfGame from './pages/WerewolfGame'
 import YachtGame from './pages/YachtGame'
 
+const DUMMY_PLAYERS = [
+  { player_id: 'test_p1', playername: '형승', registered: true },
+  { player_id: 'test_p2', playername: '병진', registered: true },
+  { player_id: 'test_p3', playername: '성민', registered: true },
+  { player_id: 'test_p4', playername: '승경', registered: true },
+]
+
+const WEREWOLF_PHASES = new Set([
+  'role_registration',
+  'night_start', 'night_doppelganger', 'night_werewolf', 'night_minion',
+  'night_mason', 'night_seer', 'night_robber', 'night_troublemaker',
+  'night_drunk', 'night_insomniac',
+  'day_discussion', 'vote_countdown', 'vote', 'result',
+])
+
 export default function App() {
   const [page, setPage] = useState('seat')
+  const [testPlayers, setTestPlayers] = useState(null)
   const [gameKey, setGameKey] = useState(0)
   const { state, connected, send } = useWebSocket('/ws/tablet', {
     onAudioMessage: audioApi.enqueue,
@@ -15,11 +31,12 @@ export default function App() {
   // App 레벨 싱글톤 audio. send를 넘겨 audio_ack가 backend로 흐르도록.
   useAudioPlayer(send)
 
-  const players = state?.players ?? []
-  const gamePlayers = players.filter(p => p.playername && p.registered)
+  const phase = state?.phase ?? 'player_setup'
+  const players = testPlayers ?? state?.players ?? []
   const registeringId = state?.registering_player_id ?? null
   const seatStep = state?.seat_step ?? 'idle'
 
+  // 사운드 트리거 처리
   useEffect(() => {
     // sound_seq가 바뀔 때마다 재생 (오른손/왼손 각각 트리거됨).
     if (state?.sound === 'registered') {
@@ -27,6 +44,13 @@ export default function App() {
       audio.play().catch(() => {})
     }
   }, [state?.sound_seq])
+
+  // 백엔드 phase가 늑대인간 게임 단계로 진입하면 page 동기화
+  useEffect(() => {
+    if (WEREWOLF_PHASES.has(phase) && page !== 'werewolf') {
+      setPage('werewolf')
+    }
+  }, [phase, page])
 
   if (page === 'seat') {
     return (
@@ -37,27 +61,19 @@ export default function App() {
         connected={connected}
         send={send}
         onStart={() => setPage('lobby')}
+        onTestSkip={() => { setTestPlayers(DUMMY_PLAYERS); setPage('lobby') }}
       />
     )
   }
-  if (page === 'lobby') {
-    return (
-      <Lobby
-        players={players}
-        send={send}
-        onSelectYacht={() => setPage('yacht')}
-        onSelectWerewolf={() => setPage('werewolf')}
-        onExit={() => setPage('seat')}
-      />
-    )
-  }
-  if (page === 'yacht') return <YachtGame players={gamePlayers} onExit={() => setPage('lobby')} onChangePlayers={() => setPage('seat')} />
+  if (page === 'lobby') return <Lobby players={players} send={send} onSelectYacht={() => setPage('yacht')} onSelectWerewolf={() => setPage('werewolf')} />
+  if (page === 'yacht') return <YachtGame players={players} onExit={() => setPage('lobby')} onChangePlayers={() => setPage('seat')} />
   if (page === 'werewolf') return (
     <WerewolfGame
       key={gameKey}
-      players={gamePlayers}
+      players={players}
       wsState={state}
-      onChangePlayers={() => setPage('seat')}
+      send={send}
+      onChangePlayers={() => { setTestPlayers(null); setPage('seat') }}
       onChangeGame={() => setPage('lobby')}
       onRestart={() => setGameKey(k => k + 1)}
     />
