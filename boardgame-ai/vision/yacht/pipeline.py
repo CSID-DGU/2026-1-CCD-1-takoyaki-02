@@ -111,6 +111,12 @@ class VisionPipeline:
                     skip_counter = 0
 
                 ts = time.time()
+                # Benchmark hook: FPS 계산용 (BENCH_TRACE=1에서만 실제 기록).
+                try:
+                    from benchmarks.common.trace_setup import bench_log
+                    bench_log().info("pipeline_enter %d %.6f", self._frame_id, ts)
+                except Exception:
+                    pass
                 self._process_one(frame, self._frame_id, ts)
                 self._frame_id += 1
 

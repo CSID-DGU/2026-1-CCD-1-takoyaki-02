@@ -35,10 +35,19 @@ export function useWebSocket(path, options = {}) {
       const socket = new WebSocket(url)
       ws.current = socket
 
-      socket.onopen = () => setConnected(true)
+      socket.onopen = () => {
+        setConnected(true)
+        // Benchmark hook (window._bench가 true일 때만 의미).
+        if (window._bench) {
+          try { window._bench.log('ws_event', 'open', path, performance.now()) } catch (_) {}
+        }
+      }
 
       socket.onclose = () => {
         setConnected(false)
+        if (window._bench) {
+          try { window._bench.log('ws_event', 'close', path, performance.now()) } catch (_) {}
+        }
         if (!destroyed) {
           reconnectTimer = setTimeout(connect, RECONNECT_DELAY_MS)
         }
@@ -48,7 +57,16 @@ export function useWebSocket(path, options = {}) {
         try {
           const msg = JSON.parse(e.data)
           setMessages(prev => [msg, ...prev].slice(0, 20))
-          if (msg.msg_type === 'state_update') setState(msg.state ?? msg.payload)
+          if (msg.msg_type === 'state_update') {
+            setState(msg.state ?? msg.payload)
+            // Benchmark hook: UI paint 완료 시각 (state_version별).
+            if (window._bench) {
+              const state_version = (msg.state ?? msg.payload)?.state_version ?? -1
+              requestAnimationFrame(() => {
+                try { window._bench.log('ui_painted', state_version, performance.now()) } catch (_) {}
+              })
+            }
+          }
           if (AUDIO_MSG_TYPES.has(msg.msg_type) && onAudioRef.current) {
             try { onAudioRef.current(msg) } catch (_) {}
           }

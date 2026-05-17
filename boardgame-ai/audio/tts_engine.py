@@ -146,7 +146,19 @@ class TTSEngine:
         v = voice or DEFAULT_VOICE
         path = self.cache_path(text, v, cache_layer, session_id)
 
+        # Benchmark hook용 (이 함수 전체에서 사용).
+        try:
+            from benchmarks.common.trace_setup import bench_log as _bench_log  # noqa
+            _BENCH = True
+        except Exception:
+            _BENCH = False
+
         if path.exists():
+            if _BENCH:
+                _bench_log().info(
+                    "tts_synth_done %s hit=1 layer=%s elapsed_ms=0.0",
+                    path.stem, cache_layer,
+                )
             return path
 
         if not self._available:
@@ -155,6 +167,8 @@ class TTSEngine:
 
         path.parent.mkdir(parents=True, exist_ok=True)
 
+        import time as _t
+        synth_start = _t.time()
         try:
             async with self._semaphore:
                 wav_bytes = await asyncio.wait_for(
@@ -175,6 +189,12 @@ class TTSEngine:
         tmp_path = path.with_suffix(".wav.tmp")
         tmp_path.write_bytes(wav_bytes)
         tmp_path.replace(path)
+        elapsed_ms = (_t.time() - synth_start) * 1000
+        if _BENCH:
+            _bench_log().info(
+                "tts_synth_done %s hit=0 layer=%s elapsed_ms=%.3f",
+                path.stem, cache_layer, elapsed_ms,
+            )
         logger.info("synthesized %d bytes → %s", len(wav_bytes), path.name)
         return path
 
