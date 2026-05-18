@@ -54,8 +54,11 @@ class AgentOrchestrator:
         self._progress = ProgressAgent()
         self._strategy = StrategyAgent()
         self._current_ctx: AgentContext | None = None
+        self._state_version: int = 0
 
-        self._tempo.set_tts_callback(self._send_tts)
+        self._tempo.set_tts_callback(
+            lambda text, prio: self._send_tts(text, prio, AgentRole.TEMPO.value)
+        )
 
     # ── 공개 인터페이스 ────────────────────────────────────────────────────────
 
@@ -66,9 +69,10 @@ class AgentOrchestrator:
     def strategy_enabled(self) -> bool:
         return self._strategy.enabled
 
-    async def on_state_change(self, ctx: AgentContext) -> None:
+    async def on_state_change(self, ctx: AgentContext, state_version: int = 0) -> None:
         """FSM 상태 전환 시 세션에서 호출."""
         self._current_ctx = ctx
+        self._state_version = state_version
 
         # 1) 템포 타이머 재시작 (sync, 내부적으로 asyncio.create_task)
         self._tempo.on_state_change(ctx)
@@ -119,6 +123,7 @@ class AgentOrchestrator:
                 text=text,
                 agent=agent,
                 priority=priority,
+                state_version=self._state_version,
             )
         except Exception:
             logger.exception("[AgentOrchestrator] TTS 전송 실패 (agent=%s)", agent)

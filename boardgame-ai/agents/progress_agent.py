@@ -13,31 +13,17 @@ from core.audio import AudioPriority
 
 
 # ── 늑대인간 페이즈 스크립트 ────────────────────────────────────────────────────
+# FSM이 이미 안내하는 상태는 여기서 제외. ProgressAgent는 FSM 미담당 보조 안내만.
+# FSM 담당: night_start, 각 night_* 역할 호출, day_discussion, vote, result
+# ProgressAgent 담당: FSM이 명시적으로 안내하지 않는 전환 보조 멘트
 _WEREWOLF_SCRIPTS: dict[str, str] = {
-    "night_start":        "밤이 시작됩니다. 모두 눈을 감아주세요.",
-    "night_doppelganger": "도플갱어, 눈을 뜨고 모방할 역할을 선택하세요.",
-    "night_werewolf":     "늑대인간, 눈을 뜨고 서로를 확인하세요.",
-    "night_minion":       "하수인, 눈을 떠서 늑대인간을 확인하세요.",
-    "night_mason":        "프리메이슨, 눈을 뜨고 서로를 확인하세요.",
-    "night_seer":         "예언자, 눈을 뜨고 확인할 카드를 선택하세요.",
-    "night_robber":       "도둑, 눈을 뜨고 다른 플레이어의 카드와 교환할 수 있습니다.",
-    "night_troublemaker": "말썽꾼, 눈을 뜨고 두 플레이어의 카드를 교환할 수 있습니다.",
-    "night_drunk":        "술꾼, 눈을 뜨고 센터 카드를 가져가세요.",
-    "night_insomniac":    "불면증 환자, 눈을 뜨고 자신의 최종 카드를 확인하세요.",
-    "day_discussion":     "날이 밝았습니다. 토론을 시작하세요. 마을의 적을 찾아야 합니다.",
-    "vote_countdown":     "곧 투표가 시작됩니다. 의심스러운 플레이어를 생각해두세요.",
-    "vote":               "투표 시간입니다. 의심스러운 플레이어를 지목하세요.",
-    "result":             "결과를 확인하겠습니다.",
+    "vote_countdown": "곧 투표가 시작됩니다. 의심스러운 플레이어를 생각해두세요.",
 }
 
 # ── 요트다이스 페이즈 스크립트 ──────────────────────────────────────────────────
-# {player}: 현재 플레이어 이름으로 치환됨
-_YACHT_SCRIPTS: dict[str, str] = {
-    "AWAITING_ROLL":  "{player}님, 주사위를 굴려주세요.",
-    "AWAITING_KEEP":  "{player}님, 유지할 주사위를 선택하세요.",
-    "AWAITING_SCORE": "{player}님, 점수를 기록할 카테고리를 선택하세요.",
-    "GAME_END":       "게임이 종료됐습니다! 수고하셨습니다.",
-}
+# FSM이 이미 "{player}님, 주사위를 굴려주세요" 등을 안내하므로 여기서는 제외.
+# ProgressAgent는 FSM 미담당 보조 안내만.
+_YACHT_SCRIPTS: dict[str, str] = {}
 
 _SCRIPTS: dict[str, dict[str, str]] = {
     "werewolf": _WEREWOLF_SCRIPTS,

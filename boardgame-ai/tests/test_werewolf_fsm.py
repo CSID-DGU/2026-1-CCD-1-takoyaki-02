@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 import pytest
 
-from games.werewolf.fsm import ACTIVE_PHASE_TIMEOUT, PASSIVE_PHASE_DURATION, WerewolfFSM
+from games.werewolf.fsm import WerewolfFSM
 from games.werewolf.ontology import WerewolfPhase
 from games.werewolf.state import WerewolfPlayerState
 
@@ -20,7 +20,11 @@ def _make_fsm(roles: list[str], broadcast=None) -> WerewolfFSM:
         WerewolfPlayerState(player_id=f"p_{i}", original_role=r, current_role=r)
         for i, r in enumerate(roles)
     ]
-    return WerewolfFSM(players=players, center_cards=["villager", "villager", "villager"], broadcast=broadcast)
+    return WerewolfFSM(
+        players=players,
+        center_cards=["villager", "villager", "villager"],
+        broadcast=broadcast,
+    )
 
 
 # ── 패시브 타이머 ─────────────────────────────────────────────────────────────
