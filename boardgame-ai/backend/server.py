@@ -239,7 +239,8 @@ async def yacht_socket(websocket: WebSocket) -> None:
     finally:
         app.state.yacht_runner.deregister_session(session)
         # 오디오 큐 정리 — 끊긴 세션이 ack 못 보내므로 _current가 stuck되는 것 방지.
-        app.state.audio_manager.detach_broadcast()
+        # detach_broadcast_if: 이미 새 세션이 attach된 경우 race condition으로 덮어쓰지 않음.
+        app.state.audio_manager.detach_broadcast_if(session._send_raw_bound)
 
 
 @app.websocket("/ws/werewolf")
@@ -261,4 +262,4 @@ async def werewolf_socket(websocket: WebSocket) -> None:
     except WebSocketDisconnect:
         app.state.orchestrator.set_werewolf_event_handler(None)
         app.state.pipeline_switcher(None)
-        app.state.audio_manager.detach_broadcast()
+        app.state.audio_manager.detach_broadcast_if(session._send_raw_bound)

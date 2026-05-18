@@ -47,9 +47,13 @@ class WerewolfSession:
         self._fsm: WerewolfFSM | None = None
         self._state_version: int = 0
         self._role_reg: dict | None = None
+        self._pending_game_data: dict | None = None
         self._audio_manager = audio_manager
+        # 동일 객체 참조를 유지해야 detach_broadcast_if에서 is 비교가 가능.
+        self._send_raw_bound = self._send_raw
         if audio_manager is not None:
-            audio_manager.attach_broadcast(self._send_raw, session_id=audio_manager.get_session_id())
+            audio_manager.attach_broadcast(self._send_raw_bound, session_id=audio_manager.get_session_id())
+        self._pending_role_reg: dict | None = None
 
     # ── 공개 인터페이스 ────────────────────────────────────────────────────────
 
@@ -77,6 +81,16 @@ class WerewolfSession:
             await self._confirm_role(player_id)
             return
 
+        if input_type == "CARD_SETUP_DONE":
+            await self._finish_card_setup()
+            return
+
+        if input_type == "TTS_REQUEST":
+            text = payload.get("text", "")
+            if text and self._audio_manager is not None:
+                await self._audio_manager.enqueue_tts(text=text)
+            return
+
         if input_type == "START_WEREWOLF_GAME":
             await self._start_game(payload)
             return
@@ -84,6 +98,8 @@ class WerewolfSession:
         if input_type == "RESTART":
             self._fsm = None
             self._role_reg = None
+            self._pending_game_data = None
+            self._pending_role_reg = None
             if self._pipeline_switcher is not None:
                 self._pipeline_switcher(None)
             return
@@ -121,19 +137,19 @@ class WerewolfSession:
         if not player_order:
             return
         normalized_roles = [_normalize_role(r) for r in selected_roles]
-        first_player = player_order[0]
-        self._role_reg = {
-            "all_roles": normalized_roles,
+        # 역할 등록 전 카드 세팅 안내를 먼저 표시. CARD_SETUP_DONE 수신 후 실제 등록 시작.
+        self._pending_role_reg = {
+            "selected_roles": normalized_roles,
             "player_order": player_order,
-            "player_index": 0,
-            "player_id": first_player,
-            "detected_role": None,
-            "confirmed_roles": {},
         }
         if self._pipeline_switcher is not None:
             self._pipeline_switcher("werewolf")
-        await self._push_role_reg_context(first_player)
-        await self._broadcast_role_reg()
+        self._state_version += 1
+        await self.send(WSMessage(
+            msg_type=MsgType.STATE_UPDATE.value,
+            payload={"phase": "card_setup", "all_roles": normalized_roles},
+            state_version=self._state_version,
+        ))
 
     async def _confirm_role(self, player_id: str | None) -> None:
         if self._role_reg is None or player_id is None:
@@ -155,17 +171,22 @@ class WerewolfSession:
             await self._broadcast_role_reg()
         else:
             confirmed = dict(self._role_reg["confirmed_roles"])
-            all_roles = list(self._role_reg["all_roles"])
+            all_roles_snapshot = list(self._role_reg["all_roles"])
+            working = list(all_roles_snapshot)
             for role in confirmed.values():
-                if role in all_roles:
-                    all_roles.remove(role)
-            center_cards = all_roles[:3]
+                if role in working:
+                    working.remove(role)
+            center_cards = working[:3]
             players_data = [
                 {"player_id": pid, "role": confirmed[pid]}
                 for pid in player_order
             ]
             self._role_reg = None
-            await self._start_game({"players": players_data, "center_cards": center_cards})
+            await self._start_game({
+                "players": players_data,
+                "center_cards": center_cards,
+                "all_roles": all_roles_snapshot,
+            })
 
     async def _start_game(self, payload: dict) -> None:
         players_data = payload.get("players", [])
@@ -234,6 +255,32 @@ class WerewolfSession:
             params={"stabilization_frames": 5},
         )
         self._send_fusion_context(ctx, self._state_version)
+
+    async def _finish_card_setup(self) -> None:
+        # 역할 등록 완료 후 게임 시작 경로 (기존 START_WEREWOLF_GAME 등)
+        if self._pending_game_data is not None:
+            data = self._pending_game_data
+            self._pending_game_data = None
+            await self._start_game(data)
+            return
+        # CardSetupGuide 완료 → 역할 등록 시작
+        if self._pending_role_reg is None:
+            return
+        data = self._pending_role_reg
+        self._pending_role_reg = None
+        selected_roles = data["selected_roles"]
+        player_order = data["player_order"]
+        first_player = player_order[0]
+        self._role_reg = {
+            "all_roles": selected_roles,
+            "player_order": player_order,
+            "player_index": 0,
+            "player_id": first_player,
+            "detected_role": None,
+            "confirmed_roles": {},
+        }
+        await self._push_role_reg_context(first_player)
+        await self._broadcast_role_reg()
 
     async def _broadcast_role_reg(self) -> None:
         self._state_version += 1

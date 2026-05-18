@@ -4,6 +4,7 @@ import { audio as audioApi, useAudioPlayer } from '../hooks/useAudioPlayer'
 import RoleRegistration from '../components/werewolf/RoleRegistration'
 import RoleRegShowCard from '../components/werewolf/RoleRegShowCard'
 import RoleRegConfirm from '../components/werewolf/RoleRegConfirm'
+import CardSetupGuide from '../components/werewolf/CardSetupGuide'
 import NightStart from '../components/werewolf/NightStart'
 import NightRoleAnnounce from '../components/werewolf/NightRoleAnnounce'
 import DayDiscussion from '../components/werewolf/DayDiscussion'
@@ -108,6 +109,16 @@ export default function WerewolfGame({ players, onChangePlayers, onChangeGame, o
   const renderGamePhase = (ph) => {
     if (!ph) return <div style={loadingStyle}>게임 진행 중...</div>
 
+    if (ph === 'card_setup') {
+      return (
+        <CardSetupGuide
+          roles={wwState?.all_roles ?? []}
+          onComplete={() => send('CARD_SETUP_DONE', {})}
+          send={send}
+        />
+      )
+    }
+
     if (NIGHT_PHASE_ROLES[ph]) {
       return (
         <NightRoleAnnounce
@@ -181,7 +192,7 @@ export default function WerewolfGame({ players, onChangePlayers, onChangeGame, o
   if (phase && phase !== 'role_registration') {
     return (
       <>
-        {renderGamePhase(displayedPhase)}
+        {renderGamePhase(displayedPhase ?? phase)}
         {transitioning && (
           <PhaseTransition
             key={transitionKey}
@@ -218,6 +229,7 @@ export default function WerewolfGame({ players, onChangePlayers, onChangeGame, o
       return (
         <RoleRegShowCard
           player={currentPlayer}
+          send={send}
           onBack={() => {
             send('RESTART', {})
             onRestart()

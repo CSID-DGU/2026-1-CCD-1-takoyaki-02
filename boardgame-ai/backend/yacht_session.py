@@ -41,8 +41,9 @@ class YachtSession:
         self._pipeline_switcher = pipeline_switcher
         self._bridge = bridge
         self._audio_manager = audio_manager
+        self._send_raw_bound = self._send_raw
         if audio_manager is not None:
-            audio_manager.attach_broadcast(self._send_raw, session_id=audio_manager.get_session_id())
+            audio_manager.attach_broadcast(self._send_raw_bound, session_id=audio_manager.get_session_id())
         # FSM 상태 변경 직렬화 — 비전 스레드와 WS 스레드가 동시에 호출 가능
         self._fsm_lock = threading.Lock()
 

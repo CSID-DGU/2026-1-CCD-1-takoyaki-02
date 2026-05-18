@@ -176,6 +176,9 @@ export default function NightRoleAnnounce({ roleId, onComplete }) {
             )}
           </div>
 
+          {/* 건너뛰기 버튼 */}
+          <button onClick={onComplete} style={styles.skipBtn}>건너뛰기 →</button>
+
         </div>
 
       </div>
@@ -293,6 +296,16 @@ const styles = {
     color: 'rgba(248,241,221,0.35)',
     textAlign: 'center',
     letterSpacing: 0.5,
+  },
+
+  skipBtn: {
+    padding: '8px 20px',
+    border: '1px solid rgba(248,241,221,0.25)',
+    borderRadius: 8,
+    background: 'rgba(255,255,255,0.08)',
+    color: 'rgba(248,241,221,0.5)',
+    cursor: 'pointer',
+    fontSize: 13,
   },
 
 }

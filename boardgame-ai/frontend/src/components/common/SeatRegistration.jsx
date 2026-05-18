@@ -255,7 +255,7 @@ function RegistrationModal({ seatStep, registeringId, defaultName, onCancel, onF
           <HandIcon side="right" active={rightActive} />
         </div>
         <div style={s.guideText}>{guide}</div>
-        {effectiveStep === 'completed' ? (
+        {seatStep === 'completed' ? (
           <>
             <input
               value={name}
