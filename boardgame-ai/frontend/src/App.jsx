@@ -6,13 +6,6 @@ import Lobby from './pages/Lobby'
 import WerewolfGame from './pages/WerewolfGame'
 import YachtGame from './pages/YachtGame'
 
-const DUMMY_PLAYERS = [
-  { player_id: 'test_p1', playername: '형승', registered: true },
-  { player_id: 'test_p2', playername: '병진', registered: true },
-  { player_id: 'test_p3', playername: '성민', registered: true },
-  { player_id: 'test_p4', playername: '승경', registered: true },
-]
-
 const WEREWOLF_PHASES = new Set([
   'role_registration',
   'night_start', 'night_doppelganger', 'night_werewolf', 'night_minion',
@@ -23,7 +16,6 @@ const WEREWOLF_PHASES = new Set([
 
 export default function App() {
   const [page, setPage] = useState('seat')
-  const [testPlayers, setTestPlayers] = useState(null)
   const [gameKey, setGameKey] = useState(0)
   const { state, connected, send } = useWebSocket('/ws/tablet', {
     onAudioMessage: audioApi.enqueue,
@@ -32,7 +24,7 @@ export default function App() {
   useAudioPlayer(send)
 
   const phase = state?.phase ?? 'player_setup'
-  const players = testPlayers ?? state?.players ?? []
+  const players = state?.players ?? []
   const registeringId = state?.registering_player_id ?? null
   const seatStep = state?.seat_step ?? 'idle'
 
@@ -61,11 +53,10 @@ export default function App() {
         connected={connected}
         send={send}
         onStart={() => setPage('lobby')}
-        onTestSkip={() => { setTestPlayers(DUMMY_PLAYERS); setPage('lobby') }}
       />
     )
   }
-  if (page === 'lobby') return <Lobby players={players} send={send} onSelectYacht={() => setPage('yacht')} onSelectWerewolf={() => setPage('werewolf')} />
+  if (page === 'lobby') return <Lobby players={players} send={send} onSelectYacht={() => setPage('yacht')} onSelectWerewolf={() => setPage('werewolf')} onExit={() => setPage('seat')} />
   if (page === 'yacht') return <YachtGame players={players} onExit={() => setPage('lobby')} onChangePlayers={() => setPage('seat')} />
   if (page === 'werewolf') return (
     <WerewolfGame
@@ -73,7 +64,7 @@ export default function App() {
       players={players}
       wsState={state}
       send={send}
-      onChangePlayers={() => { setTestPlayers(null); setPage('seat') }}
+      onChangePlayers={() => setPage('seat')}
       onChangeGame={() => setPage('lobby')}
       onRestart={() => setGameKey(k => k + 1)}
     />

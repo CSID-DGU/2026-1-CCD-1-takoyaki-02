@@ -1,4 +1,11 @@
-export default function RoleRegShowCard({ player, onDetected, onBack, onExit }) {
+import { useEffect } from 'react'
+
+export default function RoleRegShowCard({ player, send, onDetected, onBack, onExit }) {
+  useEffect(() => {
+    if (!player?.playername || !send) return
+    send('TTS_REQUEST', { text: `${player.playername}님, 역할 카드를 카메라에 보여주세요.` })
+  }, [player?.player_id])
+
   return (
     <>
       <style>{`

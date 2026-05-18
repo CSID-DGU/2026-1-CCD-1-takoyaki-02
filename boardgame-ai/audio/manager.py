@@ -96,9 +96,12 @@ class AudioManager:
     def attach_broadcast(
         self, broadcast: BroadcastFn, session_id: str | None = None
     ) -> None:
-        """활성 세션의 broadcast 함수 연결. None이면 detach."""
+        """활성 세션의 broadcast 함수 연결. 이전 세션의 stale 상태도 초기화."""
         self._broadcast = broadcast
         self._active_session_id = session_id
+        # 이전 세션의 _current/_queue가 남아 있으면 새 세션 TTS가 막히므로 초기화.
+        self._current = None
+        self._queue.clear()
         logger.info("AudioManager broadcast attached (session_id=%s)", session_id)
 
     def detach_broadcast(self) -> None:
@@ -112,6 +115,17 @@ class AudioManager:
         self._current = None
         self._queue.clear()
         logger.info("AudioManager broadcast detached + queue cleared")
+
+    def detach_broadcast_if(self, broadcast: BroadcastFn) -> None:
+        """broadcast가 현재 등록된 것과 동일한 경우에만 detach.
+
+        race condition 방지: 구 세션 disconnect가 신 세션 attach 이후에 처리될 때
+        신 세션의 broadcast를 잘못 지우지 않도록 한다.
+        """
+        if self._broadcast is broadcast:
+            self.detach_broadcast()
+        else:
+            logger.debug("detach_broadcast_if: 건너뜀 (이미 다른 세션이 attach됨)")
 
     def get_session_id(self) -> str | None:
         return self._active_session_id
