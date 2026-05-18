@@ -244,7 +244,7 @@ class YachtSession:
             turn_timeout=None,
             game_specific=game_specific,
         )
-        await self._agent.on_state_change(agent_ctx)
+        await self._agent.on_state_change(agent_ctx, state_version=state.state_version)
 
     async def send(self, message: WSMessage) -> None:
         """FSM이 만든 메시지를 라우팅. audio 관련은 AudioManager 거쳐 audio_url 채워진 후 broadcast."""

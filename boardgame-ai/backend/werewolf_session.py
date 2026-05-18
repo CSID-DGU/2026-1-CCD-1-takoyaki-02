@@ -295,7 +295,7 @@ class WerewolfSession:
             turn_start_time=_time.time(),
             turn_timeout=timeout,
         )
-        await self._agent.on_state_change(agent_ctx)
+        await self._agent.on_state_change(agent_ctx, state_version=self._state_version)
 
     async def _finish_card_setup(self) -> None:
         # 역할 등록 완료 후 게임 시작 경로 (기존 START_WEREWOLF_GAME 등)
