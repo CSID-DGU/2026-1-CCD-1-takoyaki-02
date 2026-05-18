@@ -52,7 +52,7 @@ class WerewolfSession:
             return
 
         if input_type == "CONFIRM_ROLE":
-            await self._confirm_role(player_id)
+            await self._confirm_role(player_id, payload)
             return
 
         if input_type == "START_WEREWOLF_GAME":
@@ -113,14 +113,15 @@ class WerewolfSession:
         await self._push_role_reg_context(first_player)
         await self._broadcast_role_reg()
 
-    async def _confirm_role(self, player_id: str | None) -> None:
+    async def _confirm_role(self, player_id: str | None, payload: dict | None = None) -> None:
         if self._role_reg is None or player_id is None:
             return
-        detected = self._role_reg.get("detected_role")
-        if detected is None:
+        # 프론트에서 수동 선택한 역할 우선, 없으면 비전 감지 결과 사용
+        confirmed_role = (payload or {}).get("role") or self._role_reg.get("detected_role")
+        if confirmed_role is None:
             return
 
-        self._role_reg["confirmed_roles"][player_id] = detected
+        self._role_reg["confirmed_roles"][player_id] = confirmed_role
         next_index = self._role_reg["player_index"] + 1
         player_order = self._role_reg["player_order"]
 
@@ -209,7 +210,7 @@ class WerewolfSession:
             valid_targets=None,
             zones={},
             anchors={},
-            params={"stabilization_frames": 5},
+            params={"stabilization_frames": 1},
         )
         self._send_fusion_context(ctx, self._state_version)
 

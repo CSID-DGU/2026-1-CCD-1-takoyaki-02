@@ -142,6 +142,8 @@ async def werewolf_socket(websocket: WebSocket) -> None:
         pipeline_switcher=app.state.pipeline_switcher,
     )
     app.state.orchestrator.set_werewolf_event_handler(session.get_vision_event_handler())
+    # WS 연결 즉시 웨어울프 파이프라인 활성화 (역할 선택 화면에서도 카메라 준비)
+    app.state.pipeline_switcher("werewolf")
     await session.send_hello()
     try:
         while True:
