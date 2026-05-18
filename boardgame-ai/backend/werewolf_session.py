@@ -14,8 +14,11 @@ from core.constants import MsgType
 from core.envelope import WSMessage
 from core.events import FusionContext, GameEvent
 from games.werewolf.fsm import WerewolfFSM
-from games.werewolf.ontology import WerewolfEventType, WerewolfInputType
+from games.werewolf.ontology import WerewolfEventType, WerewolfInputType, WerewolfPhase
 from games.werewolf.state import WerewolfPlayerState
+
+from agents.context import AgentContext
+from agents.orchestrator import AgentOrchestrator
 
 # AudioManager가 가로채는 msg_type 집합. yacht_session.py와 동일.
 _AUDIO_MSG_TYPES = {
@@ -39,6 +42,7 @@ class WerewolfSession:
         loop: asyncio.AbstractEventLoop,
         pipeline_switcher: Callable[[str | None], None] | None = None,
         audio_manager: AudioManager | None = None,
+        agent_orchestrator: AgentOrchestrator | None = None,
     ) -> None:
         self.websocket = websocket
         self._send_fusion_context = send_fusion_context_fn
@@ -49,11 +53,14 @@ class WerewolfSession:
         self._role_reg: dict | None = None
         self._pending_game_data: dict | None = None
         self._audio_manager = audio_manager
+        self._agent = agent_orchestrator
         # 동일 객체 참조를 유지해야 detach_broadcast_if에서 is 비교가 가능.
         self._send_raw_bound = self._send_raw
         if audio_manager is not None:
             audio_manager.attach_broadcast(self._send_raw_bound, session_id=audio_manager.get_session_id())
         self._pending_role_reg: dict | None = None
+        # 현재 플레이어 목록 (AgentContext 빌드용)
+        self._players_snapshot: list[dict] = []
 
     # ── 공개 인터페이스 ────────────────────────────────────────────────────────
 
@@ -71,6 +78,11 @@ class WerewolfSession:
             status = str(payload.get("status", ""))
             if pbid:
                 await self._audio_manager.handle_ack(pbid, status)
+            return
+
+        if input_type == "SET_STRATEGY_COACHING":
+            if self._agent is not None:
+                self._agent.set_strategy_enabled(bool(payload.get("enabled", False)))
             return
 
         if input_type == "START_ROLE_REGISTRATION":
@@ -192,6 +204,10 @@ class WerewolfSession:
     async def _start_game(self, payload: dict) -> None:
         players_data = payload.get("players", [])
         center_cards = payload.get("center_cards", [])
+        self._players_snapshot = [
+            {"player_id": p["player_id"], "playername": p.get("playername", p["player_id"])}
+            for p in players_data
+        ]
         ws_players = [
             WerewolfPlayerState(
                 player_id=p["player_id"],
@@ -211,6 +227,10 @@ class WerewolfSession:
 
     async def _handle_vision_event(self, event: GameEvent) -> None:
         etype = event.event_type
+
+        # 규칙 에이전트: FSM 처리 이전에 위반 감지
+        if self._agent is not None:
+            await self._agent.on_game_event(event)
 
         if etype == WerewolfEventType.ROLE_DETECTED:
             await self._handle_role_detected(event)
@@ -256,6 +276,26 @@ class WerewolfSession:
             params={"stabilization_frames": 1},
         )
         self._send_fusion_context(ctx, self._state_version)
+        await self._notify_agent_state_change(ctx)
+
+    async def _notify_agent_state_change(self, fusion_ctx: FusionContext) -> None:
+        if self._agent is None:
+            return
+        import time as _time
+        timeout = None
+        if fusion_ctx.fsm_state == WerewolfPhase.DAY_DISCUSSION:
+            timeout = 300.0
+        agent_ctx = AgentContext(
+            game_type="werewolf",
+            fsm_state=fusion_ctx.fsm_state,
+            active_player=fusion_ctx.active_player,
+            players=self._players_snapshot,
+            allowed_actors=list(fusion_ctx.allowed_actors),
+            expected_events=list(fusion_ctx.expected_events),
+            turn_start_time=_time.time(),
+            turn_timeout=timeout,
+        )
+        await self._agent.on_state_change(agent_ctx)
 
     async def _finish_card_setup(self) -> None:
         # 역할 등록 완료 후 게임 시작 경로 (기존 START_WEREWOLF_GAME 등)
@@ -303,6 +343,7 @@ class WerewolfSession:
             if msg.msg_type == MsgType.FUSION_CONTEXT.value:
                 ctx = FusionContext.from_dict(msg.payload)
                 self._send_fusion_context(ctx, msg.state_version)
+                await self._notify_agent_state_change(ctx)
             else:
                 await self.send(msg)
 

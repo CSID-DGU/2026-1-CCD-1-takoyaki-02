@@ -14,8 +14,11 @@ from audio.manager import AudioManager
 from bridge.local_bridge import LocalBridge
 from core.constants import MsgType
 from core.envelope import WSMessage
-from core.events import GameEvent
+from core.events import FusionContext, GameEvent
 from games.yacht import YachtEventType, YachtFSM, YachtGameState, YachtInputType
+
+from agents.context import AgentContext
+from agents.orchestrator import AgentOrchestrator
 
 # AudioManager가 가로채는 msg_type 집합. session.send()에서 분기 기준.
 _AUDIO_MSG_TYPES = {
@@ -34,6 +37,7 @@ class YachtSession:
         pipeline_switcher: Callable[[str | None], None] | None = None,
         bridge: LocalBridge | None = None,
         audio_manager: AudioManager | None = None,
+        agent_orchestrator: AgentOrchestrator | None = None,
     ) -> None:
         self.websocket = websocket
         self.fsm: YachtFSM | None = None
@@ -41,6 +45,7 @@ class YachtSession:
         self._pipeline_switcher = pipeline_switcher
         self._bridge = bridge
         self._audio_manager = audio_manager
+        self._agent = agent_orchestrator
         self._send_raw_bound = self._send_raw
         if audio_manager is not None:
             audio_manager.attach_broadcast(self._send_raw_bound, session_id=audio_manager.get_session_id())
@@ -69,6 +74,11 @@ class YachtSession:
             status = str(payload.get("status", ""))
             if pbid:
                 await self._audio_manager.handle_ack(pbid, status)
+            return
+
+        if input_type == "SET_STRATEGY_COACHING":
+            if self._agent is not None:
+                self._agent.set_strategy_enabled(bool(payload.get("enabled", False)))
             return
 
         if input_type == "START_YACHT":
@@ -205,7 +215,36 @@ class YachtSession:
 
     async def send_many(self, messages: list[WSMessage]) -> None:
         for message in messages:
+            if message.msg_type == MsgType.FUSION_CONTEXT.value:
+                await self._notify_agent_state_change(FusionContext.from_dict(message.payload))
             await self.send(message)
+
+    async def _notify_agent_state_change(self, fusion_ctx: FusionContext) -> None:
+        if self._agent is None or self.fsm is None:
+            return
+        import time as _time
+        state = self.fsm.state
+        players_snapshot = [
+            {"player_id": p.player_id, "playername": p.playername}
+            for p in state.players
+        ]
+        game_specific = {
+            "dice_values": list(state.dice_values),
+            "available_categories": list(state.available_categories),
+            "roll_count": state.roll_count,
+        }
+        agent_ctx = AgentContext(
+            game_type="yacht",
+            fsm_state=fusion_ctx.fsm_state,
+            active_player=fusion_ctx.active_player,
+            players=players_snapshot,
+            allowed_actors=list(fusion_ctx.allowed_actors),
+            expected_events=list(fusion_ctx.expected_events),
+            turn_start_time=_time.time(),
+            turn_timeout=None,
+            game_specific=game_specific,
+        )
+        await self._agent.on_state_change(agent_ctx)
 
     async def send(self, message: WSMessage) -> None:
         """FSM이 만든 메시지를 라우팅. audio 관련은 AudioManager 거쳐 audio_url 채워진 후 broadcast."""
