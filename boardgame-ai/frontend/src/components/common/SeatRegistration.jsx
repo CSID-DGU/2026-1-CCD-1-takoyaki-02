@@ -226,18 +226,16 @@ function HandIcon({ side, active }) {
 
 function RegistrationModal({ seatStep, registeringId, defaultName, onCancel, onFinalize }) {
   const [name, setName] = useState('')
-  const [skipToName, setSkipToName] = useState(false)
 
-  const effectiveStep = skipToName ? 'completed' : seatStep
-  const rightActive = effectiveStep === 'right_done' || effectiveStep === 'completed'
-  const leftActive = effectiveStep === 'completed'
+  const rightActive = seatStep === 'right_done' || seatStep === 'completed'
+  const leftActive = seatStep === 'completed'
 
   let guide = ''
-  if (effectiveStep === 'right_pending') {
+  if (seatStep === 'right_pending') {
     guide = '테이블 중앙으로 오른손을 뻗어 V 사인을 해주세요'
-  } else if (effectiveStep === 'right_done') {
+  } else if (seatStep === 'right_done') {
     guide = '오른손 인식 완료! 이번엔 왼손을 뻗어 OK 사인을 해주세요'
-  } else if (effectiveStep === 'completed') {
+  } else if (seatStep === 'completed') {
     guide = '좌석 등록이 완료되었습니다. 이름을 입력해주세요'
   }
 
@@ -275,7 +273,6 @@ function RegistrationModal({ seatStep, registeringId, defaultName, onCancel, onF
         ) : (
           <div style={s.modalFooter}>
             <button style={s.cancelBtn} onClick={onCancel}>취소</button>
-            <button style={s.cancelBtn} onClick={() => setSkipToName(true)}>건너뛰기 (테스트)</button>
           </div>
         )}
       </div>
@@ -290,7 +287,6 @@ export default function SeatRegistration({
   connected,
   send,
   onStart,
-  onTestSkip,
 }) {
   const [editingId, setEditingId] = useState(null)
   const [editName, setEditName] = useState('')
@@ -400,12 +396,6 @@ export default function SeatRegistration({
         </div>
 
         <div style={s.footer}>
-          <button
-            style={{ ...s.startBtn(false), marginRight: 10, fontSize: 12, color: '#aaa' }}
-            onClick={onTestSkip ?? onStart}
-          >
-            건너뛰기 (테스트)
-          </button>
           <button style={s.startBtn(canStart)} onClick={canStart ? onStart : undefined}>
             게임 시작 →
           </button>
