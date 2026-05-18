@@ -24,6 +24,7 @@ from audio.catalog import BGM_DIR, SFX_DIR, TTS_CACHE_DIR
 from audio.manager import AudioManager
 from audio.prewarm import prewarm_static
 from audio.tts_engine import TTSEngine
+from agents.orchestrator import AgentOrchestrator
 from backend.lobby_runner import LobbyRunner
 from backend.orchestrator import Orchestrator
 from backend.routes.players import router as players_router
@@ -110,6 +111,7 @@ async def lifespan(app: FastAPI):
     app.state.loop = loop
     app.state.audio_manager = audio_manager
     app.state.tts_engine = tts_engine
+    app.state.agent_orchestrator = AgentOrchestrator(audio_manager)
 
     yield
 
@@ -225,6 +227,7 @@ async def yacht_socket(websocket: WebSocket) -> None:
         pipeline_switcher=app.state.pipeline_switcher,
         bridge=app.state.bridge,
         audio_manager=app.state.audio_manager,
+        agent_orchestrator=app.state.agent_orchestrator,
     )
     # 비전 → 활성 세션 라우팅 활성화. send_hello/receive loop 어디서 예외가 나도
     # finally에서 반드시 deregister 되도록 register 직후부터 try 진입.
@@ -238,6 +241,7 @@ async def yacht_socket(websocket: WebSocket) -> None:
         app.state.pipeline_switcher(None)
     finally:
         app.state.yacht_runner.deregister_session(session)
+        app.state.agent_orchestrator.stop()
         # 오디오 큐 정리 — 끊긴 세션이 ack 못 보내므로 _current가 stuck되는 것 방지.
         # detach_broadcast_if: 이미 새 세션이 attach된 경우 race condition으로 덮어쓰지 않음.
         app.state.audio_manager.detach_broadcast_if(session._send_raw_bound)
@@ -252,6 +256,7 @@ async def werewolf_socket(websocket: WebSocket) -> None:
         loop=app.state.loop,
         pipeline_switcher=app.state.pipeline_switcher,
         audio_manager=app.state.audio_manager,
+        agent_orchestrator=app.state.agent_orchestrator,
     )
     app.state.orchestrator.set_werewolf_event_handler(session.get_vision_event_handler())
     # WS 연결 즉시 웨어울프 파이프라인 활성화 (역할 선택 화면에서도 카메라 준비)
@@ -264,4 +269,5 @@ async def werewolf_socket(websocket: WebSocket) -> None:
     except WebSocketDisconnect:
         app.state.orchestrator.set_werewolf_event_handler(None)
         app.state.pipeline_switcher(None)
+        app.state.agent_orchestrator.stop()
         app.state.audio_manager.detach_broadcast_if(session._send_raw_bound)
