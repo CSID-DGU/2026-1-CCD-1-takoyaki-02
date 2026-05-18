@@ -88,7 +88,6 @@ export default function Lobby({ players, send, onSelectYacht, onSelectWerewolf, 
         <GameCard
           icon="🎲"
           name="요트 다이스"
-          info1="1-6인 플레이어"
           info2="주사위 자동 인식"
           disabled={yachtDisabled}
           onClick={() => {
@@ -99,7 +98,6 @@ export default function Lobby({ players, send, onSelectYacht, onSelectWerewolf, 
         <GameCard
           icon="🌙"
           name="한밤의 늑대인간"
-          info1="4-10인 플레이어"
           info2="카드·제스처 인식"
           onClick={() => {
             send('select_game', { game_type: 'werewolf' })

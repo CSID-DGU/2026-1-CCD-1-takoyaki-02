@@ -47,7 +47,7 @@ class CameraManager:
         self._running = False
 
     def _loop(self) -> None:
-        cap = cv2.VideoCapture(self._source)
+        cap = cv2.VideoCapture(self._source, cv2.CAP_DSHOW)
         cap.set(cv2.CAP_PROP_FRAME_WIDTH, self._resolution[0])
         cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self._resolution[1])
         cap.set(cv2.CAP_PROP_FPS, self._fps)

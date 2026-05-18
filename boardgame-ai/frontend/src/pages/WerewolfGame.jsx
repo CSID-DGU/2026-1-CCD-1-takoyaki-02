@@ -227,6 +227,8 @@ export default function WerewolfGame({ players, onChangePlayers, onChangeGame, o
         />
       )
     }
+
+    return <div style={loadingStyle}>역할 등록 준비 중...</div>
   }
 
   // ── 초기: 역할 선택 ────────────────────────────────────────────────────
@@ -234,7 +236,7 @@ export default function WerewolfGame({ players, onChangePlayers, onChangeGame, o
   return (
     <RoleRegistration
       players={players}
-      onExit={onRestart}
+      onExit={onChangeGame}
       onStart={(roles) => {
         const playerOrder = players.map(p => p.player_id)
         send('START_ROLE_REGISTRATION', {
