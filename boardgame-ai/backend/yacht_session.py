@@ -88,6 +88,13 @@ class YachtSession:
             return
 
         if input_type == "START_YACHT":
+            # Benchmark hook: 게임 시작 시각 (completion_rate 측정용).
+            try:
+                from benchmarks.common.trace_setup import bench_log
+                import time as _t
+                bench_log().info("game_start yacht %.6f", _t.time())
+            except Exception:
+                pass
             await self.start_game(payload)
             return
 
@@ -112,6 +119,12 @@ class YachtSession:
                 messages = self.fsm.handle_event(event)
                 if self._roll_was_recorded(previous_state):
                     self.undo_stack.append(previous_state)
+                    # Benchmark hook: 실제로 카운트된 굴림 (undo_rate 분모).
+                    try:
+                        from benchmarks.common.trace_setup import bench_log
+                        bench_log().info("roll_confirmed -")
+                    except Exception:
+                        pass
             await self.send_many(messages)
             return
 
@@ -148,6 +161,12 @@ class YachtSession:
             return
 
         if input_type == "UNDO_ROUND":
+            # Benchmark hook: 인식 신뢰도 proxy (undo_rate 측정용).
+            try:
+                from benchmarks.common.trace_setup import bench_log
+                bench_log().info("undo_round -")
+            except Exception:
+                pass
             if not self.undo_stack:
                 await self.send(
                     WSMessage.make_error(

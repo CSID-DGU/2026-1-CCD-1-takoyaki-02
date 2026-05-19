@@ -39,6 +39,7 @@ class BenchmarkSession:
         self._started = False
         self._session_dir: Path | None = None
         self._start_ts: float = 0.0
+        self._resource_sampler = None
 
     def start(self) -> Path | None:
         """BENCH_TRACE=1이면 새 세션 시작. results/<ts>/ 경로 반환.
@@ -62,6 +63,11 @@ class BenchmarkSession:
         # 환경 정보 자동 캡처 → env.json
         self._write_env_json()
 
+        # 자원 사용량 1초 샘플링 시작 (psutil 없으면 no-op)
+        from benchmarks.resource_usage import ResourceSampler
+        self._resource_sampler = ResourceSampler(self._session_dir / "cpu_mem.csv")
+        self._resource_sampler.start()
+
         logger.info("BenchmarkSession started: %s", self._session_dir)
         return self._session_dir
 
@@ -69,6 +75,9 @@ class BenchmarkSession:
         """server shutdown 시 호출. finalize 호출 + logger 정리."""
         if not self._started:
             return
+        # 자원 샘플러 먼저 정지 → CSV flush 보장
+        if self._resource_sampler is not None:
+            self._resource_sampler.stop()
         try:
             self.finalize()
         finally:
@@ -90,9 +99,13 @@ class BenchmarkSession:
         from benchmarks import (
             cache_hit_rate,
             channel_latency,
+            completion_rate,
             fps_analysis,
+            resource_usage,
             trace_collector,
             ui_latency,
+            undo_rate,
+            ws_recovery,
         )
 
         log_path = self._session_dir / "raw" / "app.log"
@@ -115,6 +128,10 @@ class BenchmarkSession:
             ("ui_latency", ui_latency),
             ("fps_analysis", fps_analysis),
             ("cache_hit_rate", cache_hit_rate),
+            ("ws_recovery", ws_recovery),
+            ("undo_rate", undo_rate),
+            ("completion_rate", completion_rate),
+            ("resource_usage", resource_usage),
         ]:
             try:
                 results[name] = mod.run(self._session_dir)
@@ -206,7 +223,72 @@ class BenchmarkSession:
             )
             lines.append("")
 
+        # 라운드 정확도 (undo proxy)
+        ur = results.get("undo_rate", {})
+        if isinstance(ur, dict) and ur.get("rolls", 0) > 0:
+            lines.append("## ⑤ 실전 라운드 정확도 (되돌리기 proxy)")
+            lines.append(
+                f"- {ur['rolls']} 굴림 중 {ur['undos']} 되돌리기 "
+                f"= 신뢰도 추정 {ur['estimated_accuracy']*100:.1f}%"
+            )
+            lines.append("")
+
+        # 게임 진행 성공률
+        cr = results.get("completion_rate", {})
+        if isinstance(cr, dict) and "overall" in cr:
+            ov = cr["overall"]
+            if ov.get("started", 0) > 0:
+                lines.append("## ⑥ 게임 진행 성공률 (무개입 완주)")
+                lines.append(
+                    f"- 전체 {ov['completed']}/{ov['started']} = "
+                    f"{ov['completion_rate']*100:.1f}%"
+                )
+                for gt, d in cr.get("by_type", {}).items():
+                    if d["started"]:
+                        lines.append(
+                            f"  - {gt}: {d['completed']}/{d['started']} "
+                            f"({d['completion_rate']*100:.1f}%, abandoned {d['abandoned']})"
+                        )
+                lines.append("")
+
+        # WS 끊김 복구
+        ws = results.get("ws_recovery", {})
+        if isinstance(ws, dict) and ws.get("total_disconnects", 0) > 0:
+            lines.append("## ⑦ WebSocket 끊김 복구")
+            lines.append(
+                f"- 총 끊김 {ws['total_disconnects']} / 자동 복구 {ws['auto_recoveries']} "
+                f"({ws['recovery_rate']*100:.1f}%)"
+            )
+            rt = ws.get("recovery_time_ms", {})
+            if rt.get("count"):
+                lines.append(
+                    f"- 복구 시간 p50 {rt['p50']:.0f} ms / p95 {rt['p95']:.0f} ms"
+                )
+            lines.append("")
+
+        # 자원 사용량
+        ru = results.get("resource_usage", {})
+        if isinstance(ru, dict) and ru.get("samples", 0) > 0:
+            lines.append("## ⑧ 자원 사용량")
+            cpu = ru["cpu_pct"]
+            ram = ru["ram_mb"]
+            lines.append(
+                f"- CPU 평균 {cpu['mean']:.1f}% / peak {cpu['peak']:.1f}% / p95 {cpu['p95']:.1f}%"
+            )
+            lines.append(
+                f"- RAM 평균 {ram['mean']:.0f} MB / peak {ram['peak']:.0f} MB"
+            )
+            lines.append(f"- 측정 시간 {ru['duration_sec']:.0f}s ({ru['samples']} 샘플)")
+            for seg in ru.get("by_segment_5min", []):
+                lines.append(
+                    f"  - {seg['minute_range']} min: "
+                    f"CPU {seg['cpu_mean']:.0f}% (peak {seg['cpu_peak']:.0f}) / "
+                    f"RAM {seg['ram_peak_mb']:.0f} MB"
+                )
+            lines.append("")
+
         lines.append(f"_상세 JSON: `{self._session_dir.name if self._session_dir else '?'}/*.json`_")
+        lines.append(f"_환경: env.json 참고 (CPU/RAM/OS 등)_")
         return "\n".join(lines)
 
     def session_dir(self) -> Path | None:
