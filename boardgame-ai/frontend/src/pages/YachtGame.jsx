@@ -389,8 +389,8 @@ export default function YachtGame({ players, tutorialMode = false, onExit, onCha
     [state],
   )
   const statusMessage = useMemo(() => {
-    const latest = messages.find(m => m.msg_type === 'tts_play' || m.msg_type === 'error')
-    return latest?.payload?.text || latest?.payload?.message || state?.last_message
+    const latestError = messages.find(m => m.msg_type === 'error')
+    return latestError?.payload?.message || state?.last_message
   }, [messages, state?.last_message])
   const canUndo = state?.can_undo ?? true
   const isTutorial = Boolean(state?.tutorial_mode)

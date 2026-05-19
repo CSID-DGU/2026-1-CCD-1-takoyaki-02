@@ -2,6 +2,17 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 
 const RECONNECT_DELAY_MS = 2000
 
+function playTtsMessage(msg) {
+  const text = msg?.payload?.text
+  if (!text || typeof window === 'undefined' || !window.speechSynthesis) return
+
+  const utterance = new SpeechSynthesisUtterance(text)
+  utterance.lang = 'ko-KR'
+  utterance.rate = 1
+  utterance.pitch = 1
+  window.speechSynthesis.speak(utterance)
+}
+
 export function useWebSocket(path) {
   const [state, setState] = useState(null)
   const [connected, setConnected] = useState(false)
@@ -32,6 +43,7 @@ export function useWebSocket(path) {
           const msg = JSON.parse(e.data)
           setMessages(prev => [msg, ...prev].slice(0, 20))
           if (msg.msg_type === 'state_update') setState(msg.state ?? msg.payload)
+          if (msg.msg_type === 'tts_play') playTtsMessage(msg)
         } catch (_) {}
       }
     }

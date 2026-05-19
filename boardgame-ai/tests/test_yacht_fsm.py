@@ -24,6 +24,7 @@ def test_start_sends_roll_context_for_first_player():
 
     msgs = fsm.start()
     ctx = _messages_of(msgs, MsgType.FUSION_CONTEXT.value)[0].payload
+    tts = _messages_of(msgs, MsgType.TTS_PLAY.value)[0].payload
 
     assert fsm.state.phase == YachtPhase.AWAITING_ROLL.value
     assert ctx["fsm_state"] == YachtPhase.AWAITING_ROLL.value
@@ -31,6 +32,7 @@ def test_start_sends_roll_context_for_first_player():
     assert ctx["allowed_actors"] == ["p1"]
     assert YachtEventType.ROLL_CONFIRMED.value in ctx["expected_events"]
     assert YachtEventType.ROLL_UNREADABLE.value in ctx["expected_events"]
+    assert tts["text"] == "p1님 차례입니다."
 
 
 def test_roll_confirmed_moves_to_keep_before_third_roll():
@@ -43,6 +45,7 @@ def test_roll_confirmed_moves_to_keep_before_third_roll():
     assert fsm.state.dice_values == [1, 2, 3, 4, 5]
     assert fsm.state.phase == YachtPhase.AWAITING_KEEP.value
     assert _messages_of(msgs, MsgType.STATE_UPDATE.value)
+    assert _messages_of(msgs, MsgType.TTS_PLAY.value) == []
 
 
 def test_roll_confirmed_can_follow_previous_roll_without_reroll_request():
@@ -104,6 +107,8 @@ def test_score_selection_records_score_and_advances_player():
     assert fsm.state.current_player.player_id == "p2"
     assert fsm.state.phase == YachtPhase.AWAITING_ROLL.value
     assert _messages_of(msgs, MsgType.FUSION_CONTEXT.value)[0].payload["active_player"] == "p2"
+    tts_texts = [msg.payload["text"] for msg in _messages_of(msgs, MsgType.TTS_PLAY.value)]
+    assert tts_texts == ["p1님 에이스 2점입니다.", "p2님 차례입니다."]
 
 
 def test_restore_state_undoes_one_dice_roll():
