@@ -15,6 +15,7 @@ const WEREWOLF_PHASES = new Set([
 
 export default function App() {
   const [page, setPage] = useState('seat')
+  const [yachtTutorialMode, setYachtTutorialMode] = useState(false)
   const { state, connected, send } = useWebSocket('/ws/tablet')
 
   const phase = state?.phase ?? 'player_setup'
@@ -54,13 +55,27 @@ export default function App() {
       <Lobby
         players={players}
         send={send}
-        onSelectYacht={() => setPage('yacht')}
+        onSelectYacht={() => {
+          setYachtTutorialMode(false)
+          setPage('yacht')
+        }}
+        onSelectYachtTutorial={() => {
+          setYachtTutorialMode(true)
+          setPage('yacht')
+        }}
         onSelectWerewolf={() => setPage('werewolf')}
         onExit={() => setPage('seat')}
       />
     )
   }
-  if (page === 'yacht') return <YachtGame players={players} onExit={() => setPage('lobby')} onChangePlayers={() => setPage('seat')} />
+  if (page === 'yacht') return (
+    <YachtGame
+      players={players}
+      tutorialMode={yachtTutorialMode}
+      onExit={() => setPage('lobby')}
+      onChangePlayers={() => setPage('seat')}
+    />
+  )
   if (page === 'werewolf') return (
     <WerewolfGame
       players={players}
