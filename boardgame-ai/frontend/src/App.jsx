@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useWebSocket } from './hooks/useWebSocket'
 import { useAudioPlayer, audio as audioApi } from './hooks/useAudioPlayer'
+import { useBenchBridge } from './hooks/useBenchBridge'
 import SeatRegistration from './components/common/SeatRegistration'
 import Lobby from './pages/Lobby'
 import WerewolfGame from './pages/WerewolfGame'
@@ -22,6 +23,9 @@ export default function App() {
   })
   // App 레벨 싱글톤 audio. send를 넘겨 audio_ack가 backend로 흐르도록.
   useAudioPlayer(send)
+  // window._bench.log(...)를 정의하고 250ms 배치로 backend에 전송.
+  // backend가 BENCH_TRACE=1 아니면 backend 쪽에서 무시되므로 항상 켜둬도 OK.
+  useBenchBridge(send)
 
   const phase = state?.phase ?? 'player_setup'
   const players = state?.players ?? []

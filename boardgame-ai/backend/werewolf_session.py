@@ -85,6 +85,12 @@ class WerewolfSession:
                 self._agent.set_strategy_enabled(bool(payload.get("enabled", False)))
             return
 
+        # frontend bench hook → backend bench_log로 통합.
+        if input_type == "bench_trace":
+            from benchmarks.relay import handle_bench_trace
+            handle_bench_trace(payload)
+            return
+
         if input_type == "START_ROLE_REGISTRATION":
             await self._start_role_registration(payload)
             return
@@ -202,6 +208,13 @@ class WerewolfSession:
             })
 
     async def _start_game(self, payload: dict) -> None:
+        # Benchmark hook.
+        try:
+            from benchmarks.common.trace_setup import bench_log
+            import time as _t
+            bench_log().info("game_start werewolf %.6f", _t.time())
+        except Exception:
+            pass
         players_data = payload.get("players", [])
         center_cards = payload.get("center_cards", [])
         self._players_snapshot = [

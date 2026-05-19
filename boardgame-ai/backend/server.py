@@ -53,6 +53,13 @@ if _creds and not Path(_creds).is_absolute():
 async def lifespan(app: FastAPI):
     loop = asyncio.get_running_loop()
 
+    # 측정 모드 (BENCH_TRACE=1) — 가장 먼저 시작해야 이후 모든 bench_log 호출이 살아남음.
+    from benchmarks.session import BenchmarkSession
+    bench_session = BenchmarkSession()
+    bench_dir = bench_session.start()
+    if bench_dir is not None:
+        logger.info("BENCH_TRACE active. Results: %s", bench_dir)
+
     # 오디오: TTSEngine + AudioManager 부팅, static 사전 합성
     tts_engine = TTSEngine()
     audio_manager = AudioManager(tts_engine)
@@ -112,6 +119,7 @@ async def lifespan(app: FastAPI):
     app.state.audio_manager = audio_manager
     app.state.tts_engine = tts_engine
     app.state.agent_orchestrator = AgentOrchestrator(audio_manager)
+    app.state.bench_session = bench_session
 
     yield
 
@@ -119,6 +127,8 @@ async def lifespan(app: FastAPI):
     yacht_runner.stop()
     werewolf_runner.stop()
     lobby_runner.stop()
+    # 측정 세션 정리 — finalize 호출 + logger 핸들러 닫기.
+    bench_session.stop()
 
 
 app = FastAPI(title="Boardgame AI Backend", lifespan=lifespan)
@@ -220,8 +230,19 @@ async def ws_tablet(websocket: WebSocket) -> None:
 
 
 @app.websocket("/ws/yacht")
+def _bench_ws_log(event: str, path: str) -> None:
+    """Benchmark hook (BENCH_TRACE=1에서만 실제 기록)."""
+    try:
+        from benchmarks.common.trace_setup import bench_log
+        import time as _t
+        bench_log().info("ws_%s %s %.6f", event, path, _t.time())
+    except Exception:
+        pass
+
+
 async def yacht_socket(websocket: WebSocket) -> None:
     await websocket.accept()
+    _bench_ws_log("attach", "/ws/yacht")
     session = YachtSession(
         websocket=websocket,
         pipeline_switcher=app.state.pipeline_switcher,
@@ -240,6 +261,7 @@ async def yacht_socket(websocket: WebSocket) -> None:
     except WebSocketDisconnect:
         app.state.pipeline_switcher(None)
     finally:
+        _bench_ws_log("disconnect", "/ws/yacht")
         app.state.yacht_runner.deregister_session(session)
         app.state.agent_orchestrator.stop()
         # 오디오 큐 정리 — 끊긴 세션이 ack 못 보내므로 _current가 stuck되는 것 방지.
@@ -250,6 +272,7 @@ async def yacht_socket(websocket: WebSocket) -> None:
 @app.websocket("/ws/werewolf")
 async def werewolf_socket(websocket: WebSocket) -> None:
     await websocket.accept()
+    _bench_ws_log("attach", "/ws/werewolf")
     session = WerewolfSession(
         websocket=websocket,
         send_fusion_context_fn=app.state.bridge.send_fusion_context,
@@ -267,6 +290,7 @@ async def werewolf_socket(websocket: WebSocket) -> None:
             data = await websocket.receive_json()
             await session.handle_client_message(data)
     except WebSocketDisconnect:
+        _bench_ws_log("disconnect", "/ws/werewolf")
         app.state.orchestrator.set_werewolf_event_handler(None)
         app.state.pipeline_switcher(None)
         app.state.agent_orchestrator.stop()
