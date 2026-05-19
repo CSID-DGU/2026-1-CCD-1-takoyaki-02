@@ -85,6 +85,12 @@ class WerewolfSession:
                 self._agent.set_strategy_enabled(bool(payload.get("enabled", False)))
             return
 
+        # frontend bench hook → backend bench_log로 통합.
+        if input_type == "bench_trace":
+            from benchmarks.relay import handle_bench_trace
+            handle_bench_trace(payload)
+            return
+
         if input_type == "START_ROLE_REGISTRATION":
             await self._start_role_registration(payload)
             return

@@ -82,20 +82,132 @@ class BenchmarkSession:
             self._session_dir = None
 
     def finalize(self) -> None:
-        """게임 종료 또는 shutdown 시 자동 호출. 분석 모듈 실행 + summary.md 생성.
-
-        현재는 placeholder. 분석 모듈 추가하면 여기서 호출.
-        """
+        """게임 종료 또는 shutdown 시 자동 호출. 분석 모듈 실행 + summary.md 생성."""
         if self._session_dir is None:
             return
-        # TODO: trace_collector, channel_latency, ui_latency, fps_analysis, cache_hit_rate,
-        # ws_recovery, resource_usage 분석 모듈 in-process 호출 후 summary.md 생성.
-        # 일단 placeholder로 finalized 마커만 작성.
-        marker = self._session_dir / "finalized.txt"
-        marker.write_text(
+
+        # 분석 모듈은 lazy import로 — finalize 시점에만 로드.
+        from benchmarks import (
+            cache_hit_rate,
+            channel_latency,
+            fps_analysis,
+            trace_collector,
+            ui_latency,
+        )
+
+        log_path = self._session_dir / "raw" / "app.log"
+        results: dict = {}
+
+        # 1. raw/app.log → traces.jsonl (사후 분석용 보존)
+        if log_path.exists():
+            try:
+                count = trace_collector.collect(
+                    log_path, self._session_dir / "traces.jsonl"
+                )
+                results["trace_events"] = count
+            except Exception as e:
+                logger.exception("trace_collector failed")
+                results["trace_events"] = f"error: {e}"
+
+        # 2. 분석 모듈 in-process 호출
+        for name, mod in [
+            ("channel_latency", channel_latency),
+            ("ui_latency", ui_latency),
+            ("fps_analysis", fps_analysis),
+            ("cache_hit_rate", cache_hit_rate),
+        ]:
+            try:
+                results[name] = mod.run(self._session_dir)
+            except Exception as e:
+                logger.exception("%s analysis failed", name)
+                results[name] = {"error": str(e)}
+
+        # 3. summary.md 생성 + 콘솔 출력
+        summary = self._render_summary(results)
+        (self._session_dir / "summary.md").write_text(summary, encoding="utf-8")
+        # 콘솔에도 (uvicorn stdout에 보이도록)
+        print("\n" + "=" * 60)
+        print("BenchmarkSession finalized")
+        print("=" * 60)
+        print(summary)
+
+        # 마커
+        (self._session_dir / "finalized.txt").write_text(
             f"finalized_at={datetime.now().isoformat()}\n"
             f"duration_sec={time.time() - self._start_ts:.1f}\n"
         )
+
+    def _render_summary(self, results: dict) -> str:
+        """간이 한 페이지 마크다운 요약."""
+        lines: list[str] = []
+        lines.append(f"# 측정 결과 — {self._session_dir.name if self._session_dir else '?'}")
+        lines.append("")
+        lines.append(f"- 측정 시간: {time.time() - self._start_ts:.1f} sec")
+        lines.append(f"- 총 trace 이벤트: {results.get('trace_events', '?')}")
+        lines.append("")
+
+        # 채널별 응답 시간
+        cl = results.get("channel_latency", {})
+        if isinstance(cl, dict) and "by_channel" in cl:
+            lines.append("## ① 음성 채널별 응답 시간 (enqueue → broadcast)")
+            lines.append("")
+            lines.append("| 채널 | count | p50 (ms) | p95 (ms) | p99 (ms) |")
+            lines.append("|---|---:|---:|---:|---:|")
+            for ch, data in cl["by_channel"].items():
+                s = data.get("enqueue_to_broadcast_ms", {})
+                if s.get("count"):
+                    lines.append(
+                        f"| {ch} | {data['count']} | "
+                        f"{s['p50']:.1f} | {s['p95']:.1f} | {s['p99']:.1f} |"
+                    )
+            lines.append("")
+
+        # UI 화면 갱신
+        ui = results.get("ui_latency", {})
+        if isinstance(ui, dict) and "paint_interval_ms" in ui:
+            lines.append("## ② UI 화면 갱신 (paint 간격)")
+            s = ui["paint_interval_ms"]
+            lines.append(f"- paint 횟수: {ui.get('paint_count', 0)}")
+            if s.get("count"):
+                lines.append(f"- 간격 p50: {s['p50']:.1f} ms / p95: {s['p95']:.1f} ms")
+            lines.append("")
+
+        # FPS
+        fps = results.get("fps_analysis", {})
+        if isinstance(fps, dict) and "fps_summary" in fps:
+            lines.append("## ③ 비전 처리 FPS")
+            s = fps["fps_summary"]
+            lines.append(
+                f"- 목표 {fps.get('target_fps')} fps / 실제 평균 {s['mean']:.1f} fps "
+                f"(p5 {fps['fps_summary'].get('min', 0):.0f}, drop {fps.get('drop_rate', 0)*100:.1f}%)"
+            )
+            for seg in fps.get("by_segment", []):
+                lines.append(
+                    f"  - {seg['minute_range']} min: 평균 {seg['mean_fps']:.1f} fps "
+                    f"(min {seg['min_fps']})"
+                )
+            lines.append("")
+
+        # 캐시 적중률
+        cache = results.get("cache_hit_rate", {})
+        if isinstance(cache, dict) and "hit_rate" in cache:
+            lines.append("## ④ TTS 캐시 적중률")
+            lines.append(
+                f"- 전체 {cache['hits']}/{cache['total']} = {cache['hit_rate']*100:.1f}%"
+            )
+            for layer, d in cache.get("by_layer", {}).items():
+                tot = d["hits"] + d["misses"]
+                if tot:
+                    lines.append(
+                        f"  - {layer}: {d['hits']}/{tot} ({100*d['hits']/tot:.1f}%)"
+                    )
+            lines.append(
+                f"- API 합성 절감: 약 {cache.get('estimated_api_time_saved_sec', 0)} sec"
+            )
+            lines.append("")
+
+        lines.append(f"_상세 JSON: `{self._session_dir.name if self._session_dir else '?'}/*.json`_")
+        return "\n".join(lines)
 
     def session_dir(self) -> Path | None:
         return self._session_dir
