@@ -39,6 +39,28 @@ _texttospeech = None
 _AudioEncoding = None
 
 
+def _bench_log_hit(key: str, layer: str) -> None:
+    """Benchmark hook: 캐시 hit. BENCH_TRACE=0이면 no-op."""
+    try:
+        from benchmarks.common.trace_setup import bench_log, is_bench
+        if is_bench():
+            bench_log().info("tts_synth_done %s hit=1 layer=%s elapsed_ms=0.0", key, layer)
+    except Exception:
+        pass
+
+
+def _bench_log_miss(key: str, layer: str, elapsed_ms: float) -> None:
+    """Benchmark hook: 캐시 miss(합성 발생). BENCH_TRACE=0이면 no-op."""
+    try:
+        from benchmarks.common.trace_setup import bench_log, is_bench
+        if is_bench():
+            bench_log().info(
+                "tts_synth_done %s hit=0 layer=%s elapsed_ms=%.3f", key, layer, elapsed_ms,
+            )
+    except Exception:
+        pass
+
+
 def _lazy_import_google() -> bool:
     global _texttospeech, _AudioEncoding
     if _texttospeech is not None:
@@ -130,7 +152,13 @@ class TTSEngine:
         session_id: str | None = None,
     ) -> Path | None:
         path = self.cache_path(text, voice, cache_layer, session_id)
-        return path if path.exists() else None
+        if path.exists():
+            # Benchmark hook: cache_hit_rate 지표가 정확히 잡히도록 hit을 여기서 기록.
+            # 호출부(AudioManager 등)가 cache_hit→synthesize 순으로 단락 평가하므로
+            # synthesize() 안의 hit 로그는 거의 안 찍힘.
+            _bench_log_hit(path.stem, cache_layer)
+            return path
+        return None
 
     async def synthesize(
         self,
@@ -147,6 +175,10 @@ class TTSEngine:
         path = self.cache_path(text, v, cache_layer, session_id)
 
         if path.exists():
+            # hit 로그는 cache_hit() 경로에서 기록 (호출부가 cache_hit 단락 평가하므로
+            # synthesize()로는 거의 안 들어옴). 만약 호출부가 synthesize()를 직접 부르고
+            # 캐시가 있는 경우엔 여기서도 기록해 둔다.
+            _bench_log_hit(path.stem, cache_layer)
             return path
 
         if not self._available:
@@ -155,6 +187,8 @@ class TTSEngine:
 
         path.parent.mkdir(parents=True, exist_ok=True)
 
+        import time as _t
+        synth_start = _t.time()
         try:
             async with self._semaphore:
                 wav_bytes = await asyncio.wait_for(
@@ -175,6 +209,8 @@ class TTSEngine:
         tmp_path = path.with_suffix(".wav.tmp")
         tmp_path.write_bytes(wav_bytes)
         tmp_path.replace(path)
+        elapsed_ms = (_t.time() - synth_start) * 1000
+        _bench_log_miss(path.stem, cache_layer, elapsed_ms)
         logger.info("synthesized %d bytes → %s", len(wav_bytes), path.name)
         return path
 

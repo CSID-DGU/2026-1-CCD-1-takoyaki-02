@@ -14,8 +14,11 @@ from core.constants import MsgType
 from core.envelope import WSMessage
 from core.events import FusionContext, GameEvent
 from games.werewolf.fsm import WerewolfFSM
-from games.werewolf.ontology import WerewolfEventType, WerewolfInputType, WerewolfRole
+from games.werewolf.ontology import WerewolfEventType, WerewolfInputType, WerewolfPhase, WerewolfRole
 from games.werewolf.state import WerewolfPlayerState
+
+from agents.context import AgentContext
+from agents.orchestrator import AgentOrchestrator
 
 # AudioManager가 가로채는 msg_type 집합. yacht_session.py와 동일.
 _AUDIO_MSG_TYPES = {
@@ -47,6 +50,7 @@ class WerewolfSession:
         loop: asyncio.AbstractEventLoop,
         pipeline_switcher: Callable[[str | None], None] | None = None,
         audio_manager: AudioManager | None = None,
+        agent_orchestrator: AgentOrchestrator | None = None,
     ) -> None:
         self.websocket = websocket
         self._send_fusion_context = send_fusion_context_fn
@@ -57,12 +61,15 @@ class WerewolfSession:
         self._role_reg: dict | None = None
         self._pending_game_data: dict | None = None
         self._audio_manager = audio_manager
+        self._agent = agent_orchestrator
         # 동일 객체 참조를 유지해야 detach_broadcast_if에서 is 비교가 가능.
         self._send_raw_bound = self._send_raw
         if audio_manager is not None:
             audio_manager.attach_broadcast(self._send_raw_bound, session_id=audio_manager.get_session_id())
         self._pending_role_reg: dict | None = None
         self._role_reveal: dict | None = None
+        # 현재 플레이어 목록 (AgentContext 빌드용)
+        self._players_snapshot: list[dict] = []
 
     # ── 공개 인터페이스 ────────────────────────────────────────────────────────
 
@@ -80,6 +87,17 @@ class WerewolfSession:
             status = str(payload.get("status", ""))
             if pbid:
                 await self._audio_manager.handle_ack(pbid, status)
+            return
+
+        if input_type == "SET_STRATEGY_COACHING":
+            if self._agent is not None:
+                self._agent.set_strategy_enabled(bool(payload.get("enabled", False)))
+            return
+
+        # frontend bench hook → backend bench_log로 통합.
+        if input_type == "bench_trace":
+            from benchmarks.relay import handle_bench_trace
+            handle_bench_trace(payload)
             return
 
         if input_type == "START_ROLE_REGISTRATION":
@@ -177,9 +195,10 @@ class WerewolfSession:
     async def _confirm_role(self, player_id: str | None, payload: dict | None = None) -> None:
         if self._role_reg is None or player_id is None:
             return
-        detected = self._role_reg.get("detected_role")
+        # 프론트에서 수동 선택한 역할 우선, 없으면 비전 감지 결과 사용 (_1/_2 suffix 정규화)
         payload_role = (payload or {}).get("role")
-        role = detected or (_normalize_role(str(payload_role)) if payload_role else None)
+        detected = self._role_reg.get("detected_role")
+        role = _normalize_role(str(payload_role)) if payload_role else detected
         if not role:
             return
 
@@ -214,8 +233,19 @@ class WerewolfSession:
             })
 
     async def _start_game(self, payload: dict) -> None:
+        # Benchmark hook.
+        try:
+            from benchmarks.common.trace_setup import bench_log
+            import time as _t
+            bench_log().info("game_start werewolf %.6f", _t.time())
+        except Exception:
+            pass
         players_data = payload.get("players", [])
         center_cards = payload.get("center_cards", [])
+        self._players_snapshot = [
+            {"player_id": p["player_id"], "playername": p.get("playername", p["player_id"])}
+            for p in players_data
+        ]
         ws_players = [
             WerewolfPlayerState(
                 player_id=p["player_id"],
@@ -235,6 +265,10 @@ class WerewolfSession:
 
     async def _handle_vision_event(self, event: GameEvent) -> None:
         etype = event.event_type
+
+        # 규칙 에이전트: FSM 처리 이전에 위반 감지
+        if self._agent is not None:
+            await self._agent.on_game_event(event)
 
         if etype == WerewolfEventType.ROLE_DETECTED:
             await self._handle_role_detected(event)
@@ -285,9 +319,29 @@ class WerewolfSession:
             valid_targets=None,
             zones={},
             anchors={},
-            params={"stabilization_frames": 5},
+            params={"stabilization_frames": 1},
         )
         self._send_fusion_context(ctx, self._state_version)
+        await self._notify_agent_state_change(ctx)
+
+    async def _notify_agent_state_change(self, fusion_ctx: FusionContext) -> None:
+        if self._agent is None:
+            return
+        import time as _time
+        timeout = None
+        if fusion_ctx.fsm_state == WerewolfPhase.DAY_DISCUSSION:
+            timeout = 300.0
+        agent_ctx = AgentContext(
+            game_type="werewolf",
+            fsm_state=fusion_ctx.fsm_state,
+            active_player=fusion_ctx.active_player,
+            players=self._players_snapshot,
+            allowed_actors=list(fusion_ctx.allowed_actors),
+            expected_events=list(fusion_ctx.expected_events),
+            turn_start_time=_time.time(),
+            turn_timeout=timeout,
+        )
+        await self._agent.on_state_change(agent_ctx, state_version=self._state_version)
 
     async def _start_role_reveal(self) -> None:
         """투표 종료 후 최종 역할 확인 단계 시작. 카드가 교환된 플레이어만 순서대로 재인식."""
@@ -464,6 +518,7 @@ class WerewolfSession:
             if msg.msg_type == MsgType.FUSION_CONTEXT.value:
                 ctx = FusionContext.from_dict(msg.payload)
                 self._send_fusion_context(ctx, msg.state_version)
+                await self._notify_agent_state_change(ctx)
             elif (
                 msg.msg_type == MsgType.STATE_UPDATE.value
                 and isinstance(msg.payload, dict)

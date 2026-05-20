@@ -7,23 +7,31 @@ from unittest.mock import patch
 
 import pytest
 
-from games.werewolf.fsm import ACTIVE_PHASE_TIMEOUT, PASSIVE_PHASE_DURATION, WerewolfFSM
+from games.werewolf.fsm import WerewolfFSM
 from games.werewolf.ontology import WerewolfPhase
 from games.werewolf.state import WerewolfPlayerState
 
 
 def _make_fsm(roles: list[str], broadcast=None) -> WerewolfFSM:
     if broadcast is None:
-        async def _noop(_msg): pass
+
+        async def _noop(_msg):
+            pass
+
         broadcast = _noop
     players = [
         WerewolfPlayerState(player_id=f"p_{i}", original_role=r, current_role=r)
         for i, r in enumerate(roles)
     ]
-    return WerewolfFSM(players=players, center_cards=["villager", "villager", "villager"], broadcast=broadcast)
+    return WerewolfFSM(
+        players=players,
+        center_cards=["villager", "villager", "villager"],
+        broadcast=broadcast,
+    )
 
 
 # ── 패시브 타이머 ─────────────────────────────────────────────────────────────
+
 
 @pytest.mark.anyio
 async def test_passive_werewolf_phase_auto_advances() -> None:
@@ -42,7 +50,8 @@ async def test_passive_timer_skips_if_phase_already_changed() -> None:
     """phase가 이미 변경된 경우 패시브 타이머 콜백이 전환 skip."""
     broadcast_msgs: list = []
 
-    async def record(msg): broadcast_msgs.append(msg)
+    async def record(msg):
+        broadcast_msgs.append(msg)
 
     fsm = _make_fsm(["werewolf"], broadcast=record)
     fsm.state.phase = WerewolfPhase.DAY_DISCUSSION.value
@@ -56,6 +65,7 @@ async def test_passive_timer_skips_if_phase_already_changed() -> None:
 
 
 # ── 액티브 타이머 ─────────────────────────────────────────────────────────────
+
 
 @pytest.mark.anyio
 async def test_active_timeout_advances_phase_when_no_event() -> None:

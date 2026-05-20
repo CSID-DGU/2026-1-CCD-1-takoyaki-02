@@ -70,3 +70,6 @@ weights/*.engine
 training/**/datasets/
 training/**/runs/
 training/**/*.zip
+
+# 벤치마크 측정 결과 (런타임 생성, 용량 큼)
+benchmarks/results/

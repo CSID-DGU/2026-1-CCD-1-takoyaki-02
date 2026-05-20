@@ -139,7 +139,7 @@ class WerewolfRules:
                 continue
             if card.cls_name is None or card.cls_name == _BACK_CLASS:
                 continue
-            if card.stable_frames < 10:
+            if card.stable_frames < 5:
                 continue
             self._reported_roles.add(actor_id)
             return (

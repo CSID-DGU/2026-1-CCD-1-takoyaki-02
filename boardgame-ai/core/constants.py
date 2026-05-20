@@ -64,6 +64,7 @@ class AgentRole(StrEnum):
     REFEREE = "referee"
     TEMPO = "tempo"
     NARRATOR = "narrator"
+    STRATEGY = "strategy"
 
 
 class InputType(StrEnum):

@@ -24,6 +24,7 @@ from audio.catalog import BGM_DIR, SFX_DIR, TTS_CACHE_DIR
 from audio.manager import AudioManager
 from audio.prewarm import prewarm_static
 from audio.tts_engine import TTSEngine
+from agents.orchestrator import AgentOrchestrator
 from backend.lobby_runner import LobbyRunner
 from backend.orchestrator import Orchestrator
 from backend.routes.players import router as players_router
@@ -51,6 +52,13 @@ if _creds and not Path(_creds).is_absolute():
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     loop = asyncio.get_running_loop()
+
+    # 측정 모드 (BENCH_TRACE=1) — 가장 먼저 시작해야 이후 모든 bench_log 호출이 살아남음.
+    from benchmarks.session import BenchmarkSession
+    bench_session = BenchmarkSession()
+    bench_dir = bench_session.start()
+    if bench_dir is not None:
+        logger.info("BENCH_TRACE active. Results: %s", bench_dir)
 
     # 오디오: TTSEngine + AudioManager 부팅, static 사전 합성
     tts_engine = TTSEngine()
@@ -110,6 +118,8 @@ async def lifespan(app: FastAPI):
     app.state.loop = loop
     app.state.audio_manager = audio_manager
     app.state.tts_engine = tts_engine
+    app.state.agent_orchestrator = AgentOrchestrator(audio_manager)
+    app.state.bench_session = bench_session
 
     yield
 
@@ -117,6 +127,8 @@ async def lifespan(app: FastAPI):
     yacht_runner.stop()
     werewolf_runner.stop()
     lobby_runner.stop()
+    # 측정 세션 정리 — finalize 호출 + logger 핸들러 닫기.
+    bench_session.stop()
 
 
 app = FastAPI(title="Boardgame AI Backend", lifespan=lifespan)
@@ -217,14 +229,26 @@ async def ws_tablet(websocket: WebSocket) -> None:
     await tablet_ws_handler(websocket, app.state.orchestrator)
 
 
+def _bench_ws_log(event: str, path: str) -> None:
+    """Benchmark hook (BENCH_TRACE=1에서만 실제 기록)."""
+    try:
+        from benchmarks.common.trace_setup import bench_log
+        import time as _t
+        bench_log().info("ws_%s %s %.6f", event, path, _t.time())
+    except Exception:
+        pass
+
+
 @app.websocket("/ws/yacht")
 async def yacht_socket(websocket: WebSocket) -> None:
     await websocket.accept()
+    _bench_ws_log("attach", "/ws/yacht")
     session = YachtSession(
         websocket=websocket,
         pipeline_switcher=app.state.pipeline_switcher,
         bridge=app.state.bridge,
         audio_manager=app.state.audio_manager,
+        agent_orchestrator=app.state.agent_orchestrator,
     )
     # 비전 → 활성 세션 라우팅 활성화. send_hello/receive loop 어디서 예외가 나도
     # finally에서 반드시 deregister 되도록 register 직후부터 try 진입.
@@ -237,7 +261,9 @@ async def yacht_socket(websocket: WebSocket) -> None:
     except WebSocketDisconnect:
         app.state.pipeline_switcher(None)
     finally:
+        _bench_ws_log("disconnect", "/ws/yacht")
         app.state.yacht_runner.deregister_session(session)
+        app.state.agent_orchestrator.stop()
         # 오디오 큐 정리 — 끊긴 세션이 ack 못 보내므로 _current가 stuck되는 것 방지.
         # detach_broadcast_if: 이미 새 세션이 attach된 경우 race condition으로 덮어쓰지 않음.
         app.state.audio_manager.detach_broadcast_if(session._send_raw_bound)
@@ -246,20 +272,26 @@ async def yacht_socket(websocket: WebSocket) -> None:
 @app.websocket("/ws/werewolf")
 async def werewolf_socket(websocket: WebSocket) -> None:
     await websocket.accept()
+    _bench_ws_log("attach", "/ws/werewolf")
     session = WerewolfSession(
         websocket=websocket,
         send_fusion_context_fn=app.state.bridge.send_fusion_context,
         loop=app.state.loop,
         pipeline_switcher=app.state.pipeline_switcher,
         audio_manager=app.state.audio_manager,
+        agent_orchestrator=app.state.agent_orchestrator,
     )
     app.state.orchestrator.set_werewolf_event_handler(session.get_vision_event_handler())
+    # WS 연결 즉시 웨어울프 파이프라인 활성화 (역할 선택 화면에서도 카메라 준비)
+    app.state.pipeline_switcher("werewolf")
     await session.send_hello()
     try:
         while True:
             data = await websocket.receive_json()
             await session.handle_client_message(data)
     except WebSocketDisconnect:
+        _bench_ws_log("disconnect", "/ws/werewolf")
         app.state.orchestrator.set_werewolf_event_handler(None)
         app.state.pipeline_switcher(None)
+        app.state.agent_orchestrator.stop()
         app.state.audio_manager.detach_broadcast_if(session._send_raw_bound)

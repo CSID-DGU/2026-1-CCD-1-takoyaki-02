@@ -179,6 +179,15 @@ class AudioManager:
             request.playback_id = _new_playback_id()
         # 메시지 갱신
         msg.payload = request.to_dict()
+        # Benchmark hook: 큐 입장 시각 (채널별 응답 시간 분해용).
+        try:
+            from benchmarks.common.trace_setup import bench_log
+            import time as _t
+            bench_log().info(
+                "audio_enqueue tts_play %s %.6f", request.playback_id, _t.time(),
+            )
+        except Exception:
+            pass
         item = _QueueItem(
             priority=int(request.priority),
             seq_arrival=next(self._arrival_counter),
@@ -196,6 +205,15 @@ class AudioManager:
         if not payload.get("playback_id"):
             payload["playback_id"] = _new_playback_id()
             msg.payload = payload
+        # Benchmark hook: 큐 입장 시각.
+        try:
+            from benchmarks.common.trace_setup import bench_log
+            import time as _t
+            bench_log().info(
+                "audio_enqueue sfx_play %s %.6f", payload["playback_id"], _t.time(),
+            )
+        except Exception:
+            pass
         item = _QueueItem(
             priority=int(payload.get("priority", AudioPriority.NORMAL)),
             seq_arrival=next(self._arrival_counter),
@@ -352,8 +370,27 @@ class AudioManager:
                     request.playback_id,
                 )
             out = WSMessage.make_tts_play(request, state_version=msg.state_version)
+            # Benchmark hook: backend → frontend 송신 시각.
+            try:
+                from benchmarks.common.trace_setup import bench_log
+                import time as _t
+                bench_log().info(
+                    "audio_broadcast tts_play %s %.6f",
+                    request.playback_id, _t.time(),
+                )
+            except Exception:
+                pass
             await self._send(out)
         else:
+            try:
+                from benchmarks.common.trace_setup import bench_log
+                import time as _t
+                pbid = msg.payload.get("playback_id", "-") if isinstance(msg.payload, dict) else "-"
+                bench_log().info(
+                    "audio_broadcast %s %s %.6f", msg.msg_type, pbid, _t.time(),
+                )
+            except Exception:
+                pass
             await self._send(msg)
 
     # ── inbound: frontend → AudioManager ──────────────────────────────────────

@@ -193,6 +193,16 @@ class FusionEngine:
                 f"[fusion] EVENT={event_type}  actor={actor_id}  "
                 f"conf={conf:.2f}  frame={perception.frame_id}"
             )
+            # Benchmark hook (BENCH_TRACE=1일 때만 실제 기록). 채널별 응답 시간의 기준점.
+            try:
+                from benchmarks.common.trace_setup import bench_log
+                import time as _t
+                bench_log().info(
+                    "event_emit %s %s %d %.6f",
+                    event_type, actor_id or "-", perception.frame_id, _t.time(),
+                )
+            except Exception:
+                pass
             events.append(fired)
             # 중간 이벤트 1회 발화 가드
             if event_type == CommonEventType.SEAT_RIGHT_REGISTERED and actor_id:

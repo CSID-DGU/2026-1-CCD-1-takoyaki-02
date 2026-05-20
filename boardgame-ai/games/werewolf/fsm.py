@@ -295,6 +295,13 @@ class WerewolfFSM(BaseFSM):
             if has_swap_roles:
                 return self._enter_phase(WerewolfPhase.FINAL_ROLE_REVEAL)
             self.state.winner = judge_winner(self.state)
+            # Benchmark hook: 정상 게임 종료.
+            try:
+                from benchmarks.common.trace_setup import bench_log
+                import time as _t
+                bench_log().info("game_end werewolf normal %.6f", _t.time())
+            except Exception:
+                pass
             return self._enter_phase(WerewolfPhase.RESULT)
 
         return []

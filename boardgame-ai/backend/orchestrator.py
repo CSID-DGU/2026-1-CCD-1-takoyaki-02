@@ -271,6 +271,12 @@ class Orchestrator:
                     self._audio_manager.handle_ack(pbid, status), self._loop,
                 )
             return
+
+        # frontend bench hook → backend bench_log (tablet 채널에서 들어옴).
+        if input_type == "bench_trace":
+            from benchmarks.relay import handle_bench_trace
+            handle_bench_trace(data)
+            return
         if input_type == "start_registration":
             self.start_registration()
         elif input_type == "finalize_player":

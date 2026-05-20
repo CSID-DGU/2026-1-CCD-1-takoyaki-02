@@ -83,6 +83,10 @@ async function playMessage(msg) {
   el.src = audio_url
   const t0 = Date.now() / 1000
   player.current = { playback_id, type: msg.msg_type, t0, fadeTimer: null }
+  // Benchmark hook: 첫 음 재생 시작 시각 (사용자 체감 기준점).
+  if (window._bench) {
+    try { window._bench.log('audio_play_start', msg.msg_type, playback_id, performance.now()) } catch (_) {}
+  }
 
   if (msg.msg_type === 'tts_play') {
     // TTS 중 BGM 더킹
