@@ -1,4 +1,19 @@
-export default function NightStart({ onComplete }) {
+import { useEffect } from 'react'
+import { audio } from '../../hooks/useAudioPlayer'
+
+export default function NightStart({ onComplete, send, onExit }) {
+  useEffect(() => {
+    send?.('TTS_REQUEST', { text: '밤이 되었습니다. 모두 눈을 감아주세요.' })
+    let timer = null
+    const unsubscribe = audio.onNextTtsEnded(() => {
+      timer = setTimeout(onComplete, 8000)
+    })
+    return () => {
+      unsubscribe()
+      if (timer !== null) clearTimeout(timer)
+    }
+  }, [])
+
   return (
     <>
       <style>{`
@@ -22,6 +37,7 @@ export default function NightStart({ onComplete }) {
       `}</style>
 
       <div onClick={onComplete} style={styles.page}>
+        <button onClick={(e) => { e.stopPropagation(); onExit?.() }} style={exitBtn}>나가기</button>
 
         {/* 배경 */}
         <div style={styles.sky} />
@@ -169,4 +185,15 @@ const styles = {
     color: 'rgba(248,241,221,0.55)',
     letterSpacing: 1,
   },
+}
+
+const exitBtn = {
+  position: 'absolute', top: 20, right: 20, zIndex: 10,
+  padding: '8px 18px',
+  border: '1px solid rgba(248,241,221,0.2)',
+  borderRadius: 8,
+  background: 'rgba(255,255,255,0.08)',
+  color: 'rgba(248,241,221,0.7)',
+  fontSize: 14, fontWeight: 600, cursor: 'pointer',
+  backdropFilter: 'blur(8px)',
 }

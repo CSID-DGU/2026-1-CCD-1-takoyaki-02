@@ -14,7 +14,7 @@ from core.constants import MsgType
 from core.envelope import WSMessage
 from core.events import FusionContext, GameEvent
 from games.werewolf.fsm import WerewolfFSM
-from games.werewolf.ontology import WerewolfEventType, WerewolfInputType, WerewolfPhase
+from games.werewolf.ontology import WerewolfEventType, WerewolfInputType, WerewolfPhase, WerewolfRole
 from games.werewolf.state import WerewolfPlayerState
 
 from agents.context import AgentContext
@@ -32,6 +32,14 @@ _AUDIO_MSG_TYPES = {
 
 def _normalize_role(role_id: str) -> str:
     return re.sub(r"_\d+$", "", role_id)
+
+
+# 비전 감지 여부와 무관하게 본인 카드가 항상 바뀌는 역할
+_SELF_SWAP_ROLES: frozenset[str] = frozenset({
+    WerewolfRole.ROBBER,
+    WerewolfRole.DRUNK,
+    WerewolfRole.DOPPELGANGER,
+})
 
 
 class WerewolfSession:
@@ -59,6 +67,7 @@ class WerewolfSession:
         if audio_manager is not None:
             audio_manager.attach_broadcast(self._send_raw_bound, session_id=audio_manager.get_session_id())
         self._pending_role_reg: dict | None = None
+        self._role_reveal: dict | None = None
         # 현재 플레이어 목록 (AgentContext 빌드용)
         self._players_snapshot: list[dict] = []
 
@@ -103,10 +112,23 @@ class WerewolfSession:
             await self._finish_card_setup()
             return
 
+        if input_type == "BACK_TO_CARD_SETUP":
+            await self._back_to_card_setup()
+            return
+
+        if input_type == "BACK_TO_PREV_PLAYER":
+            await self._back_to_prev_player()
+            return
+
+        if input_type == "ROLE_REVEAL_CONFIRM":
+            await self._confirm_role_reveal(player_id, payload)
+            return
+
         if input_type == "TTS_REQUEST":
             text = payload.get("text", "")
             if text and self._audio_manager is not None:
-                await self._audio_manager.enqueue_tts(text=text)
+                sv = self._fsm.state.state_version if self._fsm is not None else 0
+                await self._audio_manager.enqueue_tts(text=text, state_version=sv)
             return
 
         if input_type == "START_WEREWOLF_GAME":
@@ -118,6 +140,7 @@ class WerewolfSession:
             self._role_reg = None
             self._pending_game_data = None
             self._pending_role_reg = None
+            self._role_reveal = None
             if self._pipeline_switcher is not None:
                 self._pipeline_switcher(None)
             return
@@ -172,12 +195,14 @@ class WerewolfSession:
     async def _confirm_role(self, player_id: str | None, payload: dict | None = None) -> None:
         if self._role_reg is None or player_id is None:
             return
-        # 프론트에서 수동 선택한 역할 우선, 없으면 비전 감지 결과 사용
-        confirmed_role = (payload or {}).get("role") or self._role_reg.get("detected_role")
-        if confirmed_role is None:
+        # 프론트에서 수동 선택한 역할 우선, 없으면 비전 감지 결과 사용 (_1/_2 suffix 정규화)
+        payload_role = (payload or {}).get("role")
+        detected = self._role_reg.get("detected_role")
+        role = _normalize_role(str(payload_role)) if payload_role else detected
+        if not role:
             return
 
-        self._role_reg["confirmed_roles"][player_id] = confirmed_role
+        self._role_reg["confirmed_roles"][player_id] = role
         next_index = self._role_reg["player_index"] + 1
         player_order = self._role_reg["player_order"]
 
@@ -261,12 +286,20 @@ class WerewolfSession:
 
     async def _handle_role_detected(self, event: GameEvent) -> None:
         role = (event.data or {}).get("role")
-        if not role or self._role_reg is None:
+        if not role:
             return
-        if self._role_reg["detected_role"] is not None:
+        if self._role_reg is not None:
+            if self._role_reg["detected_role"] is not None:
+                return
+            self._role_reg["detected_role"] = role
+            await self._broadcast_role_reg()
             return
-        self._role_reg["detected_role"] = role
-        await self._broadcast_role_reg()
+        if self._role_reveal is not None:
+            if self._role_reveal["detected_role"] is not None:
+                return
+            self._role_reveal["detected_role"] = role
+            await self._broadcast_role_reveal()
+            return
 
     # ── 내부 헬퍼 ────────────────────────────────────────────────────────────
 
@@ -309,6 +342,135 @@ class WerewolfSession:
             turn_timeout=timeout,
         )
         await self._agent.on_state_change(agent_ctx, state_version=self._state_version)
+
+    async def _start_role_reveal(self) -> None:
+        """투표 종료 후 최종 역할 확인 단계 시작. 카드가 교환된 플레이어만 순서대로 재인식."""
+        if self._fsm is None:
+            return
+        # 비전 감지 스왑 피해자 + 본인 카드가 항상 바뀌는 역할 보유자
+        swap_players = [
+            p.player_id for p in self._fsm.state.players
+            if p.current_role != p.original_role
+            or p.original_role in _SELF_SWAP_ROLES
+        ]
+        if not swap_players:
+            # 실제로 교환된 카드가 없으면 바로 결과로 진행
+            await self.send_many(
+                self._fsm.handle_input(WerewolfInputType.START_NOW, {}, None)
+            )
+            return
+        first_player = swap_players[0]
+        self._role_reveal = {
+            "player_order": swap_players,
+            "player_index": 0,
+            "player_id": first_player,
+            "detected_role": None,
+        }
+        await self._push_role_reveal_context(first_player)
+        await self._broadcast_role_reveal()
+
+    async def _confirm_role_reveal(self, player_id: str | None, payload: dict | None = None) -> None:
+        """플레이어의 최종 역할을 확정하고 FSM current_role을 업데이트한다."""
+        if self._role_reveal is None or player_id is None or self._fsm is None:
+            return
+        detected = self._role_reveal.get("detected_role")
+        payload_role = (payload or {}).get("role")
+        role = detected or (_normalize_role(str(payload_role)) if payload_role else None)
+        if not role:
+            return
+
+        try:
+            self._fsm.state.get_player(player_id).current_role = role
+        except KeyError:
+            return
+
+        next_index = self._role_reveal["player_index"] + 1
+        player_order = self._role_reveal["player_order"]
+
+        if next_index < len(player_order):
+            next_player = player_order[next_index]
+            self._role_reveal["player_index"] = next_index
+            self._role_reveal["player_id"] = next_player
+            self._role_reveal["detected_role"] = None
+            await self._push_role_reveal_context(next_player)
+            await self._broadcast_role_reveal()
+        else:
+            self._role_reveal = None
+            # FINAL_ROLE_REVEAL → RESULT (FSM이 judge_winner 계산 후 result 진입)
+            await self.send_many(
+                self._fsm.handle_input(WerewolfInputType.START_NOW, {}, None)
+            )
+
+    async def _push_role_reveal_context(self, player_id: str) -> None:
+        self._state_version += 1
+        ctx = FusionContext(
+            fsm_state="final_role_reveal",
+            game_type="werewolf",
+            active_player=player_id,
+            allowed_actors=[player_id],
+            expected_events=[WerewolfEventType.ROLE_DETECTED],
+            reject_events=[
+                WerewolfEventType.CARD_PEEK,
+                WerewolfEventType.CARD_SWAP,
+                WerewolfEventType.VOTE_POINT,
+            ],
+            valid_targets=None,
+            zones={},
+            anchors={},
+            params={"stabilization_frames": 5},
+        )
+        self._send_fusion_context(ctx, self._state_version)
+
+    async def _broadcast_role_reveal(self) -> None:
+        if self._fsm is None:
+            return
+        self._state_version += 1
+        all_roles = (
+            [p.original_role for p in self._fsm.state.players]
+            + list(self._fsm.state.center_cards)
+        )
+        payload = {
+            **self._fsm.state.to_dict(),
+            "phase": "final_role_reveal",
+            "role_reveal": {**(self._role_reveal or {}), "all_roles": all_roles},
+        }
+        await self.send(WSMessage(
+            msg_type=MsgType.STATE_UPDATE.value,
+            payload=payload,
+            state_version=self._state_version,
+        ))
+
+    async def _back_to_prev_player(self) -> None:
+        """현재 플레이어의 이전 플레이어로 돌아간다. 이전 플레이어의 확정 역할을 취소."""
+        if self._role_reg is None:
+            return
+        prev_index = self._role_reg["player_index"] - 1
+        if prev_index < 0:
+            return
+        player_order = self._role_reg["player_order"]
+        prev_player = player_order[prev_index]
+        self._role_reg["confirmed_roles"].pop(prev_player, None)
+        self._role_reg["player_index"] = prev_index
+        self._role_reg["player_id"] = prev_player
+        self._role_reg["detected_role"] = None
+        await self._push_role_reg_context(prev_player)
+        await self._broadcast_role_reg()
+
+    async def _back_to_card_setup(self) -> None:
+        """role_registration 도중 카드 세팅 화면으로 되돌아간다. 확정된 역할은 초기화."""
+        all_roles = list((self._role_reg or {}).get("all_roles", []))
+        player_order = list((self._role_reg or {}).get("player_order", []))
+        self._role_reg = None
+        self._pending_role_reg = {
+            "selected_roles": all_roles,
+            "player_order": player_order,
+        }
+        self._state_version += 1
+        await self.send(WSMessage(
+            msg_type=MsgType.STATE_UPDATE.value,
+            payload={"phase": "card_setup", "all_roles": all_roles},
+            state_version=self._state_version,
+        ))
 
     async def _finish_card_setup(self) -> None:
         # 역할 등록 완료 후 게임 시작 경로 (기존 START_WEREWOLF_GAME 등)
@@ -357,6 +519,14 @@ class WerewolfSession:
                 ctx = FusionContext.from_dict(msg.payload)
                 self._send_fusion_context(ctx, msg.state_version)
                 await self._notify_agent_state_change(ctx)
+            elif (
+                msg.msg_type == MsgType.STATE_UPDATE.value
+                and isinstance(msg.payload, dict)
+                and msg.payload.get("phase") == "final_role_reveal"
+            ):
+                # FSM 상태 업데이트 대신 session이 role_reveal 포함 통합 상태를 브로드캐스트
+                if self._role_reveal is None and self._fsm is not None:
+                    await self._start_role_reveal()
             else:
                 await self.send(msg)
 

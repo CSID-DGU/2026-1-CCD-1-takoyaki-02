@@ -40,8 +40,14 @@ const WINNER_CONFIG = {
   },
 }
 
-export default function GameEndWW({ players = [], finalRoles = {}, winner = 'village', onChangePlayers, onChangeGame, onRestart }) {
+import { useEffect } from 'react'
+
+export default function GameEndWW({ players = [], finalRoles = {}, originalRoles = {}, winner = 'village', onChangePlayers, onChangeGame, onRestart, send }) {
   const cfg = WINNER_CONFIG[winner] ?? WINNER_CONFIG.village
+
+  useEffect(() => {
+    send?.('TTS_REQUEST', { text: `${cfg.headline} ${cfg.team}` })
+  }, [])
 
   return (
     <>
@@ -114,8 +120,11 @@ export default function GameEndWW({ players = [], finalRoles = {}, winner = 'vil
           <div style={{ ...styles.roleList, animation: 'fadeUp 0.5s ease-out 0.4s both' }}>
             {players.map((p, i) => {
               const roleId = finalRoles[p.player_id]
+              const origRoleId = originalRoles[p.player_id]
               const roleName = ROLE_NAMES[roleId] ?? roleId ?? '미공개'
-              const isWerewolfTeam = ['werewolf', 'werewolf_1', 'werewolf_2', 'minion', 'doppelganger'].includes(roleId)
+              const origRoleName = ROLE_NAMES[origRoleId] ?? origRoleId ?? '미공개'
+              const roleChanged = origRoleId && roleId && origRoleId !== roleId
+              const isWerewolfTeam = ['werewolf', 'werewolf_1', 'werewolf_2', 'minion'].includes(roleId)
               return (
                 <div key={p.player_id} style={{
                   ...styles.roleRow,
@@ -123,12 +132,17 @@ export default function GameEndWW({ players = [], finalRoles = {}, winner = 'vil
                   animation: `fadeUp 0.4s ease-out ${0.4 + i * 0.07}s both`,
                 }}>
                   <span style={styles.playerName}>{p.playername}</span>
-                  <span style={{
-                    ...styles.roleName,
-                    color: isWerewolfTeam ? '#ff9980' : 'rgba(248,241,221,0.85)',
-                  }}>
-                    {roleName}
-                  </span>
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 3 }}>
+                    {roleChanged && (
+                      <span style={styles.origRole}>{origRoleName} →</span>
+                    )}
+                    <span style={{
+                      ...styles.roleName,
+                      color: isWerewolfTeam ? '#ff9980' : 'rgba(248,241,221,0.85)',
+                    }}>
+                      {roleName}
+                    </span>
+                  </div>
                 </div>
               )
             })}
@@ -247,6 +261,12 @@ const styles = {
   roleName: {
     fontSize: 18,
     fontWeight: 600,
+  },
+
+  origRole: {
+    fontSize: 13,
+    color: 'rgba(248,241,221,0.38)',
+    fontWeight: 400,
   },
 
   btnRow: {
