@@ -229,7 +229,6 @@ async def ws_tablet(websocket: WebSocket) -> None:
     await tablet_ws_handler(websocket, app.state.orchestrator)
 
 
-@app.websocket("/ws/yacht")
 def _bench_ws_log(event: str, path: str) -> None:
     """Benchmark hook (BENCH_TRACE=1에서만 실제 기록)."""
     try:
@@ -240,6 +239,7 @@ def _bench_ws_log(event: str, path: str) -> None:
         pass
 
 
+@app.websocket("/ws/yacht")
 async def yacht_socket(websocket: WebSocket) -> None:
     await websocket.accept()
     _bench_ws_log("attach", "/ws/yacht")

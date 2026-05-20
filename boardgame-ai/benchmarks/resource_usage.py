@@ -48,7 +48,7 @@ class ResourceSampler:
             import psutil
             self._psutil = psutil
             self._proc = psutil.Process(os.getpid())
-            # 첫 cpu_percent는 항상 0이라 worm-up
+            # 첫 cpu_percent는 항상 0이라 warm-up
             self._proc.cpu_percent(interval=None)
         except Exception:
             self._psutil = None
@@ -69,7 +69,8 @@ class ResourceSampler:
             self._thread.join(timeout=2.0)
 
     def _loop(self) -> None:
-        # daemon thread는 5분 단위로 flush. 5분마다 partial 보존.
+        # 매 샘플마다 append + 5분마다 os.fsync로 디스크 강제 flush. 긴 측정 도중
+        # 프로세스가 죽어도 5분 이내 데이터까지는 디스크에 보존된다.
         last_flush = 0
         while not self._stop.wait(self._interval):
             try:
@@ -81,9 +82,10 @@ class ResourceSampler:
             try:
                 with open(self._csv_path, "a", encoding="utf-8") as f:
                     f.write(f"{elapsed:.1f},{cpu_pct:.2f},{rss_mb:.1f}\n")
-                # 5분마다 fsync (긴 측정 도중 시스템 죽음 대비)
-                if int(elapsed) - last_flush >= 60:
-                    last_flush = int(elapsed)
+                    if int(elapsed) - last_flush >= SEGMENT_SEC:
+                        f.flush()
+                        os.fsync(f.fileno())
+                        last_flush = int(elapsed)
             except Exception:
                 pass
 

@@ -27,6 +27,7 @@ from pathlib import Path
 _BENCH_LOGGER_NAME = "bench"
 _initialized = False
 _session_dir: Path | None = None
+_null_handler_attached = False
 
 
 def is_bench() -> bool:
@@ -35,11 +36,20 @@ def is_bench() -> bool:
 
 
 def bench_log() -> logging.Logger:
-    """bench 전용 logger 반환. is_bench()가 False면 NullHandler만 달림.
+    """bench 전용 logger 반환. BENCH_TRACE=0이면 NullHandler만 달려 no-op.
 
     호출 비용이 작아 hook 박을 때마다 if 체크 없이 그냥 호출해도 OK.
+    단, % formatting 비용은 약간 발생하므로 hot path에서는 is_bench() 가드 권장.
     """
-    return logging.getLogger(_BENCH_LOGGER_NAME)
+    global _null_handler_attached
+    logger = logging.getLogger(_BENCH_LOGGER_NAME)
+    if not _null_handler_attached and not _initialized:
+        # BENCH_TRACE=0 상태에서도 root logger로 propagate되어 콘솔에 새는 것을 방지.
+        logger.addHandler(logging.NullHandler())
+        logger.propagate = False
+        logger.setLevel(logging.WARNING)  # INFO 호출 자체를 short-circuit
+        _null_handler_attached = True
+    return logger
 
 
 def setup_bench_logger(session_dir: Path) -> None:
@@ -53,6 +63,7 @@ def setup_bench_logger(session_dir: Path) -> None:
         return
 
     logger = logging.getLogger(_BENCH_LOGGER_NAME)
+    # BENCH_TRACE=1 세션에서만 INFO를 통과시킨다. NullHandler가 이미 붙어 있어도 무해.
     logger.setLevel(logging.INFO)
     logger.propagate = False  # root로 새지 않도록
 
@@ -74,13 +85,17 @@ def setup_bench_logger(session_dir: Path) -> None:
 
 def teardown_bench_logger() -> None:
     """BenchmarkSession.finalize()에서 호출. 핸들러 정리."""
-    global _initialized, _session_dir
+    global _initialized, _session_dir, _null_handler_attached
     logger = logging.getLogger(_BENCH_LOGGER_NAME)
     for h in list(logger.handlers):
         h.close()
         logger.removeHandler(h)
+    # NullHandler를 다시 붙일 수 있도록 플래그 리셋. 측정 종료 후 host process가
+    # bench_log()를 다시 부르면 no-op 상태로 안전하게 동작해야 함.
+    logger.setLevel(logging.WARNING)
     _initialized = False
     _session_dir = None
+    _null_handler_attached = False
 
 
 def session_dir() -> Path | None:
