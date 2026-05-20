@@ -1,4 +1,22 @@
-export default function NightStart({ onComplete }) {
+import { useEffect } from 'react'
+import { audio } from '../../hooks/useAudioPlayer'
+
+export default function NightStart({ onComplete, send, onExit, isPracticeMode }) {
+  useEffect(() => {
+    const ttsText = isPracticeMode
+      ? '연습모드입니다. 눈을 감지 않고 진행합니다. 차례가 되면 해당 역할 플레이어가 행동을 수행해주세요.'
+      : '밤이 되었습니다. 모두 눈을 감아주세요.'
+    send?.('TTS_REQUEST', { text: ttsText })
+    let timer = null
+    const unsubscribe = audio.onNextTtsEnded(() => {
+      timer = setTimeout(onComplete, isPracticeMode ? 4000 : 8000)
+    })
+    return () => {
+      unsubscribe()
+      if (timer !== null) clearTimeout(timer)
+    }
+  }, [])
+
   return (
     <>
       <style>{`
@@ -22,6 +40,7 @@ export default function NightStart({ onComplete }) {
       `}</style>
 
       <div onClick={onComplete} style={styles.page}>
+        <button onClick={(e) => { e.stopPropagation(); onExit?.() }} style={exitBtn}>나가기</button>
 
         {/* 배경 */}
         <div style={styles.sky} />
@@ -83,14 +102,19 @@ export default function NightStart({ onComplete }) {
         {/* 중앙 텍스트 */}
         <div style={styles.inner}>
           <div style={{ ...styles.ttsLabel, animation: 'ttsFlicker 1.6s ease-in-out infinite' }}>
-            TTS 재생 중
+            {isPracticeMode ? '연습 모드' : 'TTS 재생 중'}
           </div>
           <div style={{ ...styles.title, animation: 'fadeIn 0.8s ease-out both' }}>
             밤이 되었습니다
           </div>
           <div style={{ ...styles.subtitle, animation: 'fadeIn 0.8s ease-out 0.2s both' }}>
-            모두 눈을 감아주세요
+            {isPracticeMode ? '눈을 감지 않고 진행합니다' : '모두 눈을 감아주세요'}
           </div>
+          {isPracticeMode && (
+            <div style={{ ...styles.subtitle, fontSize: 14, marginTop: 4, animation: 'fadeIn 0.8s ease-out 0.4s both' }}>
+              차례가 되면 해당 역할 플레이어가 행동을 수행해주세요
+            </div>
+          )}
         </div>
 
       </div>
@@ -169,4 +193,15 @@ const styles = {
     color: 'rgba(248,241,221,0.55)',
     letterSpacing: 1,
   },
+}
+
+const exitBtn = {
+  position: 'absolute', top: 20, right: 20, zIndex: 10,
+  padding: '8px 18px',
+  border: '1px solid rgba(248,241,221,0.2)',
+  borderRadius: 8,
+  background: 'rgba(255,255,255,0.08)',
+  color: 'rgba(248,241,221,0.7)',
+  fontSize: 14, fontWeight: 600, cursor: 'pointer',
+  backdropFilter: 'blur(8px)',
 }

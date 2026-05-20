@@ -95,29 +95,103 @@ function WerewolfBg() {
 }
 
 const ROLES = [
-  { id: 'doppelganger', name: '도플갱어',   image: '/roles/doppelganger.png', gradient: 'linear-gradient(135deg, #4a1a6b, #2a0a3a)', desc: '다른 플레이어의 카드를 보고 그 역할이 됩니다.' },
-  { id: 'werewolf_1',   name: '늑대인간',   image: '/roles/werewolf.png',     gradient: 'linear-gradient(135deg, #6b1a1a, #3a0a0a)', desc: '밤에 깨어나 동료 늑대인간을 확인합니다. 혼자라면 중앙 카드 1장을 볼 수 있습니다.' },
-  { id: 'minion',       name: '하수인',     image: '/roles/minion.png',       gradient: 'linear-gradient(135deg, #5a1a7a, #2a0a4a)', desc: '늑대인간 팀이지만 누가 늑대인간인지 알 수 없습니다.' },
-  { id: 'seer',         name: '예언자',     image: '/roles/seer.png',         gradient: 'linear-gradient(135deg, #1a3a7a, #0a1a4a)', desc: '다른 플레이어 1명의 카드 또는 중앙 카드 2장을 볼 수 있습니다.' },
-  { id: 'robber',       name: '강도',       image: '/roles/robber.png',       gradient: 'linear-gradient(135deg, #3a3a1a, #1a1a0a)', desc: '다른 플레이어의 카드와 자신의 카드를 교환할 수 있습니다.' },
-  { id: 'troublemaker', name: '말썽쟁이',   image: '/roles/troublemaker.png', gradient: 'linear-gradient(135deg, #1a5a4a, #0a2a2a)', desc: '자신을 제외한 두 플레이어의 카드를 서로 교환합니다.' },
-  { id: 'drunk',        name: '주정뱅이',   image: '/roles/drunk.png',        gradient: 'linear-gradient(135deg, #5a3a1a, #2a1a0a)', desc: '중앙 카드 1장과 자신의 카드를 교환합니다. 단, 새 카드를 볼 수 없습니다.' },
-  { id: 'insomniac',    name: '불면증환자', image: '/roles/insomniac.png',    gradient: 'linear-gradient(135deg, #1a2a5a, #0a0a2a)', desc: '밤이 끝나고 자신의 카드를 다시 확인합니다.' },
-  { id: 'tanner',       name: '무두장이',   image: '/roles/tanner.png',       gradient: 'linear-gradient(135deg, #3a2a1a, #1a0a0a)', desc: '처형되면 무두장이 팀이 승리합니다.' },
-  { id: 'hunter',       name: '사냥꾼',     image: '/roles/hunter.png',       gradient: 'linear-gradient(135deg, #1a4a1a, #0a2a0a)', desc: '처형되면 자신이 지목한 플레이어도 함께 처형됩니다.' },
-  { id: 'mason_1',      name: '프리메이슨', image: '/roles/mason.png',        gradient: 'linear-gradient(135deg, #1a3a5a, #0a1a3a)', desc: '밤에 깨어나 동료 프리메이슨을 확인합니다.' },
-  { id: 'villager_1',   name: '마을주민',   image: '/roles/villager.png',     gradient: 'linear-gradient(135deg, #1a5a1a, #0a2a0a)', desc: '특별한 능력이 없지만 마을 팀입니다.' },
+  {
+    id: 'doppelganger', name: '도플갱어', image: '/roles/doppelganger.png',
+    gradient: 'linear-gradient(135deg, #4a1a6b, #2a0a3a)',
+    desc: '다른 플레이어의 카드를 보고 그 역할이 됩니다.',
+    action: '밤에 깨어나 다른 플레이어 1명의 카드를 확인합니다. 확인한 즉시 그 역할이 되어 해당 역할의 행동을 수행합니다.',
+    winCondition: '복사한 역할의 팀이 승리하면 함께 승리합니다. 어떤 역할을 복사했느냐에 따라 승리 조건이 달라집니다.',
+  },
+  {
+    id: 'werewolf_1', name: '늑대인간', image: '/roles/werewolf.png',
+    gradient: 'linear-gradient(135deg, #6b1a1a, #3a0a0a)',
+    desc: '밤에 깨어나 동료 늑대인간을 확인합니다. 혼자라면 중앙 카드 1장을 볼 수 있습니다.',
+    action: '밤에 깨어나 동료 늑대인간과 눈을 맞춥니다. 혼자인 경우 중앙 카드 1장을 몰래 확인할 수 있습니다.',
+    winCondition: '투표 결과 늑대인간 팀(늑대인간·하수인) 중 아무도 처형되지 않으면 늑대인간 팀 승리입니다.',
+  },
+  {
+    id: 'minion', name: '하수인', image: '/roles/minion.png',
+    gradient: 'linear-gradient(135deg, #5a1a7a, #2a0a4a)',
+    desc: '늑대인간 팀이지만 누가 늑대인간인지 알 수 없습니다.',
+    action: '밤에 깨어나 늑대인간이 누구인지 확인합니다. 단, 늑대인간은 하수인이 누구인지 모릅니다.',
+    winCondition: '늑대인간이 처형되지 않으면 늑대인간 팀 승리입니다. 단, 늑대인간이 없는데 자신이 처형되면 마을 팀이 승리합니다.',
+  },
+  {
+    id: 'seer', name: '예언자', image: '/roles/seer.png',
+    gradient: 'linear-gradient(135deg, #1a3a7a, #0a1a4a)',
+    desc: '다른 플레이어 1명의 카드 또는 중앙 카드 2장을 볼 수 있습니다.',
+    action: '밤에 깨어나 다른 플레이어 1명의 카드를 확인하거나, 중앙에 놓인 카드 중 2장을 확인할 수 있습니다.',
+    winCondition: '마을 팀이 늑대인간을 처형하면 승리합니다. 얻은 정보를 토론에서 잘 활용하세요.',
+  },
+  {
+    id: 'robber', name: '강도', image: '/roles/robber.png',
+    gradient: 'linear-gradient(135deg, #3a3a1a, #1a1a0a)',
+    desc: '다른 플레이어의 카드와 자신의 카드를 교환할 수 있습니다.',
+    action: '밤에 깨어나 다른 플레이어 1명의 카드와 자신의 카드를 교환합니다. 가져온 새 카드를 확인합니다. 교환하지 않을 수도 있습니다.',
+    winCondition: '교환 후 자신의 최종 역할 팀이 승리하면 함께 승리합니다.',
+  },
+  {
+    id: 'troublemaker', name: '말썽쟁이', image: '/roles/troublemaker.png',
+    gradient: 'linear-gradient(135deg, #1a5a4a, #0a2a2a)',
+    desc: '자신을 제외한 두 플레이어의 카드를 서로 교환합니다.',
+    action: '밤에 깨어나 자신을 제외한 두 플레이어의 카드를 서로 몰래 교환합니다. 교환된 카드의 내용은 확인하지 않습니다.',
+    winCondition: '마을 팀이 늑대인간을 처형하면 승리합니다. 말썽쟁이 자신의 카드는 바뀌지 않습니다.',
+  },
+  {
+    id: 'drunk', name: '주정뱅이', image: '/roles/drunk.png',
+    gradient: 'linear-gradient(135deg, #5a3a1a, #2a1a0a)',
+    desc: '중앙 카드 1장과 자신의 카드를 교환합니다. 단, 새 카드를 볼 수 없습니다.',
+    action: '밤에 깨어나 중앙 카드 중 1장을 가져와 자신의 카드와 교환합니다. 새로 받은 카드가 무엇인지 알 수 없습니다.',
+    winCondition: '자신의 최종 역할(새로 받은 카드) 팀이 승리하면 함께 승리합니다.',
+  },
+  {
+    id: 'insomniac', name: '불면증환자', image: '/roles/insomniac.png',
+    gradient: 'linear-gradient(135deg, #1a2a5a, #0a0a2a)',
+    desc: '밤이 끝나고 자신의 카드를 다시 확인합니다.',
+    action: '모든 야간 행동이 끝난 후 마지막으로 깨어나 자신의 현재 카드를 확인합니다. 다른 역할에 의해 카드가 바뀌었을 수 있습니다.',
+    winCondition: '마을 팀이 늑대인간을 처형하면 승리합니다. 자신의 최종 역할을 확실히 파악할 수 있습니다.',
+  },
+  {
+    id: 'tanner', name: '무두장이', image: '/roles/tanner.png',
+    gradient: 'linear-gradient(135deg, #3a2a1a, #1a0a0a)',
+    desc: '처형되면 무두장이 팀이 승리합니다.',
+    action: '야간 행동이 없습니다. 낮에 토론에서 의심받도록 유도하여 처형되는 것이 목표입니다.',
+    winCondition: '투표로 자신이 처형되면 무두장이 단독 승리합니다. 마을도 늑대인간도 아닌 제3의 팀입니다.',
+  },
+  {
+    id: 'hunter', name: '사냥꾼', image: '/roles/hunter.png',
+    gradient: 'linear-gradient(135deg, #1a4a1a, #0a2a0a)',
+    desc: '처형되면 자신이 지목한 플레이어도 함께 처형됩니다.',
+    action: '야간 행동이 없습니다. 낮 토론에서 의심스러운 플레이어를 지목해두세요.',
+    winCondition: '마을 팀이 늑대인간을 처형하면 승리합니다. 자신이 처형될 경우 자신이 지목한 플레이어도 함께 처형됩니다.',
+  },
+  {
+    id: 'mason_1', name: '프리메이슨', image: '/roles/mason.png',
+    gradient: 'linear-gradient(135deg, #1a3a5a, #0a1a3a)',
+    desc: '밤에 깨어나 동료 프리메이슨을 확인합니다.',
+    action: '밤에 깨어나 동료 프리메이슨과 눈을 맞춥니다. 서로가 같은 편임을 확인합니다.',
+    winCondition: '마을 팀이 늑대인간을 처형하면 승리합니다. 서로를 신뢰하며 함께 늑대인간을 찾으세요.',
+  },
+  {
+    id: 'villager_1', name: '마을주민', image: '/roles/villager.png',
+    gradient: 'linear-gradient(135deg, #1a5a1a, #0a2a0a)',
+    desc: '특별한 능력이 없지만 마을 팀입니다.',
+    action: '야간 행동이 없습니다. 눈을 감고 조용히 기다립니다.',
+    winCondition: '마을 팀이 늑대인간을 처형하면 승리합니다. 토론에서 단서를 모아 늑대인간을 찾아내세요.',
+  },
 ]
 
-export default function RoleRegConfirm({ player, detectedRoleId, onConfirm, wsState }) {
-  const detected = ROLES.find(r => r.id === detectedRoleId) ?? ROLES[1]
+export default function RoleRegConfirm({ player, detectedRoleId, onConfirm, wsState, isPracticeMode }) {
+  const detected = detectedRoleId ? (ROLES.find(r => r.id === detectedRoleId) ?? ROLES[1]) : null
   const [selected, setSelected] = useState(detected)
   const [countdown, setCountdown] = useState(CONFIRM_TIMEOUT)
+  const [showExplain, setShowExplain] = useState(false)
   const selectedRef = useRef(selected)
   selectedRef.current = selected
 
-  // 7초 카운트다운 → 자동 확인
+  // 7초 카운트다운 → 자동 확인 (역할이 선택된 경우에만)
   useEffect(() => {
+    if (!detected) return
     const interval = setInterval(() => {
       setCountdown(prev => {
         if (prev <= 1) {
@@ -159,20 +233,22 @@ export default function RoleRegConfirm({ player, detectedRoleId, onConfirm, wsSt
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0, position: 'relative', zIndex: 1 }}>
         <div style={{ fontSize: 20, fontWeight: 700, color: '#F8F1DD' }}>플레이어 {player?.playername}님</div>
         <button
-          onClick={() => onConfirm(selected)}
+          onClick={() => { if (selected) onConfirm(selected) }}
           style={{
             padding: '10px 26px',
             border: 'none',
             borderRadius: 8,
-            background: 'linear-gradient(135deg, #E6B85C, #B48A3C)',
-            color: '#1A0800',
+            background: selected
+              ? 'linear-gradient(135deg, #E6B85C, #B48A3C)'
+              : 'rgba(255,255,255,0.12)',
+            color: selected ? '#1A0800' : 'rgba(248,241,221,0.4)',
             fontSize: 16,
             fontWeight: 700,
-            cursor: 'pointer',
-            boxShadow: '0 4px 0 #8A6A2A',
+            cursor: selected ? 'pointer' : 'default',
+            boxShadow: selected ? '0 4px 0 #8A6A2A' : 'none',
           }}
         >
-          확인 / 다음 → {countdown > 0 && <span style={{ fontSize: 13, opacity: 0.65 }}>({countdown})</span>}
+          확인 / 다음 → {countdown > 0 && detected && <span style={{ fontSize: 13, opacity: 0.65 }}>({countdown})</span>}
         </button>
       </div>
 
@@ -182,22 +258,76 @@ export default function RoleRegConfirm({ player, detectedRoleId, onConfirm, wsSt
           width: 140,
           height: 180,
           borderRadius: 12,
-          background: selected.gradient,
+          background: selected ? selected.gradient : 'rgba(255,255,255,0.06)',
           flexShrink: 0,
           border: '2px solid rgba(255,255,255,0.2)',
           overflow: 'hidden',
           boxShadow: '0 4px 16px rgba(0,0,0,0.18)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
         }}>
-          <img src={selected.image} alt={selected.name} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+          {selected
+            ? <img src={selected.image} alt={selected.name} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+            : <span style={{ fontSize: 36, opacity: 0.35 }}>?</span>
+          }
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <div style={{ fontSize: 28, fontWeight: 700, color: '#F8F1DD' }}>{selected.name}</div>
-          <div style={{ fontSize: 18, color: 'rgba(248,241,221,0.55)', lineHeight: 1.8 }}>{selected.desc}</div>
+          {selected ? (
+            <>
+              <div style={{ fontSize: 28, fontWeight: 700, color: '#F8F1DD' }}>{selected.name}</div>
+              <div style={{ fontSize: 18, color: 'rgba(248,241,221,0.55)', lineHeight: 1.8 }}>{selected.desc}</div>
+              {isPracticeMode && (
+                <button onClick={() => setShowExplain(true)} style={explainBtn}>
+                  역할 설명 보기
+                </button>
+              )}
+            </>
+          ) : (
+            <>
+              <div style={{ fontSize: 22, fontWeight: 700, color: 'rgba(248,241,221,0.5)' }}>인식 실패</div>
+              <div style={{ fontSize: 16, color: 'rgba(248,241,221,0.38)', lineHeight: 1.8 }}>아래 목록에서 역할을 직접 선택해주세요</div>
+            </>
+          )}
         </div>
       </div>
 
-      {/* 역할 수동 수정 */}
-      <div style={{ fontSize: 15, fontWeight: 600, color: 'rgba(248,241,221,0.45)', flexShrink: 0, letterSpacing: 1, position: 'relative', zIndex: 1 }}>역할 수동 수정</div>
+      {/* 역할 설명 팝업 */}
+      {showExplain && selected && (
+        <div style={popupOverlay} onClick={() => setShowExplain(false)}>
+          <div style={popupCard} onClick={e => e.stopPropagation()}>
+            <div style={popupHeader}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                <div style={{
+                  width: 64, height: 80, borderRadius: 8, overflow: 'hidden',
+                  background: selected.gradient, border: '1px solid rgba(255,255,255,0.2)', flexShrink: 0,
+                }}>
+                  <img src={selected.image} alt={selected.name} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+                </div>
+                <div>
+                  <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 2, color: 'rgba(220,185,80,0.6)', textTransform: 'uppercase', marginBottom: 4 }}>연습모드 역할 설명</div>
+                  <div style={{ fontSize: 26, fontWeight: 800, color: '#F8F1DD' }}>{selected.name}</div>
+                </div>
+              </div>
+              <button onClick={() => setShowExplain(false)} style={popupCloseBtn}>✕</button>
+            </div>
+
+            <div style={popupSection}>
+              <div style={popupSectionTitle}>🌙 야간 행동</div>
+              <div style={popupSectionBody}>{selected.action}</div>
+            </div>
+
+            <div style={popupSection}>
+              <div style={popupSectionTitle}>🏆 승리 조건</div>
+              <div style={popupSectionBody}>{selected.winCondition}</div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div style={{ fontSize: 15, fontWeight: 600, color: 'rgba(248,241,221,0.45)', flexShrink: 0, letterSpacing: 1, position: 'relative', zIndex: 1 }}>
+        {detected ? '역할 수동 수정' : '역할을 탭하여 선택하세요'}
+      </div>
 
       {/* 그리드 */}
       <div style={{ position: 'relative', zIndex: 1,
@@ -209,7 +339,7 @@ export default function RoleRegConfirm({ player, detectedRoleId, onConfirm, wsSt
         gap: 6,
       }}>
         {ROLES.map(role => {
-          const isSelected = selected.id === role.id
+          const isSelected = selected?.id === role.id
           return (
             <div
               key={role.id}
@@ -242,4 +372,84 @@ export default function RoleRegConfirm({ player, detectedRoleId, onConfirm, wsSt
 
     </div>
   )
+}
+
+const explainBtn = {
+  marginTop: 6,
+  padding: '7px 16px',
+  border: '1px solid rgba(220,185,80,0.4)',
+  borderRadius: 8,
+  background: 'rgba(220,185,80,0.1)',
+  color: 'rgba(220,185,80,0.9)',
+  fontSize: 13,
+  fontWeight: 600,
+  cursor: 'pointer',
+  letterSpacing: 0.3,
+  alignSelf: 'flex-start',
+}
+
+const popupOverlay = {
+  position: 'fixed',
+  inset: 0,
+  background: 'rgba(0,0,0,0.72)',
+  backdropFilter: 'blur(6px)',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  zIndex: 100,
+  padding: '0 20px',
+}
+
+const popupCard = {
+  background: 'linear-gradient(160deg, #1a0f3a 0%, #0e1a30 60%, #160a28 100%)',
+  border: '1px solid rgba(220,185,80,0.25)',
+  borderRadius: 20,
+  padding: '24px 28px',
+  width: '100%',
+  maxWidth: 480,
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 20,
+  boxShadow: '0 8px 40px rgba(0,0,0,0.6)',
+}
+
+const popupHeader = {
+  display: 'flex',
+  alignItems: 'flex-start',
+  justifyContent: 'space-between',
+  gap: 12,
+}
+
+const popupCloseBtn = {
+  padding: '6px 12px',
+  border: '1px solid rgba(248,241,221,0.2)',
+  borderRadius: 8,
+  background: 'rgba(255,255,255,0.07)',
+  color: 'rgba(248,241,221,0.7)',
+  fontSize: 16,
+  cursor: 'pointer',
+  flexShrink: 0,
+}
+
+const popupSection = {
+  background: 'rgba(255,255,255,0.04)',
+  border: '1px solid rgba(255,255,255,0.08)',
+  borderRadius: 12,
+  padding: '14px 18px',
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 8,
+}
+
+const popupSectionTitle = {
+  fontSize: 13,
+  fontWeight: 700,
+  letterSpacing: 1,
+  color: 'rgba(220,185,80,0.75)',
+}
+
+const popupSectionBody = {
+  fontSize: 15,
+  color: 'rgba(248,241,221,0.8)',
+  lineHeight: 1.75,
 }

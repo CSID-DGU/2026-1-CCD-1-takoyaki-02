@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from backend.server import YachtSession
+from backend.yacht_session import YachtSession
 from core.events import GameEvent
 from games.yacht import YachtEventType
 
@@ -79,8 +79,6 @@ async def test_yacht_session_score_selection_clears_dice_undo_history():
     assert scored["current_player_id"] == "p2"
     assert scored["players"][0]["scores"] == {"ones": 2}
     assert scored["can_undo"] is False
-
-
 @pytest.mark.anyio
 async def test_yacht_tutorial_mode_accepts_vision_rolls():
     ws = FakeWebSocket()
@@ -157,4 +155,3 @@ async def test_yacht_tutorial_mode_finishes_after_each_player_scores_once():
     assert completed["tutorial_complete"] is True
     assert completed["players"][0]["scores"] == {"ones": 2}
     assert completed["players"][1]["scores"] == {"twos": 4}
-

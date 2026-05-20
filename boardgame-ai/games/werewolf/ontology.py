@@ -54,6 +54,7 @@ class WerewolfPhase(StrEnum):
     DAY_DISCUSSION = "day_discussion"    # 300초 타이머
     VOTE_COUNTDOWN = "vote_countdown"
     VOTE = "vote"
+    FINAL_ROLE_REVEAL = "final_role_reveal"
     RESULT = "result"
 
 

@@ -9,7 +9,15 @@ export default defineConfig({
       '/ws': {
         target: 'ws://localhost:8000',
         ws: true,
+        changeOrigin: true,
       },
+      // 오디오 정적 자원: 백엔드 StaticFiles가 서빙. dev 서버에서 프록시 필수.
+      '/cache/tts': { target: 'http://localhost:8000', changeOrigin: true },
+      '/sfx': { target: 'http://localhost:8000', changeOrigin: true },
+      '/bgm': { target: 'http://localhost:8000', changeOrigin: true },
+      // 기존 HTTP 라우트
+      '/players': { target: 'http://localhost:8000', changeOrigin: true },
+      '/health': { target: 'http://localhost:8000', changeOrigin: true },
     },
   },
 })

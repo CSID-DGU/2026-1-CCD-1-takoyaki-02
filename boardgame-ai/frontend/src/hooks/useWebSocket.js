@@ -2,22 +2,28 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 
 const RECONNECT_DELAY_MS = 2000
 
-function playTtsMessage(msg) {
-  const text = msg?.payload?.text
-  if (!text || typeof window === 'undefined' || !window.speechSynthesis) return
+const AUDIO_MSG_TYPES = new Set([
+  'tts_play',
+  'tts_interrupt',
+  'sfx_play',
+  'bgm_play',
+  'bgm_duck',
+])
 
-  const utterance = new SpeechSynthesisUtterance(text)
-  utterance.lang = 'ko-KR'
-  utterance.rate = 1
-  utterance.pitch = 1
-  window.speechSynthesis.speak(utterance)
-}
-
-export function useWebSocket(path) {
+/**
+ * useWebSocket(path, options?)
+ * options:
+ *   onAudioMessage(msg) — audio 관련 메시지 수신 시 호출. 기본은 no-op.
+ *                         보통 useAudioPlayer(send).enqueue를 넘김.
+ */
+export function useWebSocket(path, options = {}) {
+  const { onAudioMessage } = options
   const [state, setState] = useState(null)
   const [connected, setConnected] = useState(false)
   const [messages, setMessages] = useState([])
   const ws = useRef(null)
+  const onAudioRef = useRef(onAudioMessage)
+  useEffect(() => { onAudioRef.current = onAudioMessage }, [onAudioMessage])
 
   useEffect(() => {
     let destroyed = false
@@ -29,10 +35,19 @@ export function useWebSocket(path) {
       const socket = new WebSocket(url)
       ws.current = socket
 
-      socket.onopen = () => setConnected(true)
+      socket.onopen = () => {
+        setConnected(true)
+        // Benchmark hook (window._bench가 true일 때만 의미).
+        if (window._bench) {
+          try { window._bench.log('ws_event', 'open', path, performance.now()) } catch (_) {}
+        }
+      }
 
       socket.onclose = () => {
         setConnected(false)
+        if (window._bench) {
+          try { window._bench.log('ws_event', 'close', path, performance.now()) } catch (_) {}
+        }
         if (!destroyed) {
           reconnectTimer = setTimeout(connect, RECONNECT_DELAY_MS)
         }
@@ -42,8 +57,19 @@ export function useWebSocket(path) {
         try {
           const msg = JSON.parse(e.data)
           setMessages(prev => [msg, ...prev].slice(0, 20))
-          if (msg.msg_type === 'state_update') setState(msg.state ?? msg.payload)
-          if (msg.msg_type === 'tts_play') playTtsMessage(msg)
+          if (msg.msg_type === 'state_update') {
+            setState(msg.state ?? msg.payload)
+            // Benchmark hook: UI paint 완료 시각 (state_version별).
+            if (window._bench) {
+              const state_version = (msg.state ?? msg.payload)?.state_version ?? -1
+              requestAnimationFrame(() => {
+                try { window._bench.log('ui_painted', state_version, performance.now()) } catch (_) {}
+              })
+            }
+          }
+          if (AUDIO_MSG_TYPES.has(msg.msg_type) && onAudioRef.current) {
+            try { onAudioRef.current(msg) } catch (_) {}
+          }
         } catch (_) {}
       }
     }

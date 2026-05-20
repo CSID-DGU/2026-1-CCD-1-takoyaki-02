@@ -20,6 +20,7 @@ weights/*.pth
 # 환경 변수
 .env
 .env.local
+.secrets/
 
 # IDE
 .vscode/
@@ -40,8 +41,11 @@ frontend/node_modules/
 frontend/dist/
 frontend/.env
 
-# TTS 캐시
-audio/assets/tts_cache/*.wav
+# TTS 캐시 — 모두 런타임에 audio/catalog.py 정의로부터 자동 생성됨.
+# 각 게임 담당자가 카탈로그에 멘트 추가 → 서버 부팅 시 prewarm.
+audio/assets/tts_cache/static/
+audio/assets/tts_cache/session/
+audio/assets/tts_cache/dynamic/
 
 # Jupyter
 .ipynb_checkpoints/
@@ -66,3 +70,6 @@ weights/*.engine
 training/**/datasets/
 training/**/runs/
 training/**/*.zip
+
+# 벤치마크 측정 결과 (런타임 생성, 용량 큼)
+benchmarks/results/

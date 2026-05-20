@@ -467,3 +467,119 @@ def test_seat_register_state_resets_on_phase_change() -> None:
 
     completed = [e for e in all_evts if e.event_type == CommonEventType.SEAT_REGISTERED]
     assert completed == []
+
+
+# ── GESTURE_CONFIRMED (OK 사인) ───────────────────────────────────────────────
+
+
+def _ctx_player_setup() -> FusionContext:
+    return FusionContext(
+        fsm_state=CommonPhase.PLAYER_SETUP,
+        game_type=None,
+        active_player=None,
+        allowed_actors=[],
+        expected_events=[CommonEventType.GESTURE_CONFIRMED],
+        params={"gesture_stabilization_frames": 3},
+    )
+
+
+def _ok_sign_hand(player_id: str = "p_1", wrist_xy: tuple = (0.5, 0.5)) -> HandDet:
+    return HandDet(
+        handedness="Left",
+        wrist_xy=wrist_xy,
+        landmarks_21=[(0.0, 0.0)] * 21,
+        gesture="ok_sign",
+        player_id=player_id,
+    )
+
+
+def test_gesture_confirmed_fires_after_stabilization() -> None:
+    """OK 사인 3프레임 유지 → GESTURE_CONFIRMED 발화."""
+    engine = FusionEngine()
+    engine.update_context(_ctx_player_setup())
+
+    hand = _ok_sign_hand(player_id="p_1")
+    events = []
+    for i in range(3):
+        events = engine.feed(_frame(i, hands=[hand]))
+
+    confirmed = [e for e in events if e.event_type == CommonEventType.GESTURE_CONFIRMED]
+    assert len(confirmed) == 1
+    assert confirmed[0].actor_id == "p_1"
+    assert confirmed[0].data.get("gesture") == "ok_sign"
+
+
+def test_gesture_confirmed_fires_only_once_per_actor() -> None:
+    """OK 사인이 계속 보여도 actor당 1회만 발화."""
+    engine = FusionEngine()
+    engine.update_context(_ctx_player_setup())
+
+    hand = _ok_sign_hand(player_id="p_1")
+    all_events = []
+    for i in range(10):
+        all_events.extend(engine.feed(_frame(i, hands=[hand])))
+
+    confirmed = [e for e in all_events if e.event_type == CommonEventType.GESTURE_CONFIRMED]
+    assert len(confirmed) == 1, f"중복 발화: {len(confirmed)}건"
+
+
+def test_gesture_confirmed_not_fired_without_expected_event() -> None:
+    """expected_events에 GESTURE_CONFIRMED 없으면 발화 안 됨."""
+    engine = FusionEngine()
+    ctx = FusionContext(
+        fsm_state=CommonPhase.PLAYER_SETUP,
+        game_type=None,
+        active_player=None,
+        allowed_actors=[],
+        expected_events=[],
+        params={"gesture_stabilization_frames": 3},
+    )
+    engine.update_context(ctx)
+
+    hand = _ok_sign_hand()
+    all_events = []
+    for i in range(5):
+        all_events.extend(engine.feed(_frame(i, hands=[hand])))
+
+    confirmed = [e for e in all_events if e.event_type == CommonEventType.GESTURE_CONFIRMED]
+    assert confirmed == []
+
+
+def test_gesture_confirmed_different_actors_each_fire_once() -> None:
+    """서로 다른 플레이어가 각각 1회씩 발화."""
+    engine = FusionEngine()
+    engine.update_context(_ctx_player_setup())
+
+    hand_p1 = _ok_sign_hand(player_id="p_1", wrist_xy=(0.3, 0.5))
+    hand_p2 = _ok_sign_hand(player_id="p_2", wrist_xy=(0.7, 0.5))
+
+    all_events = []
+    for i in range(3):
+        all_events.extend(engine.feed(_frame(i, hands=[hand_p1])))
+    for i in range(3, 6):
+        all_events.extend(engine.feed(_frame(i, hands=[hand_p2])))
+
+    confirmed = [e for e in all_events if e.event_type == CommonEventType.GESTURE_CONFIRMED]
+    actor_ids = {e.actor_id for e in confirmed}
+    assert actor_ids == {"p_1", "p_2"}
+    assert len(confirmed) == 2
+
+
+def test_gesture_confirmed_guard_clears_on_phase_change() -> None:
+    """phase 전환 시 발화 가드 초기화 → 재차 OK 사인 발화 가능."""
+    engine = FusionEngine()
+    engine.update_context(_ctx_player_setup())
+
+    hand = _ok_sign_hand(player_id="p_1")
+    for i in range(3):
+        engine.feed(_frame(i, hands=[hand]))
+
+    engine.update_context(_ctx_awaiting_roll())
+    engine.update_context(_ctx_player_setup())
+
+    second_events = []
+    for i in range(3):
+        second_events.extend(engine.feed(_frame(100 + i, hands=[hand])))
+
+    confirmed = [e for e in second_events if e.event_type == CommonEventType.GESTURE_CONFIRMED]
+    assert len(confirmed) == 1

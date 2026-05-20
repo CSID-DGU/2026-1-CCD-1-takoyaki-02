@@ -40,8 +40,14 @@ const WINNER_CONFIG = {
   },
 }
 
-export default function GameEndWW({ players = [], finalRoles = {}, winner = 'village', onLobby, onRestart }) {
+import { useEffect } from 'react'
+
+export default function GameEndWW({ players = [], finalRoles = {}, originalRoles = {}, winner = 'village', onChangePlayers, onChangeGame, onRestart, send }) {
   const cfg = WINNER_CONFIG[winner] ?? WINNER_CONFIG.village
+
+  useEffect(() => {
+    send?.('TTS_REQUEST', { text: `${cfg.headline} ${cfg.team}` })
+  }, [])
 
   return (
     <>
@@ -114,8 +120,11 @@ export default function GameEndWW({ players = [], finalRoles = {}, winner = 'vil
           <div style={{ ...styles.roleList, animation: 'fadeUp 0.5s ease-out 0.4s both' }}>
             {players.map((p, i) => {
               const roleId = finalRoles[p.player_id]
+              const origRoleId = originalRoles[p.player_id]
               const roleName = ROLE_NAMES[roleId] ?? roleId ?? '미공개'
-              const isWerewolfTeam = ['werewolf', 'werewolf_1', 'werewolf_2', 'minion', 'doppelganger'].includes(roleId)
+              const origRoleName = ROLE_NAMES[origRoleId] ?? origRoleId ?? '미공개'
+              const roleChanged = origRoleId && roleId && origRoleId !== roleId
+              const isWerewolfTeam = ['werewolf', 'werewolf_1', 'werewolf_2', 'minion'].includes(roleId)
               return (
                 <div key={p.player_id} style={{
                   ...styles.roleRow,
@@ -123,12 +132,17 @@ export default function GameEndWW({ players = [], finalRoles = {}, winner = 'vil
                   animation: `fadeUp 0.4s ease-out ${0.4 + i * 0.07}s both`,
                 }}>
                   <span style={styles.playerName}>{p.playername}</span>
-                  <span style={{
-                    ...styles.roleName,
-                    color: isWerewolfTeam ? '#ff9980' : 'rgba(248,241,221,0.85)',
-                  }}>
-                    {roleName}
-                  </span>
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 3 }}>
+                    {roleChanged && (
+                      <span style={styles.origRole}>{origRoleName} →</span>
+                    )}
+                    <span style={{
+                      ...styles.roleName,
+                      color: isWerewolfTeam ? '#ff9980' : 'rgba(248,241,221,0.85)',
+                    }}>
+                      {roleName}
+                    </span>
+                  </div>
                 </div>
               )
             })}
@@ -136,8 +150,11 @@ export default function GameEndWW({ players = [], finalRoles = {}, winner = 'vil
 
           {/* 하단 버튼 */}
           <div style={{ ...styles.btnRow, animation: 'fadeUp 0.5s ease-out 0.6s both' }}>
-            <button onClick={onLobby} style={styles.btnSecondary}>
-              로비
+            <button onClick={onChangePlayers} style={styles.btnSecondary}>
+              플레이어 변경
+            </button>
+            <button onClick={onChangeGame} style={styles.btnSecondary}>
+              게임 변경
             </button>
             <button onClick={onRestart} style={{ ...styles.btnPrimary, background: `linear-gradient(135deg, ${cfg.teamColor}, #8a5010)` }}>
               게임 재시작
@@ -244,6 +261,12 @@ const styles = {
   roleName: {
     fontSize: 18,
     fontWeight: 600,
+  },
+
+  origRole: {
+    fontSize: 13,
+    color: 'rgba(248,241,221,0.38)',
+    fontWeight: 400,
   },
 
   btnRow: {

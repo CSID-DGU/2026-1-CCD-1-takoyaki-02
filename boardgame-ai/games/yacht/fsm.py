@@ -270,6 +270,13 @@ class YachtFSM(BaseFSM):
             self.state.finish_game()
             self.state.state_version += 1
             self.state.last_message = "게임이 종료되었습니다."
+            # Benchmark hook: 정상 게임 종료 (completion_rate 측정용).
+            try:
+                from benchmarks.common.trace_setup import bench_log
+                import time as _t
+                bench_log().info("game_end yacht normal %.6f", _t.time())
+            except Exception:
+                pass
             return [self._make_state_update(), self._make_tts(score_tts)]
 
         self.state.advance_player()

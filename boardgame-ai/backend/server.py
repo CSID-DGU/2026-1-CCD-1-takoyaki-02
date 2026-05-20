@@ -10,34 +10,64 @@ LocalBridge로 같은 프로세스 내 orchestrator와 통신.
 from __future__ import annotations
 
 import asyncio
-import random
-from copy import deepcopy
-import threading
+import logging
+import os
 from contextlib import asynccontextmanager
-from typing import Any
+from pathlib import Path
 
+from dotenv import load_dotenv
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
+from audio.catalog import BGM_DIR, SFX_DIR, TTS_CACHE_DIR
+from audio.manager import AudioManager
+from audio.prewarm import prewarm_static
+from audio.tts_engine import TTSEngine
+from agents.orchestrator import AgentOrchestrator
 from backend.lobby_runner import LobbyRunner
 from backend.orchestrator import Orchestrator
 from backend.routes.players import router as players_router
-from backend.vision_runner import VisionRunner
 from backend.werewolf_runner import WerewolfRunner
+from backend.werewolf_session import WerewolfSession
 from backend.ws.tablet import manager as ws_manager
 from backend.ws.tablet import tablet_ws_handler
 from backend.yacht_runner import YachtRunner
+from backend.yacht_session import YachtSession
 from bridge.local_bridge import LocalBridge
-from core.envelope import WSMessage
-from core.events import GameEvent
-from games.yacht import YachtEventType, YachtFSM, YachtGameState, YachtInputType
 from vision.camera import CameraManager
 from vision.yacht.config import VisionConfig
+
+logger = logging.getLogger(__name__)
+
+# .env를 가장 먼저 로드해 GOOGLE_APPLICATION_CREDENTIALS가 TTSEngine 초기화 전에 반영되도록.
+# 상대경로는 boardgame-ai 루트 기준으로 절대경로화.
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent
+load_dotenv(_PROJECT_ROOT / ".env")
+_creds = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
+if _creds and not Path(_creds).is_absolute():
+    os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = str(_PROJECT_ROOT / _creds)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
+
+    # 측정 모드 (BENCH_TRACE=1) — 가장 먼저 시작해야 이후 모든 bench_log 호출이 살아남음.
+    from benchmarks.session import BenchmarkSession
+    bench_session = BenchmarkSession()
+    bench_dir = bench_session.start()
+    if bench_dir is not None:
+        logger.info("BENCH_TRACE active. Results: %s", bench_dir)
+
+    # 오디오: TTSEngine + AudioManager 부팅, static 사전 합성
+    tts_engine = TTSEngine()
+    audio_manager = AudioManager(tts_engine)
+    if tts_engine.is_available():
+        stats = await prewarm_static(tts_engine)
+        logger.info("audio prewarm_static: %s", stats)
+    else:
+        logger.warning("TTS engine not available — STATIC/SESSION 캐시 hit만 동작")
 
     bridge = LocalBridge()
     config = VisionConfig()
@@ -46,45 +76,59 @@ async def lifespan(app: FastAPI):
         send_fusion_context_fn=bridge.send_fusion_context,
     )
     orchestrator.set_broadcast(ws_manager.broadcast, loop)
+    orchestrator.set_audio_manager(audio_manager)
     bridge.on_game_event(orchestrator.handle_game_event)
 
-    camera = CameraManager(source=0, resolution=(1920, 1080), fps=30)
-    vision_runner = VisionRunner(config=config, bridge=bridge)
+    camera_index = int(os.environ.get("CAMERA_INDEX", "0"))
+    camera = CameraManager(source=camera_index, resolution=(1920, 1080), fps=30)
+    # 비전 → 활성 YachtSession.fsm 라우터. LocalBridge에 자동 핸들러 등록됨.
+    yacht_runner = YachtRunner(config=config, bridge=bridge, loop=loop)
     werewolf_runner = WerewolfRunner(bridge=bridge)
     lobby_runner = LobbyRunner(bridge=bridge)
-    # 비전 → 활성 YachtSession.fsm 라우터. LocalBridge에 자동 핸들러 등록됨.
-    yacht_runner = YachtRunner(bridge=bridge, loop=loop)
 
     def _on_players_changed(players: list) -> None:
-        vision_runner.update_players(players)
+        yacht_runner.update_players(players)
         werewolf_runner.update_players(players)
         lobby_runner.update_players(players)
 
+    def _on_game_switch(game_type: str | None) -> None:
+        lobby_runner.set_active(game_type is None)
+        yacht_runner.set_active(game_type == "yacht")
+        werewolf_runner.set_active(game_type == "werewolf")
+
     orchestrator.set_players_listener(_on_players_changed)
+    orchestrator.set_pipeline_switcher(_on_game_switch)
 
     yacht_queue = camera.subscribe()
     werewolf_queue = camera.subscribe()
     lobby_queue = camera.subscribe()
 
     camera.start()
-    vision_runner.start(yacht_queue)
+    yacht_runner.start(yacht_queue)
     werewolf_runner.start(werewolf_queue)
     lobby_runner.start(lobby_queue)
 
     app.state.orchestrator = orchestrator
+    app.state.bridge = bridge
     app.state.camera = camera
-    app.state.vision_runner = vision_runner
+    app.state.yacht_runner = yacht_runner
     app.state.werewolf_runner = werewolf_runner
     app.state.lobby_runner = lobby_runner
-    app.state.bridge = bridge
-    app.state.yacht_runner = yacht_runner
+    app.state.pipeline_switcher = _on_game_switch
+    app.state.loop = loop
+    app.state.audio_manager = audio_manager
+    app.state.tts_engine = tts_engine
+    app.state.agent_orchestrator = AgentOrchestrator(audio_manager)
+    app.state.bench_session = bench_session
 
     yield
 
     camera.stop()
-    vision_runner.stop()
+    yacht_runner.stop()
     werewolf_runner.stop()
     lobby_runner.stop()
+    # 측정 세션 정리 — finalize 호출 + logger 핸들러 닫기.
+    bench_session.stop()
 
 
 app = FastAPI(title="Boardgame AI Backend", lifespan=lifespan)
@@ -99,10 +143,85 @@ app.add_middleware(
 
 app.include_router(players_router)
 
+# 오디오 자산 정적 마운트 — frontend가 audio_url로 접근.
+# 디렉토리가 없으면 StaticFiles가 에러내므로 미리 보장.
+TTS_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+SFX_DIR.mkdir(parents=True, exist_ok=True)
+BGM_DIR.mkdir(parents=True, exist_ok=True)
+app.mount("/cache/tts", StaticFiles(directory=str(TTS_CACHE_DIR)), name="tts_cache")
+app.mount("/sfx", StaticFiles(directory=str(SFX_DIR)), name="sfx")
+app.mount("/bgm", StaticFiles(directory=str(BGM_DIR)), name="bgm")
+
 
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+# ── 오디오 디버그 엔드포인트 ────────────────────────────────────────────────────
+# 시스템 검증용. 게임 FSM이 사운드 트리거를 박기 전이라도 BGM/SFX/TTS가
+# 정상 작동하는지 확인할 수 있다. 브라우저에서 좌석 등록 → 게임 페이지(yacht)
+# 진입 후, 다른 탭에서 아래 URL 한 번씩 호출하면 태블릿 브라우저에서 들림.
+
+# stop은 /bgm/{name}보다 먼저 정의해야 정적 경로가 우선 매칭됨.
+@app.post("/debug/audio/bgm-stop")
+async def debug_bgm_stop() -> dict[str, str]:
+    """BGM 정지."""
+    await app.state.audio_manager.stop_bgm()
+    return {"status": "stopped"}
+
+
+@app.post("/debug/audio/bgm/{name}")
+async def debug_bgm_play(name: str) -> dict[str, str]:
+    """BGM 시작. name = 'lobby_loop' | 'game_outro' (catalog.BGM_REGISTRY 키)."""
+    await app.state.audio_manager.play_bgm(name)
+    return {"status": "ok", "bgm": name}
+
+
+@app.post("/debug/audio/sfx/{name}")
+async def debug_sfx_play(name: str) -> dict[str, str]:
+    """SFX 재생. name = catalog.SFX_REGISTRY 키 (hand_register/dice_roll/...)."""
+    pbid = await app.state.audio_manager.enqueue_sfx(name)
+    return {"status": "ok", "sfx": name, "playback_id": pbid}
+
+
+@app.post("/debug/audio/tts")
+async def debug_tts(text: str = "안녕하세요. 오디오 시스템 테스트입니다.") -> dict[str, str]:
+    """임의 문장 TTS 합성·재생. ?text= 쿼리로 문장 지정."""
+    pbid = await app.state.audio_manager.enqueue_tts(text=text)
+    return {"status": "ok", "text": text, "playback_id": pbid}
+
+
+@app.post("/debug/audio/scenario")
+async def debug_audio_scenario() -> dict[str, list[str]]:
+    """엔드투엔드 시나리오: BGM 시작 → SFX → TTS → CRITICAL 인터럽트.
+
+    실제 게임 흐름을 흉내 — TTS 재생 중 CRITICAL이 들어와 fade-out되는지
+    체감으로 확인 가능. 합성·네트워크 지연 고려해 충분히 기다린 후 인터럽트.
+    """
+    from core.audio import AudioPriority
+
+    mgr = app.state.audio_manager
+    log: list[str] = []
+    await mgr.stop_bgm()  # 이전 시나리오 잔재 정리
+    log.append("BGM 정지 (이전 잔재 정리)")
+    await mgr.play_bgm("lobby_loop")
+    log.append("BGM 시작 (lobby_loop)")
+    await mgr.enqueue_sfx("hand_register", priority=AudioPriority.HIGH)
+    log.append("SFX (hand_register)")
+    await mgr.enqueue_tts(
+        text="이것은 오디오 시스템 검증을 위한 일반 멘트입니다. 잠시 후 긴급 알림이 끼어듭니다.",
+    )
+    log.append("TTS (long)")
+    # 합성·다운로드·재생 시작 지연 + 충분한 청취 시간 확보. 4초 후 인터럽트.
+    import asyncio as _asyncio
+    await _asyncio.sleep(4.0)
+    await mgr.enqueue_tts(
+        text="긴급 알림입니다.",
+        priority=AudioPriority.CRITICAL,
+    )
+    log.append("CRITICAL TTS (현재 멘트 인터럽트되어야 함)")
+    return {"steps": log}
 
 
 @app.websocket("/ws/tablet")
@@ -110,10 +229,27 @@ async def ws_tablet(websocket: WebSocket) -> None:
     await tablet_ws_handler(websocket, app.state.orchestrator)
 
 
+def _bench_ws_log(event: str, path: str) -> None:
+    """Benchmark hook (BENCH_TRACE=1에서만 실제 기록)."""
+    try:
+        from benchmarks.common.trace_setup import bench_log
+        import time as _t
+        bench_log().info("ws_%s %s %.6f", event, path, _t.time())
+    except Exception:
+        pass
+
+
 @app.websocket("/ws/yacht")
 async def yacht_socket(websocket: WebSocket) -> None:
     await websocket.accept()
-    session = YachtSession(websocket=websocket, bridge=app.state.bridge)
+    _bench_ws_log("attach", "/ws/yacht")
+    session = YachtSession(
+        websocket=websocket,
+        pipeline_switcher=app.state.pipeline_switcher,
+        bridge=app.state.bridge,
+        audio_manager=app.state.audio_manager,
+        agent_orchestrator=app.state.agent_orchestrator,
+    )
     # 비전 → 활성 세션 라우팅 활성화. send_hello/receive loop 어디서 예외가 나도
     # finally에서 반드시 deregister 되도록 register 직후부터 try 진입.
     app.state.yacht_runner.register_session(session)
@@ -123,233 +259,39 @@ async def yacht_socket(websocket: WebSocket) -> None:
             data = await websocket.receive_json()
             await session.handle_client_message(data)
     except WebSocketDisconnect:
-        return
+        app.state.pipeline_switcher(None)
     finally:
+        _bench_ws_log("disconnect", "/ws/yacht")
         app.state.yacht_runner.deregister_session(session)
+        app.state.agent_orchestrator.stop()
+        # 오디오 큐 정리 — 끊긴 세션이 ack 못 보내므로 _current가 stuck되는 것 방지.
+        # detach_broadcast_if: 이미 새 세션이 attach된 경우 race condition으로 덮어쓰지 않음.
+        app.state.audio_manager.detach_broadcast_if(session._send_raw_bound)
 
 
-class YachtSession:
-    def __init__(self, websocket: WebSocket, bridge: LocalBridge | None = None) -> None:
-        self.websocket = websocket
-        self.fsm: YachtFSM | None = None
-        self.tutorial_mode = False
-        self.tutorial_complete = False
-        self.undo_stack: list[YachtGameState] = []
-        self._bridge = bridge or LocalBridge()
-        # FSM 상태 변경 직렬화 — 비전 스레드와 WS 스레드가 동시에 호출 가능
-        self._fsm_lock = threading.Lock()
-
-    async def send_hello(self) -> None:
-        await self.send(WSMessage.make_hello({"game_type": "yacht"}))
-
-    async def dispatch_vision_event(self, event: GameEvent) -> None:
-        """yacht_runner가 호출. 비전 이벤트를 FSM에 전달하고 응답을 클라이언트로."""
-        if self.fsm is None or self.tutorial_complete:
-            return
-        with self._fsm_lock:
-            messages = self.fsm.handle_event(event)
-        await self.send_many(messages)
-
-    async def handle_client_message(self, data: dict[str, Any]) -> None:
-        input_type = str(data.get("input_type", ""))
-        payload = dict(data.get("data", {}))
-        player_id = data.get("player_id")
-
-        if input_type == "START_YACHT":
-            await self.start_game(payload)
-            return
-
-        if self.fsm is None:
-            await self.send(
-                WSMessage.make_error("GAME_NOT_STARTED", "요트다이스가 시작되지 않았습니다.")
-            )
-            return
-
-        if input_type == "ROLL_DICE":
-            with self._fsm_lock:
-                previous_state = deepcopy(self.fsm.state)
-                dice_values = payload.get("dice_values") or self.roll_dice(
-                    self.fsm.state.dice_values,
-                    self.fsm.state.keep_mask,
-                )
-                event = GameEvent(
-                    event_type=YachtEventType.ROLL_CONFIRMED.value,
-                    actor_id=self.fsm.state.current_player.player_id,
-                    confidence=1.0,
-                    frame_id=-1,
-                    data={"dice_values": dice_values, "keep_mask": self.fsm.state.keep_mask},
-                )
-                messages = self.fsm.handle_event(event)
-                if self.roll_was_recorded(previous_state):
-                    self.undo_stack.append(previous_state)
-            await self.send_many(messages)
-            return
-
-        if input_type == "DICE_ESCAPED":
-            event = GameEvent(
-                event_type=YachtEventType.DICE_ESCAPED.value,
-                actor_id=self.fsm.state.current_player.player_id,
-                confidence=1.0,
-                frame_id=-1,
-                data={},
-            )
-            with self._fsm_lock:
-                messages = self.fsm.handle_event(event)
-            await self.send_many(messages)
-            return
-
-        if input_type in {
-            YachtInputType.DICE_KEEP_SELECTED.value,
-            YachtInputType.DICE_REROLL_REQUESTED.value,
-            YachtInputType.RESOLVE_UNREADABLE_ROLL.value,
-        }:
-            with self._fsm_lock:
-                messages = self.fsm.handle_input(input_type, payload, player_id)
-            await self.send_many(messages)
-            return
-
-        if input_type == YachtInputType.SCORE_CATEGORY_SELECTED.value:
-            with self._fsm_lock:
-                previous_state = deepcopy(self.fsm.state)
-                messages = self.fsm.handle_input(input_type, payload, player_id)
-                if self.score_was_recorded(previous_state, payload.get("category")):
-                    self.undo_stack = []
-                    self.finish_tutorial_if_complete(messages)
-            await self.send_many(messages)
-            return
-
-        if input_type == "UNDO_ROUND":
-            if not self.undo_stack:
-                await self.send(
-                    WSMessage.make_error(
-                        "NO_UNDO_HISTORY",
-                        "되돌릴 주사위 굴림이 없습니다.",
-                        self.fsm.state.state_version,
-                    )
-                )
-                return
-            restored_state = self.undo_stack.pop()
-            player_name = restored_state.current_player.playername
-            with self._fsm_lock:
-                messages = self.fsm.restore_state(
-                    restored_state,
-                    f"{player_name}님의 주사위 굴림을 되돌렸습니다.",
-                )
-            await self.send_many(messages)
-            return
-
-        if input_type == "RESTART":
-            players = [p.to_dict() for p in self.fsm.state.players]
-            await self.start_game({"players": players, "tutorial_mode": self.tutorial_mode})
-            return
-
-        await self.send(
-            WSMessage.make_error("UNKNOWN_INPUT", f"알 수 없는 입력입니다: {input_type}")
-        )
-
-    async def start_game(self, payload: dict[str, Any]) -> None:
-        players = normalize_players(payload.get("players"))
-        self.tutorial_mode = is_tutorial_mode(payload)
-        self.tutorial_complete = False
-        with self._fsm_lock:
-            self.undo_stack = []
-            self.fsm = YachtFSM(
-                players,
-                on_fusion_context=self._bridge.send_fusion_context,
-            )
-            messages = self.fsm.start()
-        await self.send_many(messages)
-
-    def roll_was_recorded(self, previous_state: YachtGameState) -> bool:
-        if self.fsm is None:
-            return False
-        return self.fsm.state.roll_count > previous_state.roll_count
-
-    def score_was_recorded(self, previous_state: YachtGameState, category: Any) -> bool:
-        if self.fsm is None or not category:
-            return False
-        category_key = str(category)
-        if category_key in previous_state.current_player.scores:
-            return False
-        scorer_id = previous_state.current_player.player_id
-        scorer = next(
-            (player for player in self.fsm.state.players if player.player_id == scorer_id),
-            None,
-        )
-        return scorer is not None and category_key in scorer.scores
-
-    def finish_tutorial_if_complete(self, messages: list[WSMessage]) -> None:
-        if self.fsm is None or not self.tutorial_mode:
-            return
-        if not all(len(player.scores) >= 1 for player in self.fsm.state.players):
-            return
-        self.tutorial_complete = True
-        self.fsm.state.last_message = (
-            "튜토리얼이 끝났습니다. 게임 선택 화면으로 돌아가거나 정식 게임을 시작해보세요."
-        )
-        self.fsm.state.state_version += 1
-        messages.append(
-            WSMessage(
-                msg_type="state_update",
-                payload=self.fsm.state.to_dict(),
-                state_version=self.fsm.state.state_version,
-            )
-        )
-
-    @staticmethod
-    def roll_dice(
-        current_values: list[int | None] | None = None,
-        keep_mask: list[bool] | None = None,
-    ) -> list[int]:
-        values = list(current_values or [])
-        keep = list(keep_mask or [])
-        return [
-            int(values[index])
-            if index < len(values) and index < len(keep) and keep[index] and values[index] is not None
-            else random.randint(1, 6)
-            for index in range(5)
-        ]
-
-    async def send_many(self, messages: list[WSMessage]) -> None:
-        for message in messages:
-            await self.send(message)
-
-    async def send(self, message: WSMessage) -> None:
-        if message.msg_type == "state_update":
-            message.payload["can_undo"] = bool(self.undo_stack)
-            message.payload["tutorial_mode"] = self.tutorial_mode
-            message.payload["tutorial_complete"] = self.tutorial_complete
-        await self.websocket.send_json(message.to_dict())
-
-
-def is_tutorial_mode(payload: dict[str, Any]) -> bool:
-    mode = str(payload.get("mode") or "").lower()
-    return bool(payload.get("tutorial_mode") or mode == "tutorial")
-
-
-def normalize_players(players: Any) -> list[dict[str, str]]:
-    if not isinstance(players, list) or not players:
-        return [
-            {"player_id": "p1", "playername": "형승"},
-            {"player_id": "p2", "playername": "병진"},
-            {"player_id": "p3", "playername": "성민"},
-        ]
-
-    normalized: list[dict[str, str]] = []
-    for index, player in enumerate(players, start=1):
-        if isinstance(player, str):
-            normalized.append({"player_id": f"p{index}", "playername": player})
-            continue
-
-        if not isinstance(player, dict):
-            continue
-
-        player_id = str(player.get("player_id") or player.get("id") or f"p{index}")
-        name = str(player.get("playername") or player.get("name") or player_id)
-        normalized.append({"player_id": player_id, "playername": name})
-
-    return normalized or [
-        {"player_id": "p1", "playername": "형승"},
-        {"player_id": "p2", "playername": "병진"},
-        {"player_id": "p3", "playername": "성민"},
-    ]
+@app.websocket("/ws/werewolf")
+async def werewolf_socket(websocket: WebSocket) -> None:
+    await websocket.accept()
+    _bench_ws_log("attach", "/ws/werewolf")
+    session = WerewolfSession(
+        websocket=websocket,
+        send_fusion_context_fn=app.state.bridge.send_fusion_context,
+        loop=app.state.loop,
+        pipeline_switcher=app.state.pipeline_switcher,
+        audio_manager=app.state.audio_manager,
+        agent_orchestrator=app.state.agent_orchestrator,
+    )
+    app.state.orchestrator.set_werewolf_event_handler(session.get_vision_event_handler())
+    # WS 연결 즉시 웨어울프 파이프라인 활성화 (역할 선택 화면에서도 카메라 준비)
+    app.state.pipeline_switcher("werewolf")
+    await session.send_hello()
+    try:
+        while True:
+            data = await websocket.receive_json()
+            await session.handle_client_message(data)
+    except WebSocketDisconnect:
+        _bench_ws_log("disconnect", "/ws/werewolf")
+        app.state.orchestrator.set_werewolf_event_handler(None)
+        app.state.pipeline_switcher(None)
+        app.state.agent_orchestrator.stop()
+        app.state.audio_manager.detach_broadcast_if(session._send_raw_bound)

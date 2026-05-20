@@ -28,6 +28,14 @@ from vision.detectors.gesture_classifier import GestureClassifier
 from vision.detectors.hand_detector import HandDetector
 from vision.detectors.yolo_detector import YoloDetector
 from vision.fusion.engine import FusionEngine
+
+# Benchmark hook (BENCH_TRACE=0이면 bench_log()는 NullHandler만 달린 no-op).
+# 매 프레임 import 비용 방지를 위해 모듈 상단에서 한 번만 import.
+try:
+    from benchmarks.common.trace_setup import bench_log as _bench_log, is_bench as _is_bench
+except Exception:
+    _bench_log = None
+    _is_bench = None
 from vision.geometry.arm_vector import compute_arm_angle
 from vision.schemas import BBox, HandDet, YoloDet
 from vision.yacht.schemas import YachtFramePerception
@@ -47,6 +55,7 @@ class VisionPipeline:
         self._bridge = bridge
         self._players = players
         self._running = False
+        self._active = False  # 요트 게임 시작 시 True로 전환
         self._frame_id = 0
 
         self._yolo = YoloDetector(
@@ -100,6 +109,9 @@ class VisionPipeline:
                 except queue.Empty:
                     continue
 
+                if not self._active:
+                    continue  # 비활성 상태: 큐 소진만, ML 처리 스킵
+
                 if self._config.frame_skip > 0:
                     skip_counter += 1
                     if skip_counter <= self._config.frame_skip:
@@ -107,6 +119,12 @@ class VisionPipeline:
                     skip_counter = 0
 
                 ts = time.time()
+                # Benchmark hook: FPS 계산용 (BENCH_TRACE=1에서만 실제 기록).
+                if _is_bench is not None and _is_bench():
+                    try:
+                        _bench_log().info("pipeline_enter %d %.6f", self._frame_id, ts)
+                    except Exception:
+                        pass
                 self._process_one(frame, self._frame_id, ts)
                 self._frame_id += 1
 
@@ -122,6 +140,9 @@ class VisionPipeline:
 
     def stop(self) -> None:
         self._running = False
+
+    def set_active(self, enabled: bool) -> None:
+        self._active = enabled
 
     def update_players(self, players: list[Player]) -> None:
         self._players = players

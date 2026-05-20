@@ -58,21 +58,34 @@ const ROLE_NIGHT_DATA = {
 }
 
 const PASSIVE_ROLES = new Set(['werewolf', 'minion', 'mason'])
-const PASSIVE_DURATION = 7
+const PASSIVE_DURATION = 10
+const ACTIVE_DURATION = 20
 
-export default function NightRoleAnnounce({ roleId, onComplete }) {
+const KOREAN_NUMS = { 1: '한', 2: '두', 3: '세' }
+function toKoreanTTS(text) {
+  return text.replace(/([123])(명|장|개)/g, (_, n, counter) => `${KOREAN_NUMS[Number(n)]} ${counter}`)
+}
+
+export default function NightRoleAnnounce({ roleId, onComplete, send, onExit }) {
   const role = ROLE_NIGHT_DATA[roleId]
   const isPassive = PASSIVE_ROLES.has(roleId)
-  const [countdown, setCountdown] = useState(isPassive ? PASSIVE_DURATION : null)
+  const duration = isPassive ? PASSIVE_DURATION : ACTIVE_DURATION
+  const [countdown, setCountdown] = useState(duration)
 
   useEffect(() => {
-    if (!isPassive) return
-    setCountdown(PASSIVE_DURATION)
+    if (!role) return
+    const raw = `${role.announce} ${role.action.replace(/\n/g, ' ')}`
+    send?.('TTS_REQUEST', { text: toKoreanTTS(raw) })
+  }, [roleId])
+
+  useEffect(() => {
+    const dur = PASSIVE_ROLES.has(roleId) ? PASSIVE_DURATION : ACTIVE_DURATION
+    setCountdown(dur)
     const interval = setInterval(() => {
       setCountdown(prev => Math.max(0, prev - 1))
     }, 1000)
     return () => clearInterval(interval)
-  }, [roleId, isPassive])
+  }, [roleId])
 
   if (!role) return null
 
@@ -99,6 +112,7 @@ export default function NightRoleAnnounce({ roleId, onComplete }) {
       `}</style>
 
       <div style={styles.page}>
+        <button onClick={onExit} style={exitBtn}>나가기</button>
 
         {/* 배경 */}
         <div style={styles.sky} />
@@ -171,10 +185,11 @@ export default function NightRoleAnnounce({ roleId, onComplete }) {
           <div style={{ ...styles.textBlock, animation: 'fadeIn 0.6s ease-out 0.25s both' }}>
             <p style={styles.announceText}>{role.announce}</p>
             <p style={styles.actionText}>{role.action}</p>
-            {isPassive && (
-              <p style={styles.countdownText}>{countdown}초 후 자동으로 넘어갑니다</p>
-            )}
+            <p style={styles.countdownText}>{countdown}초 후 자동으로 넘어갑니다</p>
           </div>
+
+          {/* 건너뛰기 버튼 */}
+          <button onClick={onComplete} style={styles.skipBtn}>건너뛰기 →</button>
 
         </div>
 
@@ -294,4 +309,26 @@ const styles = {
     textAlign: 'center',
     letterSpacing: 0.5,
   },
+
+  skipBtn: {
+    padding: '8px 20px',
+    border: '1px solid rgba(248,241,221,0.25)',
+    borderRadius: 8,
+    background: 'rgba(255,255,255,0.08)',
+    color: 'rgba(248,241,221,0.5)',
+    cursor: 'pointer',
+    fontSize: 13,
+  },
+
+}
+
+const exitBtn = {
+  position: 'absolute', top: 20, right: 20, zIndex: 10,
+  padding: '8px 18px',
+  border: '1px solid rgba(248,241,221,0.2)',
+  borderRadius: 8,
+  background: 'rgba(255,255,255,0.08)',
+  color: 'rgba(248,241,221,0.7)',
+  fontSize: 14, fontWeight: 600, cursor: 'pointer',
+  backdropFilter: 'blur(8px)',
 }

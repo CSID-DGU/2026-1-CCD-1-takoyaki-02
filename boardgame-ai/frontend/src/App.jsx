@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useWebSocket } from './hooks/useWebSocket'
+import { useAudioPlayer, audio as audioApi } from './hooks/useAudioPlayer'
+import { useBenchBridge } from './hooks/useBenchBridge'
 import SeatRegistration from './components/common/SeatRegistration'
 import Lobby from './pages/Lobby'
 import WerewolfGame from './pages/WerewolfGame'
@@ -16,7 +18,16 @@ const WEREWOLF_PHASES = new Set([
 export default function App() {
   const [page, setPage] = useState('seat')
   const [yachtTutorialMode, setYachtTutorialMode] = useState(false)
-  const { state, connected, send } = useWebSocket('/ws/tablet')
+  const [gameKey, setGameKey] = useState(0)
+  const [isPracticeMode, setIsPracticeMode] = useState(false)
+  const { state, connected, send } = useWebSocket('/ws/tablet', {
+    onAudioMessage: audioApi.enqueue,
+  })
+  // App 레벨 싱글톤 audio. send를 넘겨 audio_ack가 backend로 흐르도록.
+  useAudioPlayer(send)
+  // window._bench.log(...)를 정의하고 250ms 배치로 backend에 전송.
+  // backend가 BENCH_TRACE=1 아니면 backend 쪽에서 무시되므로 항상 켜둬도 OK.
+  useBenchBridge(send)
 
   const phase = state?.phase ?? 'player_setup'
   const players = state?.players ?? []
@@ -25,11 +36,12 @@ export default function App() {
 
   // 사운드 트리거 처리
   useEffect(() => {
+    // sound_seq가 바뀔 때마다 재생 (오른손/왼손 각각 트리거됨).
     if (state?.sound === 'registered') {
-      const audio = new Audio('/sounds/registered.mp3')
+      const audio = new Audio('/sfx/hand_register.mp3')
       audio.play().catch(() => {})
     }
-  }, [state?.sound])
+  }, [state?.sound_seq])
 
   // 백엔드 phase가 늑대인간 게임 단계로 진입하면 page 동기화
   useEffect(() => {
@@ -63,7 +75,8 @@ export default function App() {
           setYachtTutorialMode(true)
           setPage('yacht')
         }}
-        onSelectWerewolf={() => setPage('werewolf')}
+        onSelectWerewolf={() => { setIsPracticeMode(false); setPage('werewolf') }}
+        onSelectWerewolfPractice={() => { setIsPracticeMode(true); setPage('werewolf') }}
         onExit={() => setPage('seat')}
       />
     )
@@ -78,11 +91,14 @@ export default function App() {
   )
   if (page === 'werewolf') return (
     <WerewolfGame
+      key={gameKey}
       players={players}
       wsState={state}
       send={send}
-      onLobby={() => setPage('seat')}
-      onRestart={() => setPage('lobby')}
+      isPracticeMode={isPracticeMode}
+      onChangePlayers={() => { setIsPracticeMode(false); setPage('seat') }}
+      onChangeGame={() => { setIsPracticeMode(false); setPage('lobby') }}
+      onRestart={() => setGameKey(k => k + 1)}
     />
   )
   return null

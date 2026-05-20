@@ -36,6 +36,10 @@ class WerewolfRunner:
         if self._pipeline is not None:
             self._pipeline.stop()
 
+    def set_active(self, enabled: bool) -> None:
+        if self._pipeline is not None:
+            self._pipeline.set_active(enabled)
+
     def update_players(self, players: list) -> None:
         if self._pipeline is not None:
             self._pipeline.update_players(players)

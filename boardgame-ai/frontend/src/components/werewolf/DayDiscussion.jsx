@@ -5,7 +5,7 @@ const CIRCUMFERENCE = 2 * Math.PI * RADIUS
 
 // timeLeft는 백엔드 timer_remaining을 그대로 전달받아 사용한다.
 // 로컬 setInterval 없이 백엔드 state_update(1초마다)로 동기화된다.
-export default function DayDiscussion({ timeLeft = 300, onVote, onAddTime }) {
+export default function DayDiscussion({ timeLeft = 300, onVote, onAddTime, onExit }) {
   const maxTimeRef = useRef(timeLeft)
 
   useEffect(() => {
@@ -38,6 +38,7 @@ export default function DayDiscussion({ timeLeft = 300, onVote, onAddTime }) {
       `}</style>
 
       <div style={styles.page}>
+        <button onClick={onExit} style={exitBtn}>나가기</button>
 
         {/* 배경 */}
         <div style={styles.sky} />
@@ -235,4 +236,15 @@ const styles = {
     letterSpacing: 0.3,
     boxShadow: '0 6px 0 #6B420A, 0 10px 24px rgba(0,0,0,0.4)',
   },
+}
+
+const exitBtn = {
+  position: 'absolute', top: 20, right: 20, zIndex: 10,
+  padding: '8px 18px',
+  border: '1px solid rgba(248,241,221,0.2)',
+  borderRadius: 8,
+  background: 'rgba(255,255,255,0.08)',
+  color: 'rgba(248,241,221,0.7)',
+  fontSize: 14, fontWeight: 600, cursor: 'pointer',
+  backdropFilter: 'blur(8px)',
 }

@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useWebSocket } from '../hooks/useWebSocket'
+import { audio as audioApi, useAudioPlayer } from '../hooks/useAudioPlayer'
 
 const CATEGORY_LABELS = [
   ['ones', 'Aces'],
@@ -370,14 +371,22 @@ const s = {
 }
 
 export default function YachtGame({ players, tutorialMode = false, onExit, onChangePlayers }) {
-  const { state, connected, messages, send } = useWebSocket('/ws/yacht')
+  const { state, connected, messages, send } = useWebSocket('/ws/yacht', {
+    onAudioMessage: audioApi.enqueue,
+  })
+  // /ws/yacht 채널로도 audio_ack가 흐르도록 등록 (FSM 멘트는 이 채널로 옴).
+  useAudioPlayer(send)
   const [leaderboardOpen, setLeaderboardOpen] = useState(false)
   const [tutorialIntroSeen, setTutorialIntroSeen] = useState(!tutorialMode)
+  const startedRef = useRef(false)
 
   useEffect(() => {
     if (!connected) return
+    if (tutorialMode && !tutorialIntroSeen) return
+    if (startedRef.current) return
+    startedRef.current = true
     send('START_YACHT', { players: normalizePlayers(players), tutorial_mode: tutorialMode })
-  }, [connected])
+  }, [connected, players, send, tutorialIntroSeen, tutorialMode])
 
   const currentPlayer = useMemo(
     () => state?.players?.find(p => p.player_id === state.current_player_id),

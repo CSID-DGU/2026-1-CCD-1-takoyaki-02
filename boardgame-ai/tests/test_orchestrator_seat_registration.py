@@ -32,4 +32,3 @@ def test_remove_registering_player_clears_registration_state() -> None:
     assert snapshot["registering_player_id"] is None
     assert snapshot["seat_step"] == "idle"
     assert snapshot["players"] == []
-

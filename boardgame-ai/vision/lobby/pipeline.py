@@ -49,6 +49,7 @@ class LobbyVisionPipeline:
         self._players = players
         self._warmup_frames = warmup_frames
         self._running = False
+        self._active = True  # 로비가 기본 활성 파이프라인
         self._frame_id = 0
         self._fsm_state_version: int = 0
 
@@ -81,6 +82,9 @@ class LobbyVisionPipeline:
                 except queue.Empty:
                     continue
 
+                if not self._active:
+                    continue  # 비활성 상태: 큐 소진만, ML 처리 스킵
+
                 ts = time.time()
                 self._process_one(frame, self._frame_id, ts)
                 self._frame_id += 1
@@ -90,6 +94,9 @@ class LobbyVisionPipeline:
 
     def stop(self) -> None:
         self._running = False
+
+    def set_active(self, enabled: bool) -> None:
+        self._active = enabled
 
     def update_players(self, players: list[Player]) -> None:
         self._players = players

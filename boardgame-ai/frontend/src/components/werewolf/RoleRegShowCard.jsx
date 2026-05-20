@@ -1,4 +1,29 @@
-export default function RoleRegShowCard({ player, onDetected, onBack, onExit }) {
+import { useEffect, useState } from 'react'
+
+const AUTO_ADVANCE_SEC = 12
+
+export default function RoleRegShowCard({ player, send, onDetected, onBack, onExit, onTimeout }) {
+  const [countdown, setCountdown] = useState(AUTO_ADVANCE_SEC)
+
+  useEffect(() => {
+    if (!player?.playername || !send) return
+    send('TTS_REQUEST', { text: `${player.playername}님, 역할 카드를 카메라에 보여주세요.` })
+  }, [player?.player_id])
+
+  useEffect(() => {
+    setCountdown(AUTO_ADVANCE_SEC)
+    let remaining = AUTO_ADVANCE_SEC
+    const interval = setInterval(() => {
+      remaining -= 1
+      setCountdown(remaining)
+      if (remaining <= 0) {
+        clearInterval(interval)
+        onTimeout?.()
+      }
+    }, 1000)
+    return () => clearInterval(interval)
+  }, [player?.player_id])
+
   return (
     <>
       <style>{`
@@ -22,9 +47,11 @@ export default function RoleRegShowCard({ player, onDetected, onBack, onExit }) 
         <div style={styles.sky} />
 
         <div style={styles.actions}>
-          <button type="button" style={styles.actionButton} onClick={onBack}>
-            돌아가기
-          </button>
+          {onBack && (
+            <button type="button" style={styles.actionButton} onClick={onBack}>
+              돌아가기
+            </button>
+          )}
           <button type="button" style={styles.actionButton} onClick={onExit}>
             나가기
           </button>
@@ -89,6 +116,11 @@ export default function RoleRegShowCard({ player, onDetected, onBack, onExit }) 
           <div style={styles.guide}>
             카드를 카메라에 보여주세요
           </div>
+          {countdown > 0 && (
+            <div style={styles.countdown}>
+              {countdown}초 후 자동으로 역할 선택 화면으로 이동합니다
+            </div>
+          )}
 
         </div>
 
@@ -187,5 +219,12 @@ const styles = {
     fontWeight: 400,
     color: 'rgba(248,241,221,0.6)',
     letterSpacing: 1,
+  },
+
+  countdown: {
+    marginTop: 8,
+    fontSize: 14,
+    color: 'rgba(248,241,221,0.38)',
+    letterSpacing: 0.5,
   },
 }
