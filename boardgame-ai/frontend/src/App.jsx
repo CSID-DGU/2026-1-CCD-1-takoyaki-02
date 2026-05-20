@@ -18,6 +18,7 @@ const WEREWOLF_PHASES = new Set([
 export default function App() {
   const [page, setPage] = useState('seat')
   const [gameKey, setGameKey] = useState(0)
+  const [isPracticeMode, setIsPracticeMode] = useState(false)
   const { state, connected, send } = useWebSocket('/ws/tablet', {
     onAudioMessage: audioApi.enqueue,
   })
@@ -60,7 +61,16 @@ export default function App() {
       />
     )
   }
-  if (page === 'lobby') return <Lobby players={players} send={send} onSelectYacht={() => setPage('yacht')} onSelectWerewolf={() => setPage('werewolf')} onExit={() => setPage('seat')} />
+  if (page === 'lobby') return (
+    <Lobby
+      players={players}
+      send={send}
+      onSelectYacht={() => setPage('yacht')}
+      onSelectWerewolf={() => { setIsPracticeMode(false); setPage('werewolf') }}
+      onSelectWerewolfPractice={() => { setIsPracticeMode(true); setPage('werewolf') }}
+      onExit={() => setPage('seat')}
+    />
+  )
   if (page === 'yacht') return <YachtGame players={players} onExit={() => setPage('lobby')} onChangePlayers={() => setPage('seat')} />
   if (page === 'werewolf') return (
     <WerewolfGame
@@ -68,8 +78,9 @@ export default function App() {
       players={players}
       wsState={state}
       send={send}
-      onChangePlayers={() => setPage('seat')}
-      onChangeGame={() => setPage('lobby')}
+      isPracticeMode={isPracticeMode}
+      onChangePlayers={() => { setIsPracticeMode(false); setPage('seat') }}
+      onChangeGame={() => { setIsPracticeMode(false); setPage('lobby') }}
       onRestart={() => setGameKey(k => k + 1)}
     />
   )
