@@ -1,12 +1,16 @@
 import { useEffect, useState } from 'react'
 
-export default function VoteCountdown({ players = [], votes = {}, onComplete, send }) {
+export default function VoteCountdown({ players = [], votes = {}, onComplete, send, onExit }) {
   // votes: { player_id: target_player_id } — 지목 완료된 플레이어 매핑
   const [selectedVoter, setSelectedVoter] = useState(null)
 
   const doneCount = Object.keys(votes).length
   const total = players.length
   const allDone = total > 0 && doneCount >= total
+
+  useEffect(() => {
+    send?.('TTS_REQUEST', { text: '지목할 플레이어의 카드를 손가락으로 가리키세요.' })
+  }, [])
 
   useEffect(() => {
     if (allDone) onComplete?.()
@@ -48,6 +52,7 @@ export default function VoteCountdown({ players = [], votes = {}, onComplete, se
       `}</style>
 
       <div style={styles.page}>
+        <button onClick={onExit} style={exitBtn}>나가기</button>
 
         {/* 배경 */}
         <div style={styles.sky} />
@@ -98,7 +103,7 @@ export default function VoteCountdown({ players = [], votes = {}, onComplete, se
             </>
           ) : (
             <>
-              <div style={styles.guideLine}>지목할 플레이어를 손가락으로 가리키세요.</div>
+              <div style={styles.guideLine}>지목할 플레이어의 카드를 손가락으로 가리키세요.</div>
               <div style={styles.guideLineSub}>직접 선택: 투표자 카드를 먼저 누르세요. 자기 자신 지목은 기권입니다.</div>
             </>
           )}
@@ -318,4 +323,15 @@ const styles = {
     borderRadius: 20,
     padding: '4px 14px',
   },
+}
+
+const exitBtn = {
+  position: 'absolute', top: 20, right: 20, zIndex: 10,
+  padding: '8px 18px',
+  border: '1px solid rgba(248,241,221,0.2)',
+  borderRadius: 8,
+  background: 'rgba(255,255,255,0.08)',
+  color: 'rgba(248,241,221,0.7)',
+  fontSize: 14, fontWeight: 600, cursor: 'pointer',
+  backdropFilter: 'blur(8px)',
 }

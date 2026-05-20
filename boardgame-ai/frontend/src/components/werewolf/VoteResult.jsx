@@ -1,6 +1,22 @@
-import { useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+
+const AUTO_ADVANCE_SEC = 10
 
 export default function VoteResult({ players = [], votes = {}, onComplete }) {
+  const [countdown, setCountdown] = useState(AUTO_ADVANCE_SEC)
+
+  useEffect(() => {
+    let remaining = AUTO_ADVANCE_SEC
+    const interval = setInterval(() => {
+      remaining -= 1
+      setCountdown(remaining)
+      if (remaining <= 0) {
+        clearInterval(interval)
+        onComplete?.()
+      }
+    }, 1000)
+    return () => clearInterval(interval)
+  }, [])
   // votes: { voter_player_id: target_player_id }
   const { tally, condemned } = useMemo(() => {
     const count = {}
@@ -135,7 +151,9 @@ export default function VoteResult({ players = [], votes = {}, onComplete }) {
             ))}
           </div>
 
-          <div style={styles.tapHint}>화면을 터치하면 계속합니다</div>
+          <div style={styles.tapHint}>
+            화면을 터치하면 계속합니다{countdown > 0 && <span style={{ marginLeft: 6, opacity: 0.6 }}>({countdown})</span>}
+          </div>
         </div>
 
       </div>

@@ -31,8 +31,15 @@ from games.werewolf.ontology import (
 from games.werewolf.state import WerewolfGameState, WerewolfPlayerState
 
 
-PASSIVE_PHASE_DURATION = 7   # 패시브 역할 안내 화면 표시 시간(초)
+PASSIVE_PHASE_DURATION = 10  # 패시브 역할 안내 화면 표시 시간(초)
 ACTIVE_PHASE_TIMEOUT = 20    # 액티브 역할 카드 감지 대기 타임아웃(초)
+
+SWAP_ROLES: frozenset[WerewolfRole] = frozenset({
+    WerewolfRole.ROBBER,
+    WerewolfRole.TROUBLEMAKER,
+    WerewolfRole.DRUNK,
+    WerewolfRole.DOPPELGANGER,
+})
 
 ACTIVE_NIGHT_PHASES = frozenset({
     WerewolfPhase.NIGHT_DOPPELGANGER,
@@ -281,6 +288,12 @@ class WerewolfFSM(BaseFSM):
             return self._enter_phase(WerewolfPhase.VOTE)
 
         if current == WerewolfPhase.VOTE:
+            has_swap_roles = any(
+                WerewolfRole(p.original_role) in SWAP_ROLES
+                for p in self.state.players
+            )
+            if has_swap_roles:
+                return self._enter_phase(WerewolfPhase.FINAL_ROLE_REVEAL)
             self.state.winner = judge_winner(self.state)
             return self._enter_phase(WerewolfPhase.RESULT)
 
@@ -317,6 +330,9 @@ class WerewolfFSM(BaseFSM):
         elif phase == WerewolfPhase.VOTE_COUNTDOWN:
             # 시각적 카운트다운은 UI 담당; FSM은 즉시 VOTE로 전이
             return msgs + self._advance_to_next_phase()
+
+        elif phase == WerewolfPhase.FINAL_ROLE_REVEAL:
+            return msgs  # session이 FusionContext 관리
 
         elif phase == WerewolfPhase.RESULT:
             return msgs  # 종료 상태; FusionContext 불필요
@@ -436,7 +452,6 @@ class WerewolfFSM(BaseFSM):
         self.state.state_version += 1
         msgs = [self._make_state_update()]
         if all(p.voted_for is not None for p in self.state.players):
-            self.state.winner = judge_winner(self.state)
             msgs += self._advance_to_next_phase()
         return msgs
 
@@ -463,6 +478,9 @@ class WerewolfFSM(BaseFSM):
                 self._timer_task.cancel()
                 self._timer_task = None
             return self._advance_to_next_phase()
+        if current == WerewolfPhase.FINAL_ROLE_REVEAL:
+            self.state.winner = judge_winner(self.state)
+            return self._enter_phase(WerewolfPhase.RESULT)
         return []
 
     def _handle_vote_player(self, player_id: str | None, data: dict) -> list[WSMessage]:

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 
 const ROLE_NAMES = {
   doppelganger: '도플갱어',
@@ -16,23 +16,28 @@ const ROLE_NAMES = {
 }
 
 const SENTENCES = [
-  { text: '이번 게임에 사용할 역할 카드입니다.',         showCards: true  },
-  { text: '중앙 카드 3장을 테이블 가운데에 뒤집어 놓아주세요.', tts: '중앙 카드 세 장을 테이블 가운데에 뒤집어 놓아주세요.' },
-  { text: '나머지 카드를 각자 자기 앞에 엎어서 놓아주세요.' },
+  { text: '이번 게임에 사용할 역할 카드입니다.',                               showCards: true },
+  { text: '모든 카드를 역할이 보이지 않게 뒤집어주세요.' },
+  { text: '각자 카드를 한 장씩 가져가고, 본인만 확인해주세요.',                 holdMs: 10000 },
+  { text: '본인의 카드는 각자 자기 앞에 엎어서 놓아주세요.' },
+  { text: '나머지 카드는 역할이 보이지 않게 뒤집어 중앙에 놓아주세요.' },
 ]
 
 const CHAR_MS = 60    // 글자당 타이핑 속도 (ms)
-const HOLD_MS = 5000  // 타이핑 완료 후 대기 시간 (ms)
+const HOLD_MS = 5000  // 타이핑 완료 후 대기 시간 (ms) — 개별 holdMs로 오버라이드 가능
 const FADE_MS = 600   // 페이드 전환 시간 (ms)
+const CONFIRM_TEXT = '모든 준비가 완료 되었으면 OK 싸인을 해주세요.'
 
-export default function CardSetupGuide({ roles = [], onComplete, send }) {
-  const [step, setStep]       = useState(0)
-  const [typed, setTyped]     = useState('')
-  const [visible, setVisible] = useState(false)
+export default function CardSetupGuide({ roles = [], onComplete, send, wsState, onExit }) {
+  const [step, setStep]             = useState(0)
+  const [typed, setTyped]           = useState('')
+  const [visible, setVisible]       = useState(false)
+  const [confirming, setConfirming] = useState(false)
+  const prevGestureRef = useRef(wsState?.gesture_confirmed ?? null)
 
   useEffect(() => {
     if (step >= SENTENCES.length) {
-      onComplete()
+      setConfirming(true)
       return
     }
 
@@ -52,11 +57,12 @@ export default function CardSetupGuide({ roles = [], onComplete, send }) {
     }, CHAR_MS)
 
     const typingMs = sentence.text.length * CHAR_MS
+    const holdMs   = sentence.holdMs ?? HOLD_MS
 
-    // 타이핑 완료 + HOLD_MS 후 페이드 아웃
-    const fadeOut = setTimeout(() => setVisible(false), typingMs + HOLD_MS)
+    // 타이핑 완료 + holdMs 후 페이드 아웃
+    const fadeOut = setTimeout(() => setVisible(false), typingMs + holdMs)
     // 페이드 완료 후 다음 문장
-    const next    = setTimeout(() => setStep(s => s + 1), typingMs + HOLD_MS + FADE_MS)
+    const next    = setTimeout(() => setStep(s => s + 1), typingMs + holdMs + FADE_MS)
 
     return () => {
       clearInterval(typeTimer)
@@ -64,6 +70,31 @@ export default function CardSetupGuide({ roles = [], onComplete, send }) {
       clearTimeout(next)
     }
   }, [step])
+
+  // 확인 단계 진입: 타이핑 애니메이션 + TTS
+  useEffect(() => {
+    if (!confirming) return
+    setTyped('')
+    setVisible(true)
+    send?.('TTS_REQUEST', { text: CONFIRM_TEXT })
+    let charIdx = 0
+    const typeTimer = setInterval(() => {
+      charIdx++
+      setTyped(CONFIRM_TEXT.slice(0, charIdx))
+      if (charIdx >= CONFIRM_TEXT.length) clearInterval(typeTimer)
+    }, CHAR_MS)
+    return () => clearInterval(typeTimer)
+  }, [confirming])
+
+  // OK 싸인 감지 → 즉시 진행
+  useEffect(() => {
+    if (!confirming) return
+    const cur = wsState?.gesture_confirmed ?? null
+    if (cur && cur !== prevGestureRef.current) {
+      onComplete()
+    }
+    prevGestureRef.current = cur
+  }, [wsState?.gesture_confirmed])
 
   const sentence = step < SENTENCES.length ? SENTENCES[step] : null
 
@@ -82,7 +113,8 @@ export default function CardSetupGuide({ roles = [], onComplete, send }) {
         @keyframes cursorBlink { 0%,100%{opacity:1} 50%{opacity:0} }
       `}</style>
 
-      <div style={s.page}>
+      <div style={s.page} onClick={confirming ? onComplete : undefined}>
+        <button onClick={(e) => { e.stopPropagation(); onExit?.() }} style={exitBtn}>나가기</button>
         <div style={s.sky} />
         <div style={s.moon} />
 
@@ -142,8 +174,12 @@ export default function CardSetupGuide({ roles = [], onComplete, send }) {
         }}>
           <p style={s.sentence}>
             {typed}
-            {sentence && <span style={s.cursor}>|</span>}
+            {!confirming && sentence && <span style={s.cursor}>|</span>}
           </p>
+
+          {confirming && typed.length >= CONFIRM_TEXT.length && (
+            <p style={s.hint}>화면을 터치하거나 OK 싸인을 해주세요</p>
+          )}
 
           {sentence?.showCards && roles.length > 0 && (
             <div style={s.cardGrid}>
@@ -280,4 +316,23 @@ const s = {
     color: 'rgba(248,241,221,0.55)',
     textAlign: 'center',
   },
+
+  hint: {
+    margin: 0,
+    fontSize: 15,
+    color: 'rgba(248,241,221,0.38)',
+    textAlign: 'center',
+    letterSpacing: 0.5,
+  },
+}
+
+const exitBtn = {
+  position: 'absolute', top: 20, right: 20, zIndex: 10,
+  padding: '8px 18px',
+  border: '1px solid rgba(248,241,221,0.2)',
+  borderRadius: 8,
+  background: 'rgba(255,255,255,0.08)',
+  color: 'rgba(248,241,221,0.7)',
+  fontSize: 14, fontWeight: 600, cursor: 'pointer',
+  backdropFilter: 'blur(8px)',
 }

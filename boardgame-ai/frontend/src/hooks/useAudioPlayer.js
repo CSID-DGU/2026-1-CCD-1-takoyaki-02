@@ -25,6 +25,10 @@ const player = {
   duckGainDb: 0,
   // backend가 다음을 푸시하기 전 우리에게 새 메시지가 빨리 오는 race 케이스용 슬롯
   pendingNext: null,
+  // TTS 재생 종료 시 1회 호출되는 콜백 집합
+  ttsEndCallbacks: new Set(),
+  // TTS 재생 시작 시 1회 호출되는 콜백 집합
+  ttsStartCallbacks: new Set(),
 }
 
 function dbToGain(db) {
@@ -98,6 +102,12 @@ async function playMessage(msg) {
     }
     player.current = null
     sendAck(playback_id, status, t0)
+    // TTS 종료 콜백 실행 (1회성)
+    if (msg.msg_type === 'tts_play') {
+      const cbs = [...player.ttsEndCallbacks]
+      player.ttsEndCallbacks.clear()
+      cbs.forEach(cb => cb())
+    }
     // pending 메시지가 있으면 즉시 처리
     if (player.pendingNext) {
       const next = player.pendingNext
@@ -111,6 +121,12 @@ async function playMessage(msg) {
 
   try {
     await el.play()
+    // 재생 시작 성공 시 start 콜백 발화
+    if (msg.msg_type === 'tts_play') {
+      const scbs = [...player.ttsStartCallbacks]
+      player.ttsStartCallbacks.clear()
+      scbs.forEach(cb => cb())
+    }
   } catch (err) {
     // autoplay 차단 등. 일단 ack로 backend 진행시킴 (block 해제는 unlock에서).
     onEnded('error')
@@ -158,6 +174,11 @@ function fadeOutInterrupt(playback_id) {
       }
       player.current = null
       sendAck(cur.playback_id, 'interrupted', cur.t0)
+      if (cur.type === 'tts_play') {
+        const cbs = [...player.ttsEndCallbacks]
+        player.ttsEndCallbacks.clear()
+        cbs.forEach(cb => cb())
+      }
       if (player.pendingNext) {
         const next = player.pendingNext
         player.pendingNext = null
@@ -272,4 +293,16 @@ export function useAudioPlayer(send) {
   return { enqueue, interrupt: fadeOutInterrupt, unlock }
 }
 
-export const audio = { enqueue, interrupt: fadeOutInterrupt, unlock }
+/** TTS 재생이 끝나면(완료 또는 인터럽트) 1회 호출할 콜백 등록. 등록 해제 함수 반환. */
+function onNextTtsEnded(callback) {
+  player.ttsEndCallbacks.add(callback)
+  return () => player.ttsEndCallbacks.delete(callback)
+}
+
+/** TTS 재생이 시작되면 1회 호출할 콜백 등록. 등록 해제 함수 반환. */
+function onNextTtsStarted(callback) {
+  player.ttsStartCallbacks.add(callback)
+  return () => player.ttsStartCallbacks.delete(callback)
+}
+
+export const audio = { enqueue, interrupt: fadeOutInterrupt, unlock, onNextTtsEnded, onNextTtsStarted }

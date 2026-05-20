@@ -225,7 +225,6 @@ class AudioManager:
                 self._current is not None
                 and self._current.interruptible
                 and self._current.priority != AudioPriority.CRITICAL
-                and self._current.state_version > 0
                 and self._current.state_version < item.state_version
             ):
                 logger.info(

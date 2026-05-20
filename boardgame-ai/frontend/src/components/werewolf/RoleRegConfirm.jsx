@@ -110,14 +110,15 @@ const ROLES = [
 ]
 
 export default function RoleRegConfirm({ player, detectedRoleId, onConfirm, wsState }) {
-  const detected = ROLES.find(r => r.id === detectedRoleId) ?? ROLES[1]
+  const detected = detectedRoleId ? (ROLES.find(r => r.id === detectedRoleId) ?? ROLES[1]) : null
   const [selected, setSelected] = useState(detected)
   const [countdown, setCountdown] = useState(CONFIRM_TIMEOUT)
   const selectedRef = useRef(selected)
   selectedRef.current = selected
 
-  // 7초 카운트다운 → 자동 확인
+  // 7초 카운트다운 → 자동 확인 (역할이 선택된 경우에만)
   useEffect(() => {
+    if (!detected) return
     const interval = setInterval(() => {
       setCountdown(prev => {
         if (prev <= 1) {
@@ -159,20 +160,22 @@ export default function RoleRegConfirm({ player, detectedRoleId, onConfirm, wsSt
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0, position: 'relative', zIndex: 1 }}>
         <div style={{ fontSize: 20, fontWeight: 700, color: '#F8F1DD' }}>플레이어 {player?.playername}님</div>
         <button
-          onClick={() => onConfirm(selected)}
+          onClick={() => { if (selected) onConfirm(selected) }}
           style={{
             padding: '10px 26px',
             border: 'none',
             borderRadius: 8,
-            background: 'linear-gradient(135deg, #E6B85C, #B48A3C)',
-            color: '#1A0800',
+            background: selected
+              ? 'linear-gradient(135deg, #E6B85C, #B48A3C)'
+              : 'rgba(255,255,255,0.12)',
+            color: selected ? '#1A0800' : 'rgba(248,241,221,0.4)',
             fontSize: 16,
             fontWeight: 700,
-            cursor: 'pointer',
-            boxShadow: '0 4px 0 #8A6A2A',
+            cursor: selected ? 'pointer' : 'default',
+            boxShadow: selected ? '0 4px 0 #8A6A2A' : 'none',
           }}
         >
-          확인 / 다음 → {countdown > 0 && <span style={{ fontSize: 13, opacity: 0.65 }}>({countdown})</span>}
+          확인 / 다음 → {countdown > 0 && detected && <span style={{ fontSize: 13, opacity: 0.65 }}>({countdown})</span>}
         </button>
       </div>
 
@@ -182,22 +185,38 @@ export default function RoleRegConfirm({ player, detectedRoleId, onConfirm, wsSt
           width: 140,
           height: 180,
           borderRadius: 12,
-          background: selected.gradient,
+          background: selected ? selected.gradient : 'rgba(255,255,255,0.06)',
           flexShrink: 0,
           border: '2px solid rgba(255,255,255,0.2)',
           overflow: 'hidden',
           boxShadow: '0 4px 16px rgba(0,0,0,0.18)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
         }}>
-          <img src={selected.image} alt={selected.name} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+          {selected
+            ? <img src={selected.image} alt={selected.name} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+            : <span style={{ fontSize: 36, opacity: 0.35 }}>?</span>
+          }
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <div style={{ fontSize: 28, fontWeight: 700, color: '#F8F1DD' }}>{selected.name}</div>
-          <div style={{ fontSize: 18, color: 'rgba(248,241,221,0.55)', lineHeight: 1.8 }}>{selected.desc}</div>
+          {selected ? (
+            <>
+              <div style={{ fontSize: 28, fontWeight: 700, color: '#F8F1DD' }}>{selected.name}</div>
+              <div style={{ fontSize: 18, color: 'rgba(248,241,221,0.55)', lineHeight: 1.8 }}>{selected.desc}</div>
+            </>
+          ) : (
+            <>
+              <div style={{ fontSize: 22, fontWeight: 700, color: 'rgba(248,241,221,0.5)' }}>인식 실패</div>
+              <div style={{ fontSize: 16, color: 'rgba(248,241,221,0.38)', lineHeight: 1.8 }}>아래 목록에서 역할을 직접 선택해주세요</div>
+            </>
+          )}
         </div>
       </div>
 
-      {/* 역할 수동 수정 */}
-      <div style={{ fontSize: 15, fontWeight: 600, color: 'rgba(248,241,221,0.45)', flexShrink: 0, letterSpacing: 1, position: 'relative', zIndex: 1 }}>역할 수동 수정</div>
+      <div style={{ fontSize: 15, fontWeight: 600, color: 'rgba(248,241,221,0.45)', flexShrink: 0, letterSpacing: 1, position: 'relative', zIndex: 1 }}>
+        {detected ? '역할 수동 수정' : '역할을 탭하여 선택하세요'}
+      </div>
 
       {/* 그리드 */}
       <div style={{ position: 'relative', zIndex: 1,
@@ -209,7 +228,7 @@ export default function RoleRegConfirm({ player, detectedRoleId, onConfirm, wsSt
         gap: 6,
       }}>
         {ROLES.map(role => {
-          const isSelected = selected.id === role.id
+          const isSelected = selected?.id === role.id
           return (
             <div
               key={role.id}
