@@ -17,6 +17,21 @@ from games.yacht.state import YachtEventType, YachtGameState, YachtInputType, Ya
 
 logger = logging.getLogger(__name__)
 
+_CATEGORY_TTS_LABELS: dict[str, str] = {
+    "ones": "에이스",
+    "twos": "투",
+    "threes": "쓰리",
+    "fours": "포",
+    "fives": "파이브",
+    "sixes": "식스",
+    "choice": "초이스",
+    "four_of_a_kind": "포카드",
+    "full_house": "풀 하우스",
+    "small_straight": "스몰 스트레이트",
+    "large_straight": "라지 스트레이트",
+    "yacht": "요트",
+}
+
 
 class YachtFSM(BaseFSM):
     def __init__(
@@ -60,7 +75,7 @@ class YachtFSM(BaseFSM):
         return [
             self._make_state_update(),
             self._emit_fusion_context(),
-            self._make_tts(self.state.last_message),
+            self._make_tts(self._turn_tts_text()),
         ]
 
     def handle_event(self, event: GameEvent) -> list[WSMessage]:
@@ -147,10 +162,7 @@ class YachtFSM(BaseFSM):
         self.state.state_version = restored_version
         if message is not None:
             self.state.last_message = message
-        return self._state_context_tts(
-            self.state.last_message
-            or f"{self.state.current_player.playername}님 차례입니다."
-        )
+        return self._state_context_messages([self._turn_tts_text()])
 
     def _handle_roll_confirmed(self, event: GameEvent) -> list[WSMessage]:
         if self.state.phase not in (
@@ -182,7 +194,7 @@ class YachtFSM(BaseFSM):
         )
         self.state.last_message = self._roll_message()
         self.state.state_version += 1
-        return self._state_context_tts(self.state.last_message)
+        return self._state_context_messages()
 
     def _handle_roll_unreadable(self, event: GameEvent) -> list[WSMessage]:
         if self.state.phase not in (
@@ -218,7 +230,7 @@ class YachtFSM(BaseFSM):
         self.state.phase = YachtPhase.AWAITING_ROLL.value
         self.state.state_version += 1
         self.state.last_message = f"{self.state.current_player.playername}님, 다시 굴려주세요."
-        return self._state_context_tts(self.state.last_message)
+        return self._state_context_messages()
 
     def _handle_score_category(self, data: dict, player_id: str | None) -> list[WSMessage]:
         if self.state.phase not in (
@@ -252,6 +264,7 @@ class YachtFSM(BaseFSM):
         current_player.scores[str(category)] = score
         scorer_name = current_player.playername
         self.state.state_version += 1
+        score_tts = self._score_tts_text(scorer_name, str(category), score)
 
         if self.state.is_final_round_complete:
             self.state.finish_game()
@@ -264,7 +277,7 @@ class YachtFSM(BaseFSM):
                 bench_log().info("game_end yacht normal %.6f", _t.time())
             except Exception:
                 pass
-            return [self._make_state_update(), self._make_tts(self.state.last_message)]
+            return [self._make_state_update(), self._make_tts(score_tts)]
 
         self.state.advance_player()
         self.state.phase = YachtPhase.AWAITING_ROLL.value
@@ -272,7 +285,9 @@ class YachtFSM(BaseFSM):
             f"{scorer_name}님 {score}점입니다. "
             f"{self.state.current_player.playername}님 차례입니다."
         )
-        return self._state_context_tts(self.state.last_message)
+        return self._state_context_messages(
+            [score_tts, self._turn_tts_text()],
+        )
 
     def _handle_unreadable_resolution(self, data: dict) -> list[WSMessage]:
         if self.state.phase != YachtPhase.AWAITING_SCORE.value or not self.state.unreadable_roll:
@@ -298,7 +313,7 @@ class YachtFSM(BaseFSM):
         self.state.phase = YachtPhase.AWAITING_SCORE.value
         self.state.last_message = "읽히지 않은 주사위 값이 있습니다. 화면에서 값을 입력해주세요."
         self.state.state_version += 1
-        return self._state_context_tts(self.state.last_message)
+        return self._state_context_messages()
 
     def _warn_and_keep_roll_phase(
         self,
@@ -307,7 +322,7 @@ class YachtFSM(BaseFSM):
     ) -> list[WSMessage]:
         self.state.last_message = message
         self.state.state_version += 1
-        return [self._make_state_update(), self._make_tts(message, priority)]
+        return [self._make_state_update()]
 
     def _is_current_actor(self, actor_id: str | None) -> bool:
         return actor_id in (None, self.state.current_player.player_id)
@@ -323,12 +338,21 @@ class YachtFSM(BaseFSM):
             return [False] * 5
         return [bool(v) for v in keep_mask]
 
-    def _state_context_tts(self, text: str) -> list[WSMessage]:
-        return [
+    def _state_context_messages(self, tts_texts: list[str] | None = None) -> list[WSMessage]:
+        messages = [
             self._make_state_update(),
             self._emit_fusion_context(),
-            self._make_tts(text),
         ]
+        for text in tts_texts or []:
+            messages.append(self._make_tts(text))
+        return messages
+
+    def _turn_tts_text(self) -> str:
+        return f"{self.state.current_player.playername}님 차례입니다."
+
+    def _score_tts_text(self, player_name: str, category: str, score: int) -> str:
+        label = _CATEGORY_TTS_LABELS.get(category, category)
+        return f"{player_name}님 {label} {score}점입니다."
 
     def _make_state_update(self) -> WSMessage:
         return WSMessage(

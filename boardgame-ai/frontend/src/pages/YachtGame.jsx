@@ -152,6 +152,63 @@ const s = {
     fontWeight: 650,
     lineHeight: 1.45,
   },
+  tutorialBubble: {
+    maxWidth: 430,
+    marginBottom: 22,
+    padding: '14px 16px',
+    border: '1px solid #d5e7d8',
+    borderRadius: 10,
+    background: '#ecf4ed',
+    color: '#1d4933',
+    fontSize: 15,
+    fontWeight: 750,
+    lineHeight: 1.45,
+    boxShadow: '0 8px 18px rgba(31,122,79,0.08)',
+  },
+  introShell: {
+    width: 'min(760px, calc(100vw - 48px))',
+    minHeight: 520,
+    margin: '0 auto',
+    background: '#fff',
+    border: '1px solid #dfe3dc',
+    borderRadius: 10,
+    boxShadow: '0 18px 42px rgba(31,35,29,0.08)',
+    padding: 42,
+    boxSizing: 'border-box',
+    display: 'flex',
+    flexDirection: 'column',
+    justifyContent: 'center',
+  },
+  introKicker: {
+    color: '#1f7a4f',
+    fontSize: 14,
+    fontWeight: 850,
+    marginBottom: 12,
+  },
+  introTitle: {
+    fontSize: 34,
+    fontWeight: 850,
+    marginBottom: 22,
+    color: '#171917',
+  },
+  introText: {
+    color: '#40483d',
+    fontSize: 18,
+    fontWeight: 650,
+    lineHeight: 1.65,
+    marginBottom: 26,
+  },
+  introList: {
+    display: 'grid',
+    gap: 10,
+    margin: '0 0 30px',
+    padding: 0,
+    listStyle: 'none',
+    color: '#4f594b',
+    fontSize: 16,
+    fontWeight: 700,
+    lineHeight: 1.45,
+  },
   scoreWrap: {
     padding: '28px 28px 28px 0',
     boxSizing: 'border-box',
@@ -304,23 +361,32 @@ const s = {
     fontSize: 22,
   },
   endActions: { display: 'flex', gap: 16, justifyContent: 'center', marginTop: 26 },
+  endText: {
+    textAlign: 'center',
+    color: '#5e665b',
+    fontSize: 17,
+    lineHeight: 1.5,
+    marginBottom: 28,
+  },
 }
 
-export default function YachtGame({ players, onExit, onChangePlayers }) {
+export default function YachtGame({ players, tutorialMode = false, onExit, onChangePlayers }) {
   const { state, connected, messages, send } = useWebSocket('/ws/yacht', {
     onAudioMessage: audioApi.enqueue,
   })
   // /ws/yacht 채널로도 audio_ack가 흐르도록 등록 (FSM 멘트는 이 채널로 옴).
   useAudioPlayer(send)
   const [leaderboardOpen, setLeaderboardOpen] = useState(false)
+  const [tutorialIntroSeen, setTutorialIntroSeen] = useState(!tutorialMode)
   const startedRef = useRef(false)
 
   useEffect(() => {
     if (!connected) return
+    if (tutorialMode && !tutorialIntroSeen) return
     if (startedRef.current) return
     startedRef.current = true
-    send('START_YACHT', { players: normalizePlayers(players) })
-  }, [connected])
+    send('START_YACHT', { players: normalizePlayers(players), tutorial_mode: tutorialMode })
+  }, [connected, players, send, tutorialIntroSeen, tutorialMode])
 
   const currentPlayer = useMemo(
     () => state?.players?.find(p => p.player_id === state.current_player_id),
@@ -332,13 +398,54 @@ export default function YachtGame({ players, onExit, onChangePlayers }) {
     [state],
   )
   const statusMessage = useMemo(() => {
-    const latest = messages.find(m => m.msg_type === 'tts_play' || m.msg_type === 'error')
-    return latest?.payload?.text || latest?.payload?.message || state?.last_message
+    const latestError = messages.find(m => m.msg_type === 'error')
+    return latestError?.payload?.message || state?.last_message
   }, [messages, state?.last_message])
   const canUndo = state?.can_undo ?? true
+  const isTutorial = Boolean(state?.tutorial_mode)
   const canManualRoll =
     ['AWAITING_ROLL', 'AWAITING_KEEP'].includes(state?.phase) &&
     Number(state?.remaining_rolls || 0) > 0
+  const tutorialText = isTutorial ? getTutorialText(state, currentPlayer) : null
+
+  const startFullGame = () => {
+    send('START_YACHT', { players: normalizePlayers(players), tutorial_mode: false })
+  }
+
+  if (tutorialMode && !tutorialIntroSeen) {
+    return (
+      <div style={s.page}>
+        <div style={s.introShell}>
+          <div style={s.introKicker}>튜토리얼 모드</div>
+          <div style={s.introTitle}>요트다이스 한 라운드 체험</div>
+          <div style={s.introText}>
+            요트다이스는 플레이어가 순서대로 주사위 5개를 굴리고,
+            나온 눈 조합을 가장 유리한 점수 칸에 기록해 총점을 겨루는 게임입니다.
+            한 턴에는 최대 세 번까지 굴릴 수 있고, 마음에 드는 주사위는 킵한 뒤
+            나머지만 다시 굴릴 수 있습니다.
+          </div>
+          <ul style={s.introList}>
+            <li>이 튜토리얼에서는 각 플레이어가 한 번씩 턴을 진행합니다.</li>
+            <li>실제 주사위를 굴리면 카메라가 결과를 인식합니다.</li>
+          </ul>
+          <div style={s.endActions}>
+            <button style={s.buttonSmall} onClick={onExit}>게임 선택화면</button>
+            <button
+              style={{
+                ...s.buttonSmall,
+                ...s.primaryButton,
+                ...(!connected ? s.buttonDisabled : {}),
+              }}
+              disabled={!connected}
+              onClick={() => setTutorialIntroSeen(true)}
+            >
+              튜토리얼 시작
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   if (!state) {
     return (
@@ -378,6 +485,26 @@ export default function YachtGame({ players, onExit, onChangePlayers }) {
     )
   }
 
+  if (state.tutorial_complete) {
+    return (
+      <div style={s.page}>
+        <div style={s.endShell}>
+          <div style={s.endPanel}>
+            <div style={s.winner}>튜토리얼 완료</div>
+            <div style={s.endText}>
+              모든 플레이어가 한 번씩 굴리고 점수를 기록했습니다.
+              이제 정식 게임을 시작할 수 있습니다.
+            </div>
+            <div style={s.endActions}>
+              <button style={s.buttonSmall} onClick={onExit}>게임 선택화면</button>
+              <button style={{ ...s.buttonSmall, ...s.primaryButton }} onClick={startFullGame}>게임 시작하기</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div style={s.page}>
       <div style={s.phaseText}>
@@ -399,6 +526,8 @@ export default function YachtGame({ players, onExit, onChangePlayers }) {
         </header>
 
         <main style={s.main}>
+          {tutorialText && <div style={s.tutorialBubble}>{tutorialText}</div>}
+
           <div style={s.turnRow}>
             <div style={s.turnBadge}>{currentPlayer?.playername || '-'} 님 차례</div>
             <div style={s.roundText}>라운드 {round} / 12</div>
@@ -585,6 +714,23 @@ function normalizePlayers(players) {
 
 function canToggleKeep(state) {
   return Boolean(state.dice_values?.length) && state.phase !== 'AWAITING_SCORE'
+}
+
+function getTutorialText(state, currentPlayer) {
+  const name = currentPlayer?.playername || '플레이어'
+  if (state.phase === 'AWAITING_ROLL') {
+    return `${name}님 차례입니다. 주사위 5개를 굴리면 카메라가 결과를 인식합니다.`
+  }
+  if (state.phase === 'AWAITING_KEEP') {
+    if (state.roll_count >= 2) {
+      return '원하는 주사위를 킵할 수 있습니다. 킵한 주사위는 다음 굴림에서 유지되며, 한 번 킵한 주사위를 다시 굴릴 수도 있습니다. 주사위는 세 번까지 굴릴 수 있으며, 그 전에 점수 칸을 선택해 턴을 끝낼 수도 있습니다. 점수판 오른쪽 위 ? 버튼에서 족보 설명을 볼 수 있습니다.'
+    }
+    return '원하는 주사위를 킵할 수 있습니다. 킵한 주사위는 다음 굴림에서 유지되며, 한 번 킵한 주사위를 다시 굴릴 수도 있습니다. 주사위는 세 번까지 굴릴 수 있으며, 그 전에 점수 칸을 선택해 턴을 끝낼 수도 있습니다. 점수판 오른쪽 위 ? 버튼에서 족보 설명을 볼 수 있습니다.'
+  }
+  if (state.phase === 'AWAITING_SCORE') {
+    return '이제 점수 칸을 선택할 차례입니다. 예상 점수를 보고 원하는 칸에 기록하세요. 족보가 헷갈리면 점수판 오른쪽 위 ? 버튼을 확인하세요.'
+  }
+  return '요트다이스의 한 턴 흐름을 따라가고 있습니다.'
 }
 
 function toggleKeep(index, state, send) {

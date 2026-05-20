@@ -41,6 +41,8 @@ class YachtSession:
     ) -> None:
         self.websocket = websocket
         self.fsm: YachtFSM | None = None
+        self.tutorial_mode = False
+        self.tutorial_complete = False
         self.undo_stack: list[YachtGameState] = []
         self._pipeline_switcher = pipeline_switcher
         self._bridge = bridge
@@ -57,7 +59,7 @@ class YachtSession:
 
     async def dispatch_vision_event(self, event: GameEvent) -> None:
         """yacht_runner가 호출. 비전 이벤트를 FSM에 전달하고 응답을 클라이언트로."""
-        if self.fsm is None:
+        if self.fsm is None or self.tutorial_complete:
             return
         with self._fsm_lock:
             messages = self.fsm.handle_event(event)
@@ -157,6 +159,7 @@ class YachtSession:
                 messages = self.fsm.handle_input(input_type, payload, player_id)
                 if self._score_was_recorded(previous_state, payload.get("category")):
                     self.undo_stack = []
+                    self._finish_tutorial_if_complete(messages)
             await self.send_many(messages)
             return
 
@@ -188,7 +191,7 @@ class YachtSession:
 
         if input_type == "RESTART":
             players = [p.to_dict() for p in self.fsm.state.players]
-            await self.start_game({"players": players})
+            await self.start_game({"players": players, "tutorial_mode": self.tutorial_mode})
             return
 
         await self.send(WSMessage.make_error("UNKNOWN_INPUT", f"알 수 없는 입력입니다: {input_type}"))
@@ -197,6 +200,8 @@ class YachtSession:
         if self._pipeline_switcher is not None:
             self._pipeline_switcher("yacht")
         players = _normalize_players(payload.get("players"))
+        self.tutorial_mode = _is_tutorial_mode(payload)
+        self.tutorial_complete = False
         with self._fsm_lock:
             self.undo_stack = []
             self.fsm = YachtFSM(
@@ -223,6 +228,24 @@ class YachtSession:
             None,
         )
         return scorer is not None and category_key in scorer.scores
+
+    def _finish_tutorial_if_complete(self, messages: list[WSMessage]) -> None:
+        if self.fsm is None or not self.tutorial_mode:
+            return
+        if not all(len(player.scores) >= 1 for player in self.fsm.state.players):
+            return
+        self.tutorial_complete = True
+        self.fsm.state.last_message = (
+            "튜토리얼이 끝났습니다. 게임 선택 화면으로 돌아가거나 정식 게임을 시작해보세요."
+        )
+        self.fsm.state.state_version += 1
+        messages.append(
+            WSMessage(
+                msg_type="state_update",
+                payload=self.fsm.state.to_dict(),
+                state_version=self.fsm.state.state_version,
+            )
+        )
 
     @staticmethod
     def _roll_dice(
@@ -282,7 +305,14 @@ class YachtSession:
         """AudioManager가 합성 후 다시 부르는 콜백. 또는 audio가 아닌 일반 메시지 직송."""
         if message.msg_type == "state_update":
             message.payload["can_undo"] = bool(self.undo_stack)
+            message.payload["tutorial_mode"] = self.tutorial_mode
+            message.payload["tutorial_complete"] = self.tutorial_complete
         await self.websocket.send_json(message.to_dict())
+
+
+def _is_tutorial_mode(payload: dict[str, Any]) -> bool:
+    mode = str(payload.get("mode") or "").lower()
+    return bool(payload.get("tutorial_mode") or mode == "tutorial")
 
 
 def _normalize_players(players: Any) -> list[dict[str, str]]:
