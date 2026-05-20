@@ -15,10 +15,18 @@ const ROLE_NAMES = {
   villager:     '마을주민',
 }
 
-const SENTENCES = [
+const SENTENCES_NORMAL = [
   { text: '이번 게임에 사용할 역할 카드입니다.',                               showCards: true },
   { text: '모든 카드를 역할이 보이지 않게 뒤집어주세요.' },
   { text: '각자 카드를 한 장씩 가져가고, 본인만 확인해주세요.',                 holdMs: 10000 },
+  { text: '본인의 카드는 각자 자기 앞에 엎어서 놓아주세요.' },
+  { text: '나머지 카드는 역할이 보이지 않게 뒤집어 중앙에 놓아주세요.' },
+]
+
+const SENTENCES_PRACTICE = [
+  { text: '이번 게임에 사용할 역할 카드입니다.',                               showCards: true },
+  { text: '모든 카드를 역할이 보이지 않게 뒤집어주세요.' },
+  { text: '각자 카드를 한 장씩 가져가주세요. 연습모드에서는 역할을 숨기지 않고 진행하겠습니다.', holdMs: 10000 },
   { text: '본인의 카드는 각자 자기 앞에 엎어서 놓아주세요.' },
   { text: '나머지 카드는 역할이 보이지 않게 뒤집어 중앙에 놓아주세요.' },
 ]
@@ -28,7 +36,8 @@ const HOLD_MS = 5000  // 타이핑 완료 후 대기 시간 (ms) — 개별 hold
 const FADE_MS = 600   // 페이드 전환 시간 (ms)
 const CONFIRM_TEXT = '모든 준비가 완료 되었으면 OK 싸인을 해주세요.'
 
-export default function CardSetupGuide({ roles = [], onComplete, send, wsState, onExit }) {
+export default function CardSetupGuide({ roles = [], onComplete, send, wsState, onExit, isPracticeMode }) {
+  const SENTENCES = isPracticeMode ? SENTENCES_PRACTICE : SENTENCES_NORMAL
   const [step, setStep]             = useState(0)
   const [typed, setTyped]           = useState('')
   const [visible, setVisible]       = useState(false)

@@ -53,7 +53,7 @@ function getTransitionType(from, to) {
 }
 
 // wsState: /ws/tablet 상태 (gesture_confirmed 등 로비 이벤트용)
-export default function WerewolfGame({ players, onChangePlayers, onChangeGame, onRestart, wsState }) {
+export default function WerewolfGame({ players, onChangePlayers, onChangeGame, onRestart, wsState, isPracticeMode }) {
   const { state: wwState, send } = useWebSocket('/ws/werewolf', {
     onAudioMessage: audioApi.enqueue,
   })
@@ -164,6 +164,7 @@ export default function WerewolfGame({ players, onChangePlayers, onChangeGame, o
           send={send}
           wsState={wsState}
           onExit={handleExit}
+          isPracticeMode={isPracticeMode}
         />
       )
     }
@@ -180,11 +181,11 @@ export default function WerewolfGame({ players, onChangePlayers, onChangeGame, o
     }
 
     if (ph === 'night_start') {
-      return <NightStart send={send} onComplete={() => send('start_now', {})} onExit={handleExit} />
+      return <NightStart send={send} onComplete={() => send('start_now', {})} onExit={handleExit} isPracticeMode={isPracticeMode} />
     }
 
     if (ph === 'night_end') {
-      return <NightEnd onComplete={() => setDisplayedPhase('day_discussion')} send={send} started={nightEndReady} />
+      return <NightEnd onComplete={() => setDisplayedPhase('day_discussion')} send={send} started={nightEndReady} isPracticeMode={isPracticeMode} />
     }
 
     if (ph === 'day_discussion') {
@@ -319,6 +320,7 @@ export default function WerewolfGame({ players, onChangePlayers, onChangeGame, o
           player={currentPlayer}
           detectedRoleId={detectedRoleId}
           wsState={wsState}
+          isPracticeMode={isPracticeMode}
           onConfirm={(selectedRole) => {
             send('CONFIRM_ROLE', { role: selectedRole?.id ?? detectedRoleId }, currentPlayer.player_id)
           }}
