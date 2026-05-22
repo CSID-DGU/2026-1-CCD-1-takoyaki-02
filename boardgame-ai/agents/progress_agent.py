@@ -13,11 +13,22 @@ from core.audio import AudioPriority
 
 
 # ── 늑대인간 페이즈 스크립트 ────────────────────────────────────────────────────
-# FSM이 이미 안내하는 상태는 여기서 제외. ProgressAgent는 FSM 미담당 보조 안내만.
-# FSM 담당: night_start, 각 night_* 역할 호출, day_discussion, vote, result
-# ProgressAgent 담당: FSM이 명시적으로 안내하지 않는 전환 보조 멘트
+# FSM은 상태 전환만 담당. TTS 발화는 ProgressAgent가 전담.
+# catalog.py STATIC_LINES와 동일 문자열 → AudioManager static 캐시 hit.
+# vote_countdown/final_role_reveal/result는 FUSION_CONTEXT를 emit하지 않으므로 제외.
 _WEREWOLF_SCRIPTS: dict[str, str] = {
-    "vote_countdown": "곧 투표가 시작됩니다. 의심스러운 플레이어를 생각해두세요.",
+    "night_start":        "밤이 되었습니다. 모두 눈을 감아주세요.",
+    "night_doppelganger": "도플갱어는 깨어나세요. 다른 플레이어 1명의 카드를 확인하세요. 그 역할이 됩니다.",
+    "night_werewolf":     "늑대인간은 깨어나세요. 서로를 확인하고 다시 눈을 감으세요.",
+    "night_minion":       "하수인은 깨어나세요. 늑대인간들은 엄지를 들어올려 자신을 알려주세요.",
+    "night_mason":        "프리메이슨은 깨어나세요. 서로를 확인하고 다시 눈을 감으세요.",
+    "night_seer":         "예언자는 깨어나세요. 다른 플레이어 1명 또는 중앙 카드 2장을 확인할 수 있습니다.",
+    "night_robber":       "강도는 깨어나세요. 다른 플레이어 1명의 카드와 자신의 카드를 교환할 수 있습니다.",
+    "night_troublemaker": "말썽쟁이는 깨어나세요. 자신을 제외한 두 플레이어의 카드를 서로 교환하세요.",
+    "night_drunk":        "주정뱅이는 깨어나세요. 중앙 카드 1장을 가져와 자신의 카드와 교환하세요. 새 카드는 볼 수 없습니다.",
+    "night_insomniac":    "불면증환자는 깨어나세요. 자신의 카드를 확인하세요.",
+    "day_discussion":     "모두 눈을 뜨세요! 토론을 시작합니다.",
+    "vote":               "투표를 시작합니다. 제거할 플레이어를 손으로 가리키세요.",
 }
 
 # ── 요트다이스 페이즈 스크립트 ──────────────────────────────────────────────────

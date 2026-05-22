@@ -326,6 +326,12 @@ class WerewolfFSM(BaseFSM):
             self._passive_timer_task = asyncio.create_task(
                 self._run_passive_timer(phase)
             )
+            msgs.append(
+                WSMessage.make_fusion_context(
+                    self.get_fusion_context(),
+                    state_version=self.state.state_version,
+                )
+            )
             return msgs
 
         if phase == WerewolfPhase.NIGHT_SEER:
