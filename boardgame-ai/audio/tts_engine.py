@@ -6,7 +6,7 @@
 - synthesize() 호출 시 캐시 hit이면 API 호출 0회, 즉시 Path 반환.
 
 동시성:
-- asyncio.Semaphore(2)로 동시 API 호출 제한 → quota burst 방지.
+- asyncio.Semaphore(max_concurrency)로 동시 API 호출 제한 → quota burst 방지. 기본값 4.
 
 장애 처리:
 - Google API 실패/타임아웃 시 None 반환. 상위(AudioManager)가 text-only fallback 결정.

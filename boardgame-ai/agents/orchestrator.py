@@ -102,7 +102,7 @@ class AgentOrchestrator:
     # ── 내부 헬퍼 ─────────────────────────────────────────────────────────────
 
     async def _run_strategy(self, ctx: AgentContext) -> None:
-        result = self._strategy.on_state_change(ctx)
+        result = await self._strategy.on_state_change_async(ctx)
         if result:
             await self._dispatch(result)
 

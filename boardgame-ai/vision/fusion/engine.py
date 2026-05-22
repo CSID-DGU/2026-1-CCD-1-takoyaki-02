@@ -10,8 +10,11 @@
 
 from __future__ import annotations
 
+import logging
 import threading
 from collections import defaultdict
+
+logger = logging.getLogger(__name__)
 
 from core.constants import DEFAULT_PARAMS, CommonEventType, CommonPhase
 from core.events import FusionContext, GameEvent
@@ -201,9 +204,9 @@ class FusionEngine:
                 frame_id=perception.frame_id,
                 data={k: v for k, v in event_data.items() if k not in ("actor_id", "_key")},
             )
-            print(
-                f"[fusion] EVENT={event_type}  actor={actor_id}  "
-                f"conf={conf:.2f}  frame={perception.frame_id}"
+            logger.debug(
+                "[fusion] EVENT=%s  actor=%s  conf=%.2f  frame=%d",
+                event_type, actor_id, conf, perception.frame_id,
             )
             # Benchmark hook (BENCH_TRACE=1일 때만 실제 기록). 채널별 응답 시간의 기준점.
             try:
