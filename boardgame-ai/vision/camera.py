@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import queue
+import sys
 import threading
 from typing import Any
 
@@ -47,7 +48,11 @@ class CameraManager:
         self._running = False
 
     def _loop(self) -> None:
-        cap = cv2.VideoCapture(self._source, cv2.CAP_DSHOW)
+         # CAP_DSHOW는 Windows 전용 백엔드. macOS/Linux에서는 기본 백엔드(AVFoundation/V4L2) 사용.
+        if sys.platform == "win32":
+            cap = cv2.VideoCapture(self._source, cv2.CAP_DSHOW)
+        else:
+            cap = cv2.VideoCapture(self._source)
         cap.set(cv2.CAP_PROP_FRAME_WIDTH, self._resolution[0])
         cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self._resolution[1])
         cap.set(cv2.CAP_PROP_FPS, self._fps)
