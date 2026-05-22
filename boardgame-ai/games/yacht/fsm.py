@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Awaitable, Callable
 from typing import Any
 
 from core.constants import MsgType
@@ -36,36 +35,12 @@ class YachtFSM(BaseFSM):
     def __init__(
         self,
         players: list[Player | str | dict[str, Any]],
-        broadcast: Callable[[WSMessage], Awaitable[None]] | None = None,
-        on_fusion_context: Callable[[FusionContext, int], None] | None = None,
     ) -> None:
         self.state = YachtGameState.new(players)
-        self._broadcast = broadcast
-        # phase 전환마다 비전 FusionEngine에 컨텍스트 전달용 콜백.
-        # 보통 LocalBridge.send_fusion_context를 주입한다.
-        self._on_fusion_context = on_fusion_context
 
     def _emit_fusion_context(self) -> WSMessage:
-        """현재 컨텍스트를 비전 콜백으로 push하고 프론트용 WSMessage를 반환.
-
-        FSM이 phase를 바꾼 직후 호출. 비전과 프론트가 같은 시점에 같은 컨텍스트를
-        받도록 단일 진입점으로 일원화. 콜백 미주입 환경(단위 테스트 등)에서는
-        프론트용 메시지만 만들고 조용히 넘어감.
-
-        콜백 호출 실패는 로깅만 하고 흡수 — 비전 측 문제로 게임 흐름이나 프론트
-        응답이 끊기지 않도록 한다.
-        """
-        ctx = self.get_fusion_context()
-        if self._on_fusion_context is not None:
-            try:
-                self._on_fusion_context(ctx, self.state.state_version)
-            except Exception:
-                logger.exception(
-                    "on_fusion_context callback failed (phase=%s, version=%d)",
-                    self.state.phase,
-                    self.state.state_version,
-                )
-        return WSMessage.make_fusion_context(ctx, self.state.state_version)
+        """현재 FusionContext를 WSMessage로 반환. 세션이 가로채 브리지로 전달."""
+        return WSMessage.make_fusion_context(self.get_fusion_context(), self.state.state_version)
 
     def start(self) -> list[WSMessage]:
         self.state.phase = YachtPhase.AWAITING_ROLL.value

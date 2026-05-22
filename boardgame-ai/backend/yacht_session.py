@@ -206,10 +206,7 @@ class YachtSession:
         self.tutorial_complete = False
         with self._fsm_lock:
             self.undo_stack = []
-            self.fsm = YachtFSM(
-                players,
-                on_fusion_context=self._bridge.send_fusion_context if self._bridge else None,
-            )
+            self.fsm = YachtFSM(players)
             messages = self.fsm.start()
         await self.send_many(messages)
 
@@ -266,9 +263,10 @@ class YachtSession:
     async def send_many(self, messages: list[WSMessage]) -> None:
         for message in messages:
             if message.msg_type == MsgType.FUSION_CONTEXT.value:
-                # 비전에는 YachtFSM._emit_fusion_context() 내부에서 직접 전달됨.
-                # 에이전트만 추가 알림. 프론트엔드로는 보내지 않음 (늑대인간과 동일 구조).
-                await self._notify_agent_state_change(FusionContext.from_dict(message.payload))
+                ctx = FusionContext.from_dict(message.payload)
+                if self._bridge is not None:
+                    self._bridge.send_fusion_context(ctx, message.state_version)
+                await self._notify_agent_state_change(ctx)
             else:
                 await self.send(message)
 

@@ -1,4 +1,4 @@
-"""yacht_runner 라우팅 + FSM on_fusion_context 콜백 검증.
+"""yacht_runner 라우팅 + FSM FUSION_CONTEXT 메시지 검증.
 
 실제 LocalBridge를 사용해 비전 발화 → 활성 YachtSession 라우팅 흐름을 검증.
 WebSocket은 FakeWebSocket으로 대체.
@@ -173,31 +173,21 @@ def test_non_yacht_event_not_routed_to_yacht(loop_in_thread) -> None:
 
 
 def test_fusion_context_published_on_start() -> None:
-    """FSM.start() 호출 시 on_fusion_context 콜백 호출."""
-    received: list[tuple[FusionContext, int]] = []
-
-    fsm = YachtFSM(
-        [{"player_id": "p1", "playername": "A"}],
-        on_fusion_context=lambda ctx, ver: received.append((ctx, ver)),
-    )
+    """FSM.start() 호출 시 FUSION_CONTEXT WSMessage 반환. 브리지 호출은 세션 담당."""
+    fsm = YachtFSM([{"player_id": "p1", "playername": "A"}])
     messages = fsm.start()
 
-    assert len(received) == 1
-    ctx, ver = received[0]
+    fusion_msgs = [m for m in messages if m.msg_type == MsgType.FUSION_CONTEXT.value]
+    assert len(fusion_msgs) == 1
+    ctx = FusionContext.from_dict(fusion_msgs[0].payload)
     assert ctx.game_type == "yacht"
     assert ctx.fsm_state == "AWAITING_ROLL"
-    assert ver == fsm.state.state_version
-    assert any(m.msg_type == MsgType.FUSION_CONTEXT.value for m in messages)
+    assert fusion_msgs[0].state_version == fsm.state.state_version
 
 
 def test_fusion_context_published_after_roll_confirmed() -> None:
-    """ROLL_CONFIRMED 처리 후 두 번째 on_fusion_context 호출 (AWAITING_KEEP)."""
-    received: list[tuple[FusionContext, int]] = []
-
-    fsm = YachtFSM(
-        [{"player_id": "p1", "playername": "A"}],
-        on_fusion_context=lambda ctx, ver: received.append((ctx, ver)),
-    )
+    """ROLL_CONFIRMED 처리 후 FUSION_CONTEXT 메시지 반환 (AWAITING_KEEP or AWAITING_SCORE)."""
+    fsm = YachtFSM([{"player_id": "p1", "playername": "A"}])
     fsm.start()
 
     event = _make_event(
@@ -205,34 +195,12 @@ def test_fusion_context_published_after_roll_confirmed() -> None:
         dice_values=[1, 2, 3, 4, 5],
         keep_mask=[False] * 5,
     )
-    fsm.handle_event(event)
+    messages = fsm.handle_event(event)
 
-    assert len(received) >= 2
-    last_ctx, _ = received[-1]
-    assert last_ctx.fsm_state in ("AWAITING_KEEP", "AWAITING_SCORE")
-
-
-def test_fsm_works_without_on_fusion_context_callback() -> None:
-    """콜백 미주입 환경에서도 FSM은 정상 동작 (단위 테스트 호환성)."""
-    fsm = YachtFSM([{"player_id": "p1", "playername": "A"}])
-    messages = fsm.start()
-    assert any(m.msg_type == MsgType.FUSION_CONTEXT.value for m in messages)
-
-
-def test_fsm_survives_on_fusion_context_callback_exception() -> None:
-    """콜백이 예외를 던져도 FSM 응답은 정상 반환되어야 (게임 흐름 보호)."""
-
-    def _bad_callback(_ctx: FusionContext, _ver: int) -> None:
-        raise RuntimeError("vision bridge unavailable")
-
-    fsm = YachtFSM(
-        [{"player_id": "p1", "playername": "A"}],
-        on_fusion_context=_bad_callback,
-    )
-    messages = fsm.start()
-    # 콜백 실패와 무관하게 프론트용 메시지는 반환되어야 함
-    assert any(m.msg_type == MsgType.FUSION_CONTEXT.value for m in messages)
-    assert any(m.msg_type == MsgType.STATE_UPDATE.value for m in messages)
+    fusion_msgs = [m for m in messages if m.msg_type == MsgType.FUSION_CONTEXT.value]
+    assert fusion_msgs
+    ctx = FusionContext.from_dict(fusion_msgs[-1].payload)
+    assert ctx.fsm_state in ("AWAITING_KEEP", "AWAITING_SCORE")
 
 
 # ── deregister race condition ───────────────────────────────────────────────
