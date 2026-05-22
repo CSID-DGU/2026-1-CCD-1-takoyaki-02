@@ -1,53 +1,57 @@
 """전략 에이전트 — 활성화 시 의사결정 시점에 전략 추천을 제공.
 
-요트다이스: 현재 주사위 조합 기준 가장 유리한 카테고리를 계산해 안내.
-늑대인간: 야간 페이즈별 역할에 맞는 행동 지침을 안내.
+GPT(gpt-5.4-mini) 호출로 동적 전략을 생성하고, 실패 시 규칙 기반 팁으로 폴백한다.
+OPENAI_API_KEY 환경변수가 없으면 규칙 기반 모드로만 동작.
 
 set_enabled(True) 호출 시 활성화. 기본은 비활성.
 game_specific에서 필요한 정보를 읽는다.
   - 요트: {"dice_values": [1,2,3,4,5], "available_categories": [...], "roll_count": N}
-  - 늑대인간: {"active_role": "seer"} (옵션 — 없으면 페이즈 기준 안내)
+  - 늑대인간: fsm_state로 역할 페이즈 판별
 """
 
 from __future__ import annotations
+
+import asyncio
+import logging
+import os
 
 from agents.base import BaseAgent, Intervention
 from agents.context import AgentContext
 from core.audio import AudioPriority
 
+logger = logging.getLogger(__name__)
+
 # ── 요트다이스: 카테고리 한글명 ──────────────────────────────────────────────────
 _CATEGORY_KO: dict[str, str] = {
-    "ones":          "1",
-    "twos":          "2",
-    "threes":        "3",
-    "fours":         "4",
-    "fives":         "5",
-    "sixes":         "6",
-    "choice":        "찬스",
+    "ones":           "1점짜리",
+    "twos":           "2점짜리",
+    "threes":         "3점짜리",
+    "fours":          "4점짜리",
+    "fives":          "5점짜리",
+    "sixes":          "6점짜리",
+    "choice":         "찬스",
     "four_of_a_kind": "포카인드",
-    "full_house":    "풀하우스",
+    "full_house":     "풀하우스",
     "small_straight": "스몰스트레이트",
     "large_straight": "라지스트레이트",
-    "yacht":         "요트",
+    "yacht":          "요트",
 }
 
-# ── 늑대인간: 야간 페이즈별 역할 행동 지침 ─────────────────────────────────────
+# ── 늑대인간: 페이즈 한글명 ──────────────────────────────────────────────────────
+_WEREWOLF_PHASE_KO: dict[str, str] = {
+    "night_doppelganger": "도플갱어",
+    "night_seer":         "예언자",
+    "night_robber":       "도둑",
+    "night_troublemaker": "말썽꾼",
+    "night_drunk":        "술꾼",
+    "night_insomniac":    "불면증 환자",
+}
+
+# ── 늑대인간: 규칙 기반 폴백 팁 ─────────────────────────────────────────────────
 _WEREWOLF_PHASE_TIPS: dict[str, str] = {
     "night_doppelganger": (
         "도플갱어는 다른 플레이어의 카드를 몰래 확인해 그 역할을 복사합니다. "
         "강력한 역할(예언자, 도둑)을 노리세요."
-    ),
-    "night_werewolf": (
-        "늑대인간은 서로 눈을 마주쳐 팀원을 확인하세요. "
-        "낮 토론에서 서로를 의심하는 척 연기하는 것이 좋습니다."
-    ),
-    "night_minion": (
-        "하수인은 늑대인간 편입니다. 낮 토론에서 마을 주민을 의심으로 몰아 "
-        "늑대인간을 보호하세요."
-    ),
-    "night_mason": (
-        "프리메이슨은 서로를 확인하세요. "
-        "낮 토론에서 서로에게 강한 알리바이를 제공할 수 있습니다."
     ),
     "night_seer": (
         "예언자는 다른 플레이어 카드 한 장 또는 센터 카드 두 장을 볼 수 있습니다. "
@@ -71,14 +75,30 @@ _WEREWOLF_PHASE_TIPS: dict[str, str] = {
     ),
 }
 
-# 요트 의사결정 시점 페이즈
 _YACHT_STRATEGY_PHASES = frozenset({"AWAITING_KEEP", "AWAITING_SCORE"})
-# 늑대 전략 제공 페이즈
 _WEREWOLF_STRATEGY_PHASES = frozenset(_WEREWOLF_PHASE_TIPS.keys())
+
+_LLM_TIMEOUT = 5.0   # 초 — 초과 시 규칙 기반 폴백
+_LLM_MAX_TOKENS = 80
+
+
+def _get_openai_client():
+    """OPENAI_API_KEY가 있으면 AsyncOpenAI 클라이언트 반환, 없으면 None."""
+    try:
+        from openai import AsyncOpenAI
+        api_key = os.environ.get("OPENAI_API_KEY")
+        if not api_key:
+            return None
+        return AsyncOpenAI(api_key=api_key)
+    except ImportError:
+        return None
 
 
 class StrategyAgent(BaseAgent):
-    """우선순위 4 (LOW). 활성화 시 의사결정 시점에 전략 추천을 안내한다."""
+    """우선순위 4 (LOW). 활성화 시 의사결정 시점에 전략 추천을 안내한다.
+
+    LLM(gpt-5.4-mini) → 타임아웃/실패 시 규칙 기반 폴백 순으로 동작.
+    """
 
     name = "strategy"
 
@@ -92,17 +112,118 @@ class StrategyAgent(BaseAgent):
     def enabled(self) -> bool:
         return self._enabled
 
-    def on_state_change(self, ctx: AgentContext) -> Intervention | None:
+    # ── 오케스트레이터가 호출하는 async 진입점 ────────────────────────────────────
+
+    async def on_state_change_async(self, ctx: AgentContext) -> Intervention | None:
+        """LLM 우선 시도 → 실패 시 규칙 기반 폴백."""
         if not self._enabled:
             return None
 
+        client = _get_openai_client()
+        if client is not None:
+            try:
+                text = await asyncio.wait_for(
+                    self._llm_advice(ctx, client), timeout=_LLM_TIMEOUT
+                )
+                if text:
+                    return Intervention(
+                        agent=self.name,
+                        tts_text=text,
+                        priority=AudioPriority.LOW,
+                        suppress_lower=False,
+                    )
+            except asyncio.TimeoutError:
+                logger.warning("[StrategyAgent] LLM 타임아웃 — 규칙 기반 폴백")
+            except Exception:
+                logger.exception("[StrategyAgent] LLM 호출 실패 — 규칙 기반 폴백")
+
+        return self.on_state_change(ctx)
+
+    # ── 규칙 기반 (동기, LLM 폴백 및 직접 호출용) ────────────────────────────────
+
+    def on_state_change(self, ctx: AgentContext) -> Intervention | None:
+        if not self._enabled:
+            return None
         if ctx.game_type == "yacht":
             return self._yacht_strategy(ctx)
         if ctx.game_type == "werewolf":
             return self._werewolf_strategy(ctx)
         return None
 
-    # ── 요트다이스 전략 ────────────────────────────────────────────────────────
+    # ── LLM 호출 ──────────────────────────────────────────────────────────────
+
+    async def _llm_advice(self, ctx: AgentContext, client) -> str | None:
+        if ctx.game_type == "yacht":
+            return await self._llm_yacht(ctx, client)
+        if ctx.game_type == "werewolf":
+            return await self._llm_werewolf(ctx, client)
+        return None
+
+    async def _llm_yacht(self, ctx: AgentContext, client) -> str | None:
+        gs = ctx.game_specific
+        dice: list = gs.get("dice_values", [])
+        available: list = gs.get("available_categories", [])
+        roll_count: int = gs.get("roll_count", 0)
+
+        if ctx.fsm_state not in _YACHT_STRATEGY_PHASES or not dice or not available:
+            return None
+        if any(v is None for v in dice):
+            return None
+
+        dice_str = ", ".join(str(d) for d in dice)
+        cats_str = ", ".join(_CATEGORY_KO.get(c, c) for c in available)
+
+        resp = await client.chat.completions.create(
+            model="gpt-5.4-mini",
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "당신은 요트다이스 게임 전략가입니다. "
+                        "현재 상황에서 최선의 카테고리와 이유를 1~2문장으로 한국어로 간결하게 설명하세요. "
+                        "불필요한 설명 없이 핵심만 말하세요."
+                    ),
+                },
+                {
+                    "role": "user",
+                    "content": (
+                        f"주사위: {dice_str} ({roll_count}/3번 굴림)\n"
+                        f"선택 가능한 카테고리: {cats_str}"
+                    ),
+                },
+            ],
+            max_tokens=_LLM_MAX_TOKENS,
+            temperature=0.5,
+        )
+        return resp.choices[0].message.content.strip()
+
+    async def _llm_werewolf(self, ctx: AgentContext, client) -> str | None:
+        if ctx.fsm_state not in _WEREWOLF_STRATEGY_PHASES:
+            return None
+
+        phase_ko = _WEREWOLF_PHASE_KO.get(ctx.fsm_state, ctx.fsm_state)
+
+        resp = await client.chat.completions.create(
+            model="gpt-5.4-mini",
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "당신은 한밤의 늑대인간 보드게임 전략가입니다. "
+                        "역할별 야간 행동 전략을 1~2문장으로 한국어로 간결하게 설명하세요."
+                    ),
+                },
+                {
+                    "role": "user",
+                    "content": f"현재 깨어난 역할: {phase_ko}",
+                },
+            ],
+            max_tokens=_LLM_MAX_TOKENS,
+            temperature=0.5,
+        )
+        return resp.choices[0].message.content.strip()
+
+    # ── 규칙 기반 내부 메서드 ──────────────────────────────────────────────────
 
     def _yacht_strategy(self, ctx: AgentContext) -> Intervention | None:
         if ctx.fsm_state not in _YACHT_STRATEGY_PHASES:
@@ -112,7 +233,6 @@ class StrategyAgent(BaseAgent):
         available: list[str] = gs.get("available_categories", [])
         if not dice or not available:
             return None
-
         text = self._best_category_tip(dice, available)
         if not text:
             return None
@@ -123,39 +243,27 @@ class StrategyAgent(BaseAgent):
             suppress_lower=False,
         )
 
-    def _best_category_tip(
-        self, dice: list[int | None], available: list[str]
-    ) -> str | None:
+    def _best_category_tip(self, dice: list[int | None], available: list[str]) -> str | None:
         try:
             from games.yacht.scoring import calculate_score
         except ImportError:
             return None
-
         if any(v is None for v in dice):
             return None
-
         scores: list[tuple[int, str]] = []
         for cat in available:
             try:
-                s = calculate_score(cat, dice)
-                scores.append((s, cat))
+                scores.append((calculate_score(cat, dice), cat))
             except Exception:
                 continue
-
         if not scores:
             return None
-
         scores.sort(key=lambda x: x[0], reverse=True)
         best_score, best_cat = scores[0]
         cat_ko = _CATEGORY_KO.get(best_cat, best_cat)
-
         if best_score == 0:
-            # 점수가 나오는 카테고리가 없으면 최소 피해를 권장
-            return f"현재 주사위로 점수가 나오는 카테고리가 없습니다. 낮은 값을 가진 카테고리에 0을 기록하는 것을 추천합니다."
-
+            return "현재 주사위로 점수가 나오는 카테고리가 없습니다. 낮은 값을 가진 카테고리에 0을 기록하는 것을 추천합니다."
         return f"현재 주사위 조합에서는 {cat_ko}에 기록하면 {best_score}점을 얻을 수 있습니다."
-
-    # ── 늑대인간 전략 ──────────────────────────────────────────────────────────
 
     def _werewolf_strategy(self, ctx: AgentContext) -> Intervention | None:
         if ctx.fsm_state not in _WEREWOLF_STRATEGY_PHASES:

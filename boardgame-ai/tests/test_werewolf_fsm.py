@@ -99,7 +99,7 @@ async def test_active_timer_cancelled_on_new_phase_entry() -> None:
     fsm = _make_fsm(["seer"])
 
     with patch("games.werewolf.fsm.ACTIVE_PHASE_TIMEOUT", 60):
-        fsm.start()
+        fsm._enter_phase(WerewolfPhase.NIGHT_SEER)
         await asyncio.sleep(0)
         task = fsm._active_timer_task
         assert task is not None and not task.done()

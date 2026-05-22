@@ -18,8 +18,7 @@ class Intervention:
     agent: str
     tts_text: str | None
     priority: AudioPriority
-    suppress_lower: bool = True     # True면 하위 우선순위 에이전트를 이번 이벤트에서 건너뜀
-    ui_payload: dict | None = None  # 프론트엔드로 별도 전송할 페이로드 (옵션)
+    suppress_lower: bool = True  # True면 하위 우선순위 에이전트를 이번 이벤트에서 건너뜀
 
 
 class BaseAgent(ABC):

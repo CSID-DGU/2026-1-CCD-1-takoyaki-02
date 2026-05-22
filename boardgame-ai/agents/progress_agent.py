@@ -1,7 +1,8 @@
 """진행 에이전트 — FSM 상태 전환마다 NORMAL 우선순위 TTS로 진행을 안내.
 
-FSM이 이미 내보내는 TTS와 중복을 피하기 위해, 이 에이전트는 FSM이 다루지 않는
-상위 레벨 내러티브(페이즈 전환 배경음성)를 담당한다.
+모든 TTS 발화는 FSM이 아닌 이 에이전트가 전담한다.
+- 요트: FSM의 last_message를 읽어 매 굴림/상태마다 동적으로 발화.
+- 늑대인간: 페이즈별 고정 스크립트(_WEREWOLF_SCRIPTS)를 사용하며, 중복 발화를 방지.
 스크립트는 게임별 dict로 관리하며, {player} 등 템플릿 변수를 지원한다.
 """
 
@@ -13,21 +14,26 @@ from core.audio import AudioPriority
 
 
 # ── 늑대인간 페이즈 스크립트 ────────────────────────────────────────────────────
-# FSM이 이미 안내하는 상태는 여기서 제외. ProgressAgent는 FSM 미담당 보조 안내만.
-# FSM 담당: night_start, 각 night_* 역할 호출, day_discussion, vote, result
-# ProgressAgent 담당: FSM이 명시적으로 안내하지 않는 전환 보조 멘트
+# FSM은 상태 전환만 담당. TTS 발화는 ProgressAgent가 전담.
+# catalog.py STATIC_LINES와 동일 문자열 → AudioManager static 캐시 hit.
+# vote_countdown/final_role_reveal/result는 FUSION_CONTEXT를 emit하지 않으므로 제외.
 _WEREWOLF_SCRIPTS: dict[str, str] = {
-    "vote_countdown": "곧 투표가 시작됩니다. 의심스러운 플레이어를 생각해두세요.",
+    "night_start":        "밤이 되었습니다. 모두 눈을 감아주세요.",
+    "night_doppelganger": "도플갱어는 깨어나세요. 다른 플레이어 1명의 카드를 확인하세요. 그 역할이 됩니다.",
+    "night_werewolf":     "늑대인간은 깨어나세요. 서로를 확인하고 다시 눈을 감으세요.",
+    "night_minion":       "하수인은 깨어나세요. 늑대인간들은 엄지를 들어올려 자신을 알려주세요.",
+    "night_mason":        "프리메이슨은 깨어나세요. 서로를 확인하고 다시 눈을 감으세요.",
+    "night_seer":         "예언자는 깨어나세요. 다른 플레이어 1명 또는 중앙 카드 2장을 확인할 수 있습니다.",
+    "night_robber":       "도둑은 깨어나세요. 다른 플레이어 1명의 카드와 자신의 카드를 교환할 수 있습니다.",
+    "night_troublemaker": "말썽꾼은 깨어나세요. 자신을 제외한 두 플레이어의 카드를 서로 교환하세요.",
+    "night_drunk":        "술꾼은 깨어나세요. 중앙 카드 1장을 가져와 자신의 카드와 교환하세요. 새 카드는 볼 수 없습니다.",
+    "night_insomniac":    "불면증환자는 깨어나세요. 자신의 카드를 확인하세요.",
+    "day_discussion":     "모두 눈을 뜨세요! 토론을 시작합니다.",
+    "vote":               "투표를 시작합니다. 제거할 플레이어를 손으로 가리키세요.",
 }
-
-# ── 요트다이스 페이즈 스크립트 ──────────────────────────────────────────────────
-# FSM이 이미 "{player}님, 주사위를 굴려주세요" 등을 안내하므로 여기서는 제외.
-# ProgressAgent는 FSM 미담당 보조 안내만.
-_YACHT_SCRIPTS: dict[str, str] = {}
 
 _SCRIPTS: dict[str, dict[str, str]] = {
     "werewolf": _WEREWOLF_SCRIPTS,
-    "yacht":    _YACHT_SCRIPTS,
 }
 
 
@@ -40,7 +46,25 @@ class ProgressAgent(BaseAgent):
         self._last_state: str = ""
 
     def on_state_change(self, ctx: AgentContext) -> Intervention | None:
-        # 같은 상태로 중복 호출 방지
+        if ctx.game_type == "yacht":
+            return self._yacht_progress(ctx)
+        return self._werewolf_progress(ctx)
+
+    def _yacht_progress(self, ctx: AgentContext) -> Intervention | None:
+        # 요트는 같은 fsm_state(awaiting_keep 등)가 매 굴림마다 반복되므로
+        # 상태명 중복 체크 대신 last_message 내용으로 TTS 발화를 결정한다.
+        text = ctx.game_specific.get("last_message", "")
+        if not text:
+            return None
+        return Intervention(
+            agent=self.name,
+            tts_text=text,
+            priority=AudioPriority.NORMAL,
+            suppress_lower=False,
+        )
+
+    def _werewolf_progress(self, ctx: AgentContext) -> Intervention | None:
+        # 같은 상태로 중복 호출 방지 (늑대인간 페이즈는 게임 내 반복되지 않음)
         if ctx.fsm_state == self._last_state:
             return None
         self._last_state = ctx.fsm_state

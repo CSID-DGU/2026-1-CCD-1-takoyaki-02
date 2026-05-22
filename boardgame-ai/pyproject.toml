@@ -2,9 +2,12 @@
 name = "boardgame-ai"
 version = "0.1.0"
 requires-python = ">=3.11"
+dependencies = [
+    "openai>=1.0",
+]
 
 [tool.setuptools.packages.find]
-include = ["core*", "bridge*", "vision*", "games*", "audio*", "backend*"]
+include = ["core*", "bridge*", "vision*", "games*", "audio*", "backend*", "agents*", "benchmarks*"]
 
 [project.optional-dependencies]
 dev = [

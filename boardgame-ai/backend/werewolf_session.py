@@ -518,6 +518,7 @@ class WerewolfSession:
             if msg.msg_type == MsgType.FUSION_CONTEXT.value:
                 ctx = FusionContext.from_dict(msg.payload)
                 self._send_fusion_context(ctx, msg.state_version)
+                self._state_version = msg.state_version
                 await self._notify_agent_state_change(ctx)
             elif (
                 msg.msg_type == MsgType.STATE_UPDATE.value

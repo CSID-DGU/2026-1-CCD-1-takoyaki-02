@@ -10,7 +10,7 @@ FSM 팀과 합의된 문자열 상수를 이 파일에서만 관리.
   VOTE_POINT   : 투표 페이즈에서 뒤집힌 카드를 손목 벡터로 가리킴 감지
 
 감지 전략:
-  ROLE_DETECTED → face_up 카드가 stable_frames >= 10 프레임 유지 시 발화 (1인당 1회)
+  ROLE_DETECTED → face_up 카드가 stable_frames >= 5 프레임 유지 시 발화 (1인당 1회)
   CARD_PEEK     → TrackedCard.just_flipped_up == True (face_down→face_up 전환 프레임)
   CARD_SWAP     → grab 제스처(카드 A 근처) → release 제스처(카드 B 근처) 순서
   VOTE_POINT    → 손목[0]→검지끝[8] 방향 벡터 연장선이 face_down 카드 bbox 와 교차

@@ -61,6 +61,8 @@ class YachtSession:
         """yacht_runner가 호출. 비전 이벤트를 FSM에 전달하고 응답을 클라이언트로."""
         if self.fsm is None or self.tutorial_complete:
             return
+        if self._agent is not None:
+            await self._agent.on_game_event(event)
         with self._fsm_lock:
             messages = self.fsm.handle_event(event)
         await self.send_many(messages)
@@ -204,10 +206,7 @@ class YachtSession:
         self.tutorial_complete = False
         with self._fsm_lock:
             self.undo_stack = []
-            self.fsm = YachtFSM(
-                players,
-                on_fusion_context=self._bridge.send_fusion_context if self._bridge else None,
-            )
+            self.fsm = YachtFSM(players)
             messages = self.fsm.start()
         await self.send_many(messages)
 
@@ -264,8 +263,12 @@ class YachtSession:
     async def send_many(self, messages: list[WSMessage]) -> None:
         for message in messages:
             if message.msg_type == MsgType.FUSION_CONTEXT.value:
-                await self._notify_agent_state_change(FusionContext.from_dict(message.payload))
-            await self.send(message)
+                ctx = FusionContext.from_dict(message.payload)
+                if self._bridge is not None:
+                    self._bridge.send_fusion_context(ctx, message.state_version)
+                await self._notify_agent_state_change(ctx)
+            else:
+                await self.send(message)
 
     async def _notify_agent_state_change(self, fusion_ctx: FusionContext) -> None:
         if self._agent is None or self.fsm is None:
@@ -280,6 +283,7 @@ class YachtSession:
             "dice_values": list(state.dice_values),
             "available_categories": list(state.available_categories),
             "roll_count": state.roll_count,
+            "last_message": state.last_message,
         }
         agent_ctx = AgentContext(
             game_type="yacht",

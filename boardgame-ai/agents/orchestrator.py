@@ -81,6 +81,8 @@ class AgentOrchestrator:
         result = self._progress.on_state_change(ctx)
         if result:
             await self._dispatch(result)
+            if result.suppress_lower:
+                return
 
         # 3) 전략 에이전트 — 백그라운드로 실행 (지연이 있어도 게임 흐름 차단 없음)
         asyncio.create_task(self._run_strategy(ctx))
@@ -100,7 +102,7 @@ class AgentOrchestrator:
     # ── 내부 헬퍼 ─────────────────────────────────────────────────────────────
 
     async def _run_strategy(self, ctx: AgentContext) -> None:
-        result = self._strategy.on_state_change(ctx)
+        result = await self._strategy.on_state_change_async(ctx)
         if result:
             await self._dispatch(result)
 
