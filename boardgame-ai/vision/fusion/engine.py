@@ -140,8 +140,20 @@ class FusionEngine:
             # 조건 3: N프레임 안정화.
             # ROLL_CONFIRMED/ROLL_UNREADABLE/DICE_ESCAPED는 yacht_rules가 자체적으로
             # 1회성 게이트(roll_just_confirmed / _reported_escaped)를 적용하므로 즉시 발화.
-            if event_type in ("ROLL_CONFIRMED", "ROLL_UNREADABLE", "DICE_ESCAPED"):
+            # CARD_PEEK/CARD_SWAP은 just_flipped_up 또는 grab→release 시퀀스가 1프레임
+            # 이벤트이므로 즉시 발화. WerewolfRules 내부에서 중복 방지 처리함.
+            if event_type in (
+                "ROLL_CONFIRMED", "ROLL_UNREADABLE", "DICE_ESCAPED",
+                "werewolf_card_peek", "werewolf_card_swap",
+            ):
                 required = 1
+            elif event_type == "werewolf_vote_point":
+                required = int(
+                    params.get(
+                        "pointing_stabilization_frames",
+                        DEFAULT_PARAMS["pointing_stabilization_frames"],
+                    )
+                )
             elif (
                 event_type
                 in (
