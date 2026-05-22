@@ -259,9 +259,10 @@ async def yacht_socket(websocket: WebSocket) -> None:
             data = await websocket.receive_json()
             await session.handle_client_message(data)
     except WebSocketDisconnect:
-        app.state.pipeline_switcher(None)
+        pass
     finally:
         _bench_ws_log("disconnect", "/ws/yacht")
+        app.state.pipeline_switcher(None)
         app.state.yacht_runner.deregister_session(session)
         app.state.agent_orchestrator.stop()
         # 오디오 큐 정리 — 끊긴 세션이 ack 못 보내므로 _current가 stuck되는 것 방지.
@@ -290,6 +291,8 @@ async def werewolf_socket(websocket: WebSocket) -> None:
             data = await websocket.receive_json()
             await session.handle_client_message(data)
     except WebSocketDisconnect:
+        pass
+    finally:
         _bench_ws_log("disconnect", "/ws/werewolf")
         app.state.orchestrator.set_werewolf_event_handler(None)
         app.state.pipeline_switcher(None)

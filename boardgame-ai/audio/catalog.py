@@ -51,7 +51,6 @@ VOICE_BY_AGENT: dict[str, VoiceConfig] = {
     AgentRole.REFEREE.value: VoiceConfig(
         name="ko-KR-Neural2-B", speaking_rate=0.95, pitch=-1.0
     ),
-    # 템포 (현재 미사용)
     AgentRole.TEMPO.value: VoiceConfig(name="ko-KR-Neural2-B"),
 }
 

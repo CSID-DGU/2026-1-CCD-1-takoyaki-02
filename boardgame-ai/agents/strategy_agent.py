@@ -34,7 +34,7 @@ _CATEGORY_KO: dict[str, str] = {
 # ── 늑대인간: 야간 페이즈별 역할 행동 지침 ─────────────────────────────────────
 _WEREWOLF_PHASE_TIPS: dict[str, str] = {
     # 패시브 야간 페이즈(night_werewolf, night_minion, night_mason)는
-    # FSM이 FUSION_CONTEXT를 emit하지 않아 에이전트 알림이 오지 않으므로 제외.
+    # 해당 역할이 행동 없이 서로를 확인만 하므로 전략 팁 불필요 → 의도적으로 제외.
     "night_doppelganger": (
         "도플갱어는 다른 플레이어의 카드를 몰래 확인해 그 역할을 복사합니다. "
         "강력한 역할(예언자, 도둑)을 노리세요."
