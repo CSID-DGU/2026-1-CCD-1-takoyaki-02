@@ -28,7 +28,8 @@ _WEREWOLF_SCRIPTS: dict[str, str] = {
     "night_troublemaker": "말썽꾼은 깨어나세요. 자신을 제외한 두 플레이어의 카드를 서로 교환하세요.",
     "night_drunk":        "술꾼은 깨어나세요. 중앙 카드 1장을 가져와 자신의 카드와 교환하세요. 새 카드는 볼 수 없습니다.",
     "night_insomniac":    "불면증환자는 깨어나세요. 자신의 카드를 확인하세요.",
-    "day_discussion":     "모두 눈을 뜨세요! 토론을 시작합니다.",
+    # day_discussion: NightEnd 컴포넌트가 "아침이 밝았습니다 → 토론 시작" 순서를 관리.
+    # ProgressAgent가 여기서 발화하면 NightEnd TTS와 순서 충돌 → 제거.
     "vote":               "투표를 시작합니다. 제거할 플레이어를 손으로 가리키세요.",
 }
 
