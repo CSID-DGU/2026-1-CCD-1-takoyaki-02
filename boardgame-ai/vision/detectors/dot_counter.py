@@ -30,8 +30,8 @@ class DotCounterParams:
 
     dp: float = 0.6
     min_dist_ratio: float = 0.06
-    canny_upper: int = 120
-    accum_thresh: int = 10
+    canny_upper: int = 110
+    accum_thresh: int = 8
     radius_min_ratio: float = 0.05
     radius_max_ratio: float = 0.09
     # CLAHE
