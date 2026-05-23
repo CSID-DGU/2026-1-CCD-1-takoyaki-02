@@ -19,7 +19,7 @@ class CameraManager:
     def __init__(
         self,
         source: int | str = 0,
-        resolution: tuple[int, int] = (1920, 1080),
+        resolution: tuple[int, int] | None = (1920, 1080),
         fps: int = 30,
     ) -> None:
         self._source = source
@@ -29,6 +29,7 @@ class CameraManager:
         self._lock = threading.Lock()
         self._running = False
         self._thread: threading.Thread | None = None
+        self._latest_frame: Any | None = None
 
     def subscribe(self, maxsize: int = 2) -> queue.Queue:
         """프레임 큐 생성 후 반환. 파이프라인은 이 큐에서 프레임을 소비한다."""
@@ -39,6 +40,7 @@ class CameraManager:
 
     def start(self) -> None:
         self._running = True
+        print(f"[camera] starting source={self._source} resolution={self._resolution} fps={self._fps}", flush=True)
         self._thread = threading.Thread(
             target=self._loop, daemon=True, name="camera-manager"
         )
@@ -47,22 +49,31 @@ class CameraManager:
     def stop(self) -> None:
         self._running = False
 
+    def latest_frame(self) -> Any | None:
+        with self._lock:
+            return None if self._latest_frame is None else self._latest_frame.copy()
+
     def _loop(self) -> None:
          # CAP_DSHOW는 Windows 전용 백엔드. macOS/Linux에서는 기본 백엔드(AVFoundation/V4L2) 사용.
+        print("[camera] loop entered", flush=True)
         if sys.platform == "win32":
+            print("[camera] opening with CAP_DSHOW", flush=True)
             cap = cv2.VideoCapture(self._source, cv2.CAP_DSHOW)
         else:
             cap = cv2.VideoCapture(self._source)
-        cap.set(cv2.CAP_PROP_FRAME_WIDTH, self._resolution[0])
-        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self._resolution[1])
-        cap.set(cv2.CAP_PROP_FPS, self._fps)
+        print("[camera] open returned", flush=True)
+        if self._resolution is not None:
+            cap.set(cv2.CAP_PROP_FRAME_WIDTH, self._resolution[0])
+            cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self._resolution[1])
+        if self._fps:
+            cap.set(cv2.CAP_PROP_FPS, self._fps)
 
         print(
             f"[camera] opened={cap.isOpened()}  "
             f"w={cap.get(cv2.CAP_PROP_FRAME_WIDTH):.0f}  "
             f"h={cap.get(cv2.CAP_PROP_FRAME_HEIGHT):.0f}  "
             f"fps={cap.get(cv2.CAP_PROP_FPS):.0f}"
-        )
+        , flush=True)
 
         try:
             while self._running:
@@ -71,6 +82,7 @@ class CameraManager:
                     print("[camera] cap.read() False — 카메라 연결 끊김")
                     break
                 with self._lock:
+                    self._latest_frame = frame.copy()
                     qs = list(self._queues)
                 for q in qs:
                     if q.full():
