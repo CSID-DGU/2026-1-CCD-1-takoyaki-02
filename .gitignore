@@ -1,3 +1,14 @@
 # IDE
 .vscode/
 .idea/
+
+# OMC / Claude
+.omc/
+.claude/
+
+# Benchmark 결과
+boardgame-ai/benchmarks/results/
+
+# OS
+.DS_Store
+Thumbs.db
