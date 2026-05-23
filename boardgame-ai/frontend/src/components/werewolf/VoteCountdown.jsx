@@ -8,9 +8,7 @@ export default function VoteCountdown({ players = [], votes = {}, onComplete, se
   const total = players.length
   const allDone = total > 0 && doneCount >= total
 
-  useEffect(() => {
-    send?.('TTS_REQUEST', { text: '지목할 플레이어의 카드를 손가락으로 가리키세요.' })
-  }, [])
+  // 투표 안내 TTS는 ProgressAgent가 담당 — 프론트에서 중복 제거
 
   useEffect(() => {
     if (allDone) onComplete?.()
