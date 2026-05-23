@@ -213,17 +213,6 @@ const s = {
     padding: '28px 28px 28px 0',
     boxSizing: 'border-box',
   },
-  scoreEffectNote: {
-    marginTop: 12,
-    padding: '10px 12px',
-    border: '1px solid #cfe4d4',
-    borderRadius: 8,
-    background: '#f1faf3',
-    color: '#1d5d3d',
-    fontSize: 14,
-    fontWeight: 800,
-    textAlign: 'center',
-  },
   scoreHeader: {
     display: 'flex',
     alignItems: 'center',
@@ -574,12 +563,6 @@ export default function YachtGame({ players, tutorialMode = false, onExit, onCha
           100% { background: #fff; }
         }
 
-        @keyframes yachtScoreNote {
-          0% { opacity: 0; transform: translateY(-4px); }
-          20% { opacity: 1; transform: translateY(0); }
-          100% { opacity: 0; transform: translateY(0); }
-        }
-
         .yacht-turn-pulse {
           animation: yachtTurnPulse 420ms ease-out;
         }
@@ -588,9 +571,6 @@ export default function YachtGame({ players, tutorialMode = false, onExit, onCha
           animation: yachtScoreFlash 900ms ease-out;
         }
 
-        .yacht-score-note {
-          animation: yachtScoreNote 1100ms ease-out forwards;
-        }
       `}</style>
       <div style={s.phaseText}>
         {state.phase}
@@ -656,11 +636,6 @@ export default function YachtGame({ players, tutorialMode = false, onExit, onCha
             recentScore={recentScore}
             onScore={(category) => scoreCategory(category, state, send)}
           />
-          {recentScore && (
-            <div key={`${recentScore.playerId}-${recentScore.category}`} className="yacht-score-note" style={s.scoreEffectNote}>
-              {recentScore.playerName} · {categoryLabel(recentScore.category)} {recentScore.score}점 기록
-            </div>
-          )}
         </aside>
       </div>
 
@@ -805,10 +780,6 @@ function ScoreTable({ state, currentOnly = false, compact = false, recentScore, 
       </tbody>
     </table>
   )
-}
-
-function categoryLabel(category) {
-  return CATEGORY_LABELS.find(([key]) => key === category)?.[1] || category
 }
 
 function normalizePlayers(players) {
