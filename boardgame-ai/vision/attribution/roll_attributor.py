@@ -107,8 +107,12 @@ class RollAttributor:
         # 이 누적이 임계 이상일 때만 ROLL_CONFIRMED 발화. "굴림통이 실제로 사용됨"의 신호.
         self._roll_tray_in_tray_streak: int = 0
 
-        # nearest player 누적 — fallback actor 산정용
+        # nearest player 누적 — fallback actor 산정용 (state 무관, 매 프레임)
         self._fallback_buf: deque[str | None] = deque(maxlen=grab_fallback_window_frames)
+        # roll_tray가 tray 안에 있는 동안만 누적되는 nearest 버퍼 —
+        # 실제 굴림통과 함께 움직이는 손의 player_id가 최빈으로 잡힘.
+        # 이게 1순위 actor 산정 근거. HAND_IN_TRAY 진입 시 매번 초기화.
+        self._roll_actor_buf: deque[str | None] = deque(maxlen=grab_fallback_window_frames)
 
     # ── public ───────────────────────────────────────────────────────────────
 
@@ -166,14 +170,15 @@ class RollAttributor:
         return None
 
     def _step_hand_in_tray(self, perception: YachtFramePerception) -> str | None:
-        # 점유 중에는 candidate_actor 강화 (들고 있는 동안 가장 가까운 player)
-        nearest = self._nearest_player_to_tray(perception)
-        if nearest is not None:
-            self._candidate_actor = nearest
-
-        # roll_tray가 tray 안에 충분히 들어와 있는 프레임 누적
+        # 점유 중 candidate_actor를 매 프레임 덮어쓰지 않는다.
+        # 앞사람이 tray 옆에 손만 두고 있으면 그쪽이 매 프레임 nearest로 잡혀
+        # 진짜 굴리는 사람의 진입 시점 actor를 덮어버리는 오인을 방지.
+        # 대신 roll_tray가 tray 안에 들어와 있는 "굴리는 중" 프레임에서만
+        # nearest를 별도 버퍼에 누적해 확정 시 최빈값으로 사용한다.
         if self._is_roll_tray_in_tray(perception):
             self._roll_tray_in_tray_streak += 1
+            nearest_roll = self._nearest_player_to_tray(perception)
+            self._roll_actor_buf.append(nearest_roll)
 
         # 진출 디바운스 — 연속 N프레임 밖이어야 진짜 빠진 걸로 인정
         if self._out_streak < self._exit_debounce:
@@ -221,9 +226,24 @@ class RollAttributor:
             f"rt_streak={self._roll_tray_in_tray_streak}"
         )
         if score >= self._change_threshold:
-            actor = self._candidate_actor or self._fallback_actor()
+            # 1순위: roll_tray가 tray 안에 있던 프레임들의 nearest 최빈값
+            #        (= 실제 굴림통과 함께 움직인 손의 주인)
+            # 2순위: 진입 시점에 잡힌 candidate_actor
+            # 3순위: 전체 윈도우 nearest 최빈값 (둘 다 비어있을 때만)
+            actor = (
+                _mode(self._roll_actor_buf)
+                or self._candidate_actor
+                or self._fallback_actor()
+            )
             self._just_finalized = True
-            _log.info("[roll] ROLL_CONFIRMED actor=%s", actor)
+            _log.info(
+                "[roll] ROLL_CONFIRMED actor=%s "
+                "(roll_buf_mode=%s candidate=%s fallback=%s)",
+                actor,
+                _mode(self._roll_actor_buf),
+                self._candidate_actor,
+                self._fallback_actor(),
+            )
             self._reset_to_waiting()
             return actor
         # 변화 없음 — 손만 댄 케이스
@@ -233,6 +253,8 @@ class RollAttributor:
 
     def _enter_hand_in_tray(self, perception: YachtFramePerception) -> None:
         self._state = RollState.HAND_IN_TRAY
+        # 이번 점유 동안만의 roll_tray 기준 nearest를 다시 모으기 시작.
+        self._roll_actor_buf.clear()
         # 손이 들어온 직후의 흐트러진 dice 좌표 대신,
         # 손 들어가기 직전 마지막 stable snapshot을 비교 기준으로 사용.
         if self._last_stable_snapshot is not None:
@@ -259,6 +281,7 @@ class RollAttributor:
         self._snapshot = None
         self._candidate_actor = None
         self._roll_tray_in_tray_streak = 0
+        self._roll_actor_buf.clear()
 
     # ── 헬퍼 ─────────────────────────────────────────────────────────────────
 
@@ -319,8 +342,13 @@ class RollAttributor:
         return 0
 
     def _nearest_player_to_tray(self, perception: YachtFramePerception) -> str | None:
-        """tray 또는 roll_tray 중심에 가장 가까운 player_id 보유 손."""
-        ref = perception.tray or perception.roll_tray
+        """roll_tray 또는 tray 중심에 가장 가까운 player_id 보유 손.
+
+        roll_tray(굴림통)는 굴리는 사람만 들고 움직이므로 그게 잡힌 프레임에선
+        그쪽을 기준으로 잡아야 앞사람이 tray 옆에 손만 두고 있어도 오인하지 않는다.
+        roll_tray가 없을 때만 tray 중심으로 폴백.
+        """
+        ref = perception.roll_tray or perception.tray
         if ref is None:
             return None
         cx, cy = ref.center()
@@ -393,6 +421,14 @@ def _compute_change_score(
         if moved or pip_changed:
             changed += 1
     return changed / len(current)
+
+
+def _mode(buf: deque[str | None]) -> str | None:
+    """버퍼 내 None이 아닌 값들의 최빈값. 비어있거나 모두 None이면 None."""
+    counts = Counter(pid for pid in buf if pid is not None)
+    if not counts:
+        return None
+    return counts.most_common(1)[0][0]
 
 
 # ── 미사용 export 호환 (기존 import 깨지지 않도록) ────────────────────────────
