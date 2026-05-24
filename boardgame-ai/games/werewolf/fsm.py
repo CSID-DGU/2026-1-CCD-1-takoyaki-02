@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 from typing import Awaitable, Callable
 
-from core.constants import MsgType
+from core.constants import CommonEventType, MsgType
 from core.envelope import WSMessage
 from core.events import FusionContext, GameEvent
 from games.base_fsm import BaseFSM
@@ -57,9 +57,13 @@ class WerewolfFSM(BaseFSM):
         players: list[WerewolfPlayerState],
         center_cards: list[str],
         broadcast: Callable[[WSMessage], Awaitable[None]],
+        seat_positions: dict[str, tuple[float, float]] | None = None,
+        enqueue_tts_fn: Callable[[str], Awaitable[None]] | None = None,
     ) -> None:
         self.state = WerewolfGameState.new(players, center_cards)
         self._broadcast = broadcast
+        self._seat_positions: dict[str, tuple[float, float]] = seat_positions or {}
+        self._enqueue_tts = enqueue_tts_fn
         self._timer_task: asyncio.Task[None] | None = None
         self._passive_timer_task: asyncio.Task[None] | None = None
         self._active_timer_task: asyncio.Task[None] | None = None
@@ -84,6 +88,8 @@ class WerewolfFSM(BaseFSM):
             return self._handle_card_swap(event)
         if etype == WerewolfEventType.VOTE_POINT:
             return self._handle_vote_point(event)
+        if etype == CommonEventType.GESTURE_CONFIRMED:
+            return self._handle_gesture_confirmed()
         return []
 
     def handle_input(
@@ -218,7 +224,11 @@ class WerewolfFSM(BaseFSM):
                 params={},
             )
 
-        if phase == WerewolfPhase.VOTE:
+        if phase in (WerewolfPhase.VOTE_COUNTDOWN, WerewolfPhase.VOTE):
+            seat_anchors = {
+                f"seat_{pid}": {"x": x, "y": y}
+                for pid, (x, y) in self._seat_positions.items()
+            }
             return FusionContext(
                 fsm_state=phase.value,
                 game_type="werewolf",
@@ -228,11 +238,31 @@ class WerewolfFSM(BaseFSM):
                 reject_events=[WerewolfEventType.CARD_PEEK, WerewolfEventType.CARD_SWAP],
                 valid_targets={"player_ids": list(self.state.player_order)},
                 zones={},
-                anchors=anchors,
-                params={"pointing_stabilization_frames": 10},
+                anchors={**anchors, **seat_anchors},
+                params={"pointing_stabilization_frames": 1},
             )
 
-        # 기본: 이벤트 없음 (passive 야간 페이즈, DAY_DISCUSSION, RESULT 등)
+        # passive 야간 페이즈 (NIGHT_START, NIGHT_WEREWOLF, NIGHT_MINION, NIGHT_MASON):
+        # OK 사인으로 즉시 다음 페이즈로 이동 가능
+        if phase in PASSIVE_NIGHT_PHASES:
+            return FusionContext(
+                fsm_state=phase.value,
+                game_type="werewolf",
+                active_player=None,
+                allowed_actors=[],
+                expected_events=[CommonEventType.GESTURE_CONFIRMED],
+                reject_events=[
+                    WerewolfEventType.CARD_PEEK,
+                    WerewolfEventType.CARD_SWAP,
+                    WerewolfEventType.VOTE_POINT,
+                ],
+                valid_targets=None,
+                zones={},
+                anchors=anchors,
+                params={},
+            )
+
+        # 기본: 이벤트 없음 (DAY_DISCUSSION, RESULT 등)
         return FusionContext(
             fsm_state=phase.value,
             game_type="werewolf",
@@ -284,10 +314,7 @@ class WerewolfFSM(BaseFSM):
         if current == WerewolfPhase.DAY_DISCUSSION:
             return self._enter_phase(WerewolfPhase.VOTE_COUNTDOWN)
 
-        if current == WerewolfPhase.VOTE_COUNTDOWN:
-            return self._enter_phase(WerewolfPhase.VOTE)
-
-        if current == WerewolfPhase.VOTE:
+        if current in (WerewolfPhase.VOTE_COUNTDOWN, WerewolfPhase.VOTE):
             has_swap_roles = any(
                 WerewolfRole(p.original_role) in SWAP_ROLES
                 for p in self.state.players
@@ -308,11 +335,10 @@ class WerewolfFSM(BaseFSM):
 
     def _enter_phase(self, phase: WerewolfPhase) -> list[WSMessage]:
         """페이즈 진입: state 업데이트 + FusionContext 발송."""
-        # 새 페이즈 진입 시 이전 액티브 타이머 취소
+        # 새 페이즈 진입 시 이전 타이머 취소
         if self._active_timer_task and not self._active_timer_task.done():
             self._active_timer_task.cancel()
             self._active_timer_task = None
-
         self.state.phase = phase.value
         self.state.state_version += 1
         msgs: list[WSMessage] = [self._make_state_update()]
@@ -341,8 +367,7 @@ class WerewolfFSM(BaseFSM):
             self._timer_task = asyncio.create_task(self._run_timer())
 
         elif phase == WerewolfPhase.VOTE_COUNTDOWN:
-            # 시각적 카운트다운은 UI 담당; FSM은 즉시 VOTE로 전이
-            return msgs + self._advance_to_next_phase()
+            pass  # 전원 투표 완료 시에만 다음 페이즈로 전이
 
         elif phase == WerewolfPhase.FINAL_ROLE_REVEAL:
             return msgs  # session이 FusionContext 관리
@@ -447,13 +472,22 @@ class WerewolfFSM(BaseFSM):
         return []
 
     def _handle_vote_point(self, event: GameEvent) -> list[WSMessage]:
-        if WerewolfPhase(self.state.phase) != WerewolfPhase.VOTE:
+        if WerewolfPhase(self.state.phase) not in (WerewolfPhase.VOTE_COUNTDOWN, WerewolfPhase.VOTE):
             return []
         actor_id = event.actor_id
         target_id = event.data.get("target_id")
         if not actor_id or not target_id:
             return []
         return self._record_vote(actor_id, target_id)
+
+    def _handle_gesture_confirmed(self) -> list[WSMessage]:
+        current = WerewolfPhase(self.state.phase)
+        if current not in PASSIVE_NIGHT_PHASES:
+            return []
+        if self._passive_timer_task and not self._passive_timer_task.done():
+            self._passive_timer_task.cancel()
+            self._passive_timer_task = None
+        return self._advance_to_next_phase()
 
     def _record_vote(self, voter_id: str, target_id: str) -> list[WSMessage]:
         try:
@@ -497,7 +531,7 @@ class WerewolfFSM(BaseFSM):
         return []
 
     def _handle_vote_player(self, player_id: str | None, data: dict) -> list[WSMessage]:
-        if WerewolfPhase(self.state.phase) != WerewolfPhase.VOTE:
+        if WerewolfPhase(self.state.phase) not in (WerewolfPhase.VOTE_COUNTDOWN, WerewolfPhase.VOTE):
             return []
         if not player_id:
             return []
@@ -528,7 +562,10 @@ class WerewolfFSM(BaseFSM):
     async def _run_passive_timer(self, phase: WerewolfPhase) -> None:
         """패시브 역할 안내 화면을 PASSIVE_PHASE_DURATION 초 표시 후 다음 페이즈로 전이."""
         try:
-            await asyncio.sleep(PASSIVE_PHASE_DURATION)
+            await asyncio.sleep(PASSIVE_PHASE_DURATION - 4)
+            if WerewolfPhase(self.state.phase) == phase and self._enqueue_tts:
+                await self._enqueue_tts("눈을 다시 감아주세요.")
+            await asyncio.sleep(4)
             if WerewolfPhase(self.state.phase) == phase:
                 self.state.state_version += 1
                 for msg in self._advance_to_next_phase():
@@ -539,10 +576,14 @@ class WerewolfFSM(BaseFSM):
     async def _run_active_timer(self, phase: WerewolfPhase) -> None:
         """액티브 역할 카드 감지 대기. ACTIVE_PHASE_TIMEOUT 초 경과 시 강제 전이."""
         try:
-            await asyncio.sleep(ACTIVE_PHASE_TIMEOUT)
+            await asyncio.sleep(ACTIVE_PHASE_TIMEOUT - 4)
+            if WerewolfPhase(self.state.phase) == phase and self._enqueue_tts:
+                await self._enqueue_tts("눈을 다시 감아주세요.")
+            await asyncio.sleep(4)
             if WerewolfPhase(self.state.phase) == phase:
                 self.state.state_version += 1
                 for msg in self._advance_to_next_phase():
                     await self._broadcast(msg)
         except asyncio.CancelledError:
             pass
+

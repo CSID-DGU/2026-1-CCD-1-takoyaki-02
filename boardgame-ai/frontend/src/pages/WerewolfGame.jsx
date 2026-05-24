@@ -41,14 +41,16 @@ const loadingStyle = {
 
 const NIGHT_PHASES = new Set(['night_start', ...Object.keys(NIGHT_PHASE_ROLES)])
 
+const VOTE_PHASES = new Set(['vote', 'vote_countdown'])
+
 function getTransitionType(from, to) {
   if (!from || !to) return null
-  if (NIGHT_PHASES.has(from) && NIGHT_PHASES.has(to)) return 'eye_close'
-  if (NIGHT_PHASES.has(from) && to === 'day_discussion')  return 'dawn'
-  if (from === 'day_discussion'  && to === 'vote')        return 'red_vignette'
-  if (from === 'vote'            && to === 'final_role_reveal') return 'flash_fade'
-  if (from === 'vote'            && to === 'result')            return 'flash_fade'
-  if (from === 'final_role_reveal' && to === 'result')          return 'fade'
+  if (NIGHT_PHASES.has(from) && NIGHT_PHASES.has(to))        return 'eye_close'
+  if (NIGHT_PHASES.has(from) && to === 'day_discussion')     return 'dawn'
+  if (from === 'day_discussion'  && VOTE_PHASES.has(to))     return 'red_vignette'
+  if (VOTE_PHASES.has(from)      && to === 'final_role_reveal') return 'flash_fade'
+  if (VOTE_PHASES.has(from)      && to === 'result')           return 'flash_fade'
+  if (from === 'final_role_reveal' && to === 'result')         return 'fade'
   return 'fade'
 }
 
@@ -136,6 +138,10 @@ export default function WerewolfGame({ players, onChangePlayers, onChangeGame, o
       setNightEndReady(false)
     }
 
+    if (VOTE_PHASES.has(from) && !VOTE_PHASES.has(to)) {
+      setShowVoteResult(true)
+    }
+
     const type = getTransitionType(from, to)
     if (!type) {
       setDisplayedPhase(to)
@@ -185,7 +191,7 @@ export default function WerewolfGame({ players, onChangePlayers, onChangeGame, o
     }
 
     if (ph === 'night_end') {
-      return <NightEnd onComplete={() => setDisplayedPhase('day_discussion')} send={send} started={nightEndReady} isPracticeMode={isPracticeMode} />
+      return <NightEnd onComplete={() => setDisplayedPhase('day_discussion')} send={send} isPracticeMode={isPracticeMode} />
     }
 
     if (ph === 'day_discussion') {
@@ -199,7 +205,7 @@ export default function WerewolfGame({ players, onChangePlayers, onChangeGame, o
       )
     }
 
-    if (ph === 'vote') {
+    if (ph === 'vote' || ph === 'vote_countdown') {
       const votes = Object.fromEntries(
         (wwState.players ?? [])
           .filter(p => p.voted_for != null)
@@ -209,7 +215,6 @@ export default function WerewolfGame({ players, onChangePlayers, onChangeGame, o
         <VoteCountdown
           players={players}
           votes={votes}
-          onComplete={() => setShowVoteResult(true)}
           send={send}
           onExit={handleExit}
         />
