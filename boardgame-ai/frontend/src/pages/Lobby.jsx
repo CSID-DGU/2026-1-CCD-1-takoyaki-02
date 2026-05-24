@@ -16,7 +16,7 @@ const GAMES = [
     accent: 'var(--yacht)',
     art: 'yacht',
     description:
-      '5개의 주사위를 굴려 다양한 족보를 완성하세요. AI 카메라가 주사위 눈을 자동으로 인식하고 점수표를 채워줍니다.',
+      '5개의 주사위를 굴려 다양한 족보를 완성하세요. 차례당 3번씩 굴릴 수 있으며, 원하는 주사위는 킵 할 수도 있습니다.',
     maxPlayers: 6,
   },
   {
@@ -30,7 +30,7 @@ const GAMES = [
     accent: 'var(--werewolf)',
     art: 'wolf',
     description:
-      '밤이 찾아오면 늑대가 깨어납니다. 카드와 손동작으로 역할을 수행하고, 누가 늑대인지 토론으로 밝혀내세요.',
+      '두번째 밤이 찾아오면 늑대인간이 깨어납니다. 본인의 역할을 수행하고, 낮이 밝아오면 누가 늑대인간인지 토론으로 밝혀내세요.',
     maxPlayers: 10,
   },
 ]
@@ -71,8 +71,8 @@ export default function Lobby({
       </div>
 
       <div className="gs-hd">
-        <h1 className="gs-title">어떤 게임으로 시작할까요?</h1>
-        <p className="gs-sub">카드를 선택하면 바로 시작하거나, 튜토리얼 모드로 규칙부터 익힐 수 있어요.</p>
+        <h1 className="gs-title">어떤 게임을 시작할까요?</h1>
+        <p className="gs-sub">바로 시작 버튼을 눌러 해당 게임을 시작하거나, 튜토리얼 모드로 규칙부터 익힐 수 있어요.</p>
       </div>
 
       <div className="gs-cards">
