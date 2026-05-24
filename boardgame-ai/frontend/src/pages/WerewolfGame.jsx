@@ -56,7 +56,7 @@ function getTransitionType(from, to) {
 
 // wsState: /ws/tablet 상태 (gesture_confirmed 등 로비 이벤트용)
 export default function WerewolfGame({ players, onChangePlayers, onChangeGame, onRestart, wsState, isPracticeMode }) {
-  const { state: wwState, send } = useWebSocket('/ws/werewolf', {
+  const { state: wwState, send, connected } = useWebSocket('/ws/werewolf', {
     onAudioMessage: audioApi.enqueue,
   })
   // /ws/werewolf 채널로도 audio_ack가 흐르도록 등록.
@@ -355,6 +355,8 @@ export default function WerewolfGame({ players, onChangePlayers, onChangeGame, o
   return (
     <RoleRegistration
       players={players}
+      send={send}
+      connected={connected}
       onExit={onChangeGame}
       onStart={(roles) => {
         const playerOrder = players.map(p => p.player_id)
