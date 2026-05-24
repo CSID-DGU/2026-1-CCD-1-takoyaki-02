@@ -43,7 +43,7 @@ _WEREWOLF_PHASE_KO: dict[str, str] = {
     "night_seer":         "예언자",
     "night_robber":       "도둑",
     "night_troublemaker": "말썽꾼",
-    "night_drunk":        "술꾼",
+    "night_drunk":        "주정뱅이",
     "night_insomniac":    "불면증 환자",
 }
 
@@ -66,7 +66,7 @@ _WEREWOLF_PHASE_TIPS: dict[str, str] = {
         "늑대인간으로 의심되는 플레이어와 다른 플레이어의 카드를 바꿔 혼란을 주세요."
     ),
     "night_drunk": (
-        "술꾼은 센터 카드 중 하나와 자신의 카드를 교환합니다. "
+        "주정뱅이는 센터 카드 중 하나와 자신의 카드를 교환합니다. "
         "자신의 새 역할을 알 수 없으니 낮 토론에서 신중하게 행동하세요."
     ),
     "night_insomniac": (

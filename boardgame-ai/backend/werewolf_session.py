@@ -10,7 +10,7 @@ from typing import Any
 from fastapi import WebSocket
 
 from audio.manager import AudioManager
-from core.constants import MsgType
+from core.constants import CommonEventType, MsgType
 from core.envelope import WSMessage
 from core.events import FusionContext, GameEvent
 from games.werewolf.fsm import WerewolfFSM
@@ -51,6 +51,7 @@ class WerewolfSession:
         pipeline_switcher: Callable[[str | None], None] | None = None,
         audio_manager: AudioManager | None = None,
         agent_orchestrator: AgentOrchestrator | None = None,
+        seat_positions_fn: Callable[[], dict[str, tuple[float, float]]] | None = None,
     ) -> None:
         self.websocket = websocket
         self._send_fusion_context = send_fusion_context_fn
@@ -70,6 +71,7 @@ class WerewolfSession:
         self._role_reveal: dict | None = None
         # 현재 플레이어 목록 (AgentContext 빌드용)
         self._players_snapshot: list[dict] = []
+        self._seat_positions_fn = seat_positions_fn
 
     # ── 공개 인터페이스 ────────────────────────────────────────────────────────
 
@@ -110,6 +112,10 @@ class WerewolfSession:
 
         if input_type == "CARD_SETUP_DONE":
             await self._finish_card_setup()
+            return
+
+        if input_type == "CARD_SETUP_CONFIRM_READY":
+            await self._card_setup_confirm_ready()
             return
 
         if input_type == "BACK_TO_CARD_SETUP":
@@ -179,13 +185,30 @@ class WerewolfSession:
             return
         normalized_roles = [_normalize_role(r) for r in selected_roles]
         # 역할 등록 전 카드 세팅 안내를 먼저 표시. CARD_SETUP_DONE 수신 후 실제 등록 시작.
+        # 파이프라인 전환은 CARD_SETUP_DONE 이후로 미룸 — card_setup 화면에서
+        # OK 제스처를 로비 파이프라인이 감지할 수 있어야 하기 때문.
         self._pending_role_reg = {
             "selected_roles": normalized_roles,
             "player_order": player_order,
         }
+        # card_setup 화면에서 OK 제스처를 로비 파이프라인이 감지해야 함.
+        # WS 연결 시 웨어울프 파이프라인으로 전환됐으므로 로비로 되돌림.
         if self._pipeline_switcher is not None:
-            self._pipeline_switcher("werewolf")
+            self._pipeline_switcher(None)
+        # 로비 FusionEngine의 _gesture_confirmed_emitted 가드를 초기화한다.
+        # 좌석 등록 직후 OK 사인이 PLAYER_SETUP 컨텍스트에서 한 번 발화돼 가드에 남아 있으면
+        # card_setup에서 OK 제스처가 차단된다. fsm_state를 새 값으로 바꾸면 가드가 지워진다.
         self._state_version += 1
+        self._send_fusion_context(
+            FusionContext(
+                fsm_state="card_setup",
+                game_type=None,
+                active_player=None,
+                allowed_actors=[],
+                expected_events=[CommonEventType.GESTURE_CONFIRMED],
+            ),
+            self._state_version,
+        )
         await self.send(WSMessage(
             msg_type=MsgType.STATE_UPDATE.value,
             payload={"phase": "card_setup", "all_roles": normalized_roles},
@@ -254,10 +277,19 @@ class WerewolfSession:
             )
             for p in players_data
         ]
+        seat_positions = self._seat_positions_fn() if self._seat_positions_fn else {}
+        sv = lambda: self._fsm.state.state_version if self._fsm is not None else 0
+
+        async def _tts(text: str) -> None:
+            if self._audio_manager is not None:
+                await self._audio_manager.enqueue_tts(text=text, state_version=sv())
+
         self._fsm = WerewolfFSM(
             players=ws_players,
             center_cards=center_cards,
             broadcast=self._broadcast_msg,
+            seat_positions=seat_positions,
+            enqueue_tts_fn=_tts,
         )
         await self.send_many(self._fsm.start())
 
@@ -465,12 +497,42 @@ class WerewolfSession:
             "selected_roles": all_roles,
             "player_order": player_order,
         }
+        # card_setup 화면에서 OK 제스처를 감지하려면 로비 파이프라인이 활성화되어야 함
+        if self._pipeline_switcher is not None:
+            self._pipeline_switcher(None)
+        # 제스처 가드(_gesture_confirmed_emitted) 초기화를 위해 새 fsm_state 전송
         self._state_version += 1
+        self._send_fusion_context(
+            FusionContext(
+                fsm_state="card_setup",
+                game_type=None,
+                active_player=None,
+                allowed_actors=[],
+                expected_events=[CommonEventType.GESTURE_CONFIRMED],
+            ),
+            self._state_version,
+        )
         await self.send(WSMessage(
             msg_type=MsgType.STATE_UPDATE.value,
             payload={"phase": "card_setup", "all_roles": all_roles},
             state_version=self._state_version,
         ))
+
+    async def _card_setup_confirm_ready(self) -> None:
+        # confirming 단계 진입 시 gesture 가드(_gesture_confirmed_emitted)를 초기화.
+        # card_setup 문장 재생 중 OK 사인이 감지돼 가드에 남으면 confirming 단계에서 차단되므로,
+        # fsm_state를 "card_setup_confirm"으로 바꿔 FusionEngine 가드를 지운다.
+        self._state_version += 1
+        self._send_fusion_context(
+            FusionContext(
+                fsm_state="card_setup_confirm",
+                game_type=None,
+                active_player=None,
+                allowed_actors=[],
+                expected_events=[CommonEventType.GESTURE_CONFIRMED],
+            ),
+            self._state_version,
+        )
 
     async def _finish_card_setup(self) -> None:
         # 역할 등록 완료 후 게임 시작 경로 (기존 START_WEREWOLF_GAME 등)
@@ -479,9 +541,11 @@ class WerewolfSession:
             self._pending_game_data = None
             await self._start_game(data)
             return
-        # CardSetupGuide 완료 → 역할 등록 시작
+        # CardSetupGuide 완료 → 웨어울프 파이프라인으로 전환 후 역할 등록 시작
         if self._pending_role_reg is None:
             return
+        if self._pipeline_switcher is not None:
+            self._pipeline_switcher("werewolf")
         data = self._pending_role_reg
         self._pending_role_reg = None
         selected_roles = data["selected_roles"]

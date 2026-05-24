@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 
-export default function VoteCountdown({ players = [], votes = {}, onComplete, send, onExit }) {
+export default function VoteCountdown({ players = [], votes = {}, send, onExit }) {
   // votes: { player_id: target_player_id } — 지목 완료된 플레이어 매핑
   const [selectedVoter, setSelectedVoter] = useState(null)
 
@@ -9,10 +9,6 @@ export default function VoteCountdown({ players = [], votes = {}, onComplete, se
   const allDone = total > 0 && doneCount >= total
 
   // 투표 안내 TTS는 ProgressAgent가 담당 — 프론트에서 중복 제거
-
-  useEffect(() => {
-    if (allDone) onComplete?.()
-  }, [allDone])
 
   const handleCardClick = (playerId) => {
     if (!send) return
