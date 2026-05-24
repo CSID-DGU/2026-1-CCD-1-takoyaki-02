@@ -23,7 +23,7 @@ const GAME_META = {
   },
   werewolf_practice: {
     title: '한밤의 늑대인간',
-    tagline: '연습 모드',
+    tagline: '튜토리얼 모드',
     accent: 'var(--werewolf)',
     art: 'wolf',
   },
