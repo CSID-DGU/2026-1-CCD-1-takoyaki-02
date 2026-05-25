@@ -23,156 +23,181 @@ const DISPLAY_CATEGORIES = CATEGORY_LABELS.filter(([key]) => key !== 'bonus').ma
 
 const s = {
   page: {
-    minHeight: '100vh',
-    background: '#f6f7f4',
-    color: '#171917',
-    fontFamily: '"Segoe UI", Arial, sans-serif',
-    padding: 28,
+    position: 'absolute',
+    inset: 0,
+    background: 'var(--bg-app)',
+    color: 'var(--fg)',
+    fontFamily: 'var(--font)',
+    padding: '56px 0 0',
     boxSizing: 'border-box',
+    overflow: 'hidden',
   },
   shell: {
-    width: 'min(1120px, calc(100vw - 48px))',
-    minHeight: 600,
-    margin: '0 auto',
-    background: 'rgba(255,255,255,0.96)',
-    border: '1px solid #dfe3dc',
-    borderRadius: 10,
-    boxShadow: '0 18px 42px rgba(31,35,29,0.08)',
+    width: '100vw',
+    height: 'calc(100vh - 56px)',
+    margin: 0,
+    background: 'var(--bg-surface)',
+    border: '1px solid var(--border-soft)',
+    borderRadius: 0,
+    boxShadow: 'none',
     display: 'grid',
     gridTemplateColumns: '1.05fr 0.95fr',
+    gridTemplateRows: '1fr',
     overflow: 'hidden',
   },
   header: {
     gridColumn: '1 / -1',
-    height: 72,
+    height: 64,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
     padding: '0 28px',
     boxSizing: 'border-box',
-    borderBottom: '1px solid #edf0ea',
+    borderBottom: '1px solid var(--border-soft)',
   },
-  title: { fontSize: 22, fontWeight: 750, letterSpacing: 0 },
+  title: { fontSize: 28, fontWeight: 800, letterSpacing: '-0.02em', color: 'var(--fg)' },
   headerActions: { display: 'flex', gap: 12 },
   button: {
-    border: '1px solid #d6dbd3',
-    borderRadius: 8,
-    background: '#f7f8f5',
-    color: '#1c211a',
+    border: '1px solid var(--border)',
+    borderRadius: 'var(--radius)',
+    background: 'var(--bg-elev)',
+    color: 'var(--fg)',
     padding: '9px 16px',
-    fontSize: 16,
-    fontWeight: 700,
+    fontSize: 15,
+    fontWeight: 600,
     cursor: 'pointer',
+    letterSpacing: '-0.01em',
   },
   buttonDisabled: {
     opacity: 0.45,
     cursor: 'not-allowed',
   },
   buttonSmall: {
-    border: '1px solid #d6dbd3',
-    borderRadius: 8,
-    background: '#f7f8f5',
-    color: '#1c211a',
-    padding: '9px 14px',
+    border: '1px solid var(--border)',
+    borderRadius: 'var(--radius)',
+    background: 'var(--bg-elev)',
+    color: 'var(--fg)',
+    padding: '10px 16px',
     fontSize: 15,
-    fontWeight: 700,
+    fontWeight: 600,
     cursor: 'pointer',
   },
   primaryButton: {
-    background: '#1f7a4f',
-    borderColor: '#1f7a4f',
-    color: '#fff',
-    boxShadow: '0 8px 18px rgba(31,122,79,0.18)',
+    background: 'var(--yacht)',
+    borderColor: 'transparent',
+    color: '#17110c',
+    boxShadow: '0 1px 0 rgba(255,255,255,0.25) inset',
   },
-  main: { padding: '28px', boxSizing: 'border-box' },
+  main: { padding: '36px 42px', boxSizing: 'border-box' },
   phaseText: {
-    color: '#8b9288',
-    width: 'min(1120px, calc(100vw - 48px))',
-    margin: '0 auto 10px',
-    fontSize: 12,
-    fontWeight: 800,
-    letterSpacing: 1,
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 56,
+    padding: '0 22px',
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    color: 'var(--fg-mute)',
+    fontSize: 14,
+    fontWeight: 600,
+    letterSpacing: 0,
+    background: 'linear-gradient(180deg, color-mix(in oklch, var(--bg-app) 85%, transparent), transparent)',
+    zIndex: 5,
   },
-  turnRow: { display: 'flex', alignItems: 'center', gap: 16, marginBottom: 38 },
+  phaseTitle: {
+    color: 'var(--fg)',
+    fontWeight: 800,
+    fontSize: 20,
+    letterSpacing: '-0.02em',
+  },
+  phaseActions: {
+    marginLeft: 'auto',
+    display: 'flex',
+    alignItems: 'center',
+    gap: 10,
+  },
+  turnRow: { display: 'flex', alignItems: 'center', gap: 20, marginBottom: 46 },
   turnBadge: {
-    background: '#ecf4ed',
-    color: '#1f6f49',
-    border: '1px solid #d5e7d8',
+    background: 'color-mix(in oklch, var(--yacht) 18%, var(--bg-elev))',
+    color: 'color-mix(in oklch, var(--yacht) 80%, var(--fg))',
+    border: '1px solid color-mix(in oklch, var(--yacht) 35%, transparent)',
     borderRadius: 999,
     padding: '10px 18px',
-    fontSize: 17,
+    fontSize: 24,
     fontWeight: 800,
   },
-  roundText: { fontSize: 16, fontWeight: 750, color: '#555d52' },
-  clips: { display: 'flex', gap: 8, alignItems: 'center', marginBottom: 18, color: '#626a5f', fontWeight: 700 },
+  roundText: { fontSize: 21, fontWeight: 750, color: 'var(--fg-soft)' },
+  clips: { display: 'flex', gap: 12, alignItems: 'center', marginBottom: 24, color: 'var(--fg-mute)', fontWeight: 750, fontSize: 19 },
   clip: active => ({
-    width: 14,
-    height: 14,
+    width: 18,
+    height: 18,
     borderRadius: '50%',
-    background: active ? '#1f7a4f' : '#dce1d9',
-    boxShadow: active ? '0 0 0 4px rgba(31,122,79,0.12)' : 'none',
+    background: active ? 'var(--yacht)' : 'var(--bg-elev)',
+    boxShadow: active ? '0 0 0 4px color-mix(in oklch, var(--yacht) 20%, transparent)' : 'none',
   }),
   diceTray: {
-    width: 365,
-    minHeight: 118,
-    background: '#f0f2ee',
-    border: '1px solid #dfe3dc',
-    borderRadius: 10,
+    width: 'min(520px, 100%)',
+    minHeight: 150,
+    background: 'var(--bg-elev)',
+    border: '1px solid var(--border)',
+    borderRadius: 'var(--radius-lg)',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 14,
-    marginBottom: 18,
+    gap: 18,
+    marginBottom: 24,
   },
   die: (kept, interactive = false) => ({
-    width: 50,
-    height: 50,
-    border: kept ? '1px solid #1f7a4f' : '1px solid #d0d5cd',
-    borderRadius: 8,
-    background: kept ? '#1f7a4f' : '#fff',
-    color: kept ? '#fff' : '#1b1f19',
-    fontSize: 21,
+    width: 68,
+    height: 68,
+    border: kept ? '1px solid var(--yacht)' : '1px solid var(--border)',
+    borderRadius: 'var(--radius)',
+    background: kept ? 'var(--yacht)' : 'var(--bg-surface)',
+    color: kept ? '#17110c' : 'var(--fg)',
+    fontSize: 28,
     fontWeight: 800,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
     cursor: interactive ? 'pointer' : 'default',
-    boxShadow: kept ? '0 8px 16px rgba(31,122,79,0.16)' : '0 4px 10px rgba(31,35,29,0.05)',
+    boxShadow: kept ? '0 8px 18px color-mix(in oklch, var(--yacht) 25%, transparent)' : 'var(--shadow-sm)',
   }),
-  actionRow: { display: 'flex', gap: 10, flexWrap: 'wrap' },
+  actionRow: { display: 'flex', gap: 12, flexWrap: 'wrap' },
   rollMessage: {
-    marginTop: 42,
-    maxWidth: 430,
-    padding: '14px 16px',
-    border: '1px solid #dfe8db',
-    borderRadius: 10,
-    background: '#f7faf5',
-    color: '#364034',
-    fontSize: 16,
+    marginTop: 52,
+    maxWidth: 560,
+    padding: '18px 20px',
+    border: '1px solid var(--border-soft)',
+    borderRadius: 'var(--radius)',
+    background: 'var(--bg-elev)',
+    color: 'var(--fg-soft)',
+    fontSize: 20,
     fontWeight: 650,
     lineHeight: 1.45,
   },
   tutorialBubble: {
-    maxWidth: 430,
-    marginBottom: 22,
-    padding: '14px 16px',
-    border: '1px solid #d5e7d8',
-    borderRadius: 10,
-    background: '#ecf4ed',
-    color: '#1d4933',
-    fontSize: 15,
+    maxWidth: 590,
+    marginBottom: 24,
+    padding: '17px 20px',
+    border: '1px solid color-mix(in oklch, var(--yacht) 35%, transparent)',
+    borderRadius: 'var(--radius)',
+    background: 'color-mix(in oklch, var(--yacht) 12%, var(--bg-elev))',
+    color: 'var(--fg)',
+    fontSize: 19,
     fontWeight: 750,
-    lineHeight: 1.45,
-    boxShadow: '0 8px 18px rgba(31,122,79,0.08)',
+    lineHeight: 1.42,
+    boxShadow: 'var(--shadow-sm)',
   },
   introShell: {
-    width: 'min(760px, calc(100vw - 48px))',
-    minHeight: 520,
+    width: 'min(900px, calc(100vw - 48px))',
+    minHeight: 'calc(100vh - 104px)',
     margin: '0 auto',
-    background: '#fff',
-    border: '1px solid #dfe3dc',
-    borderRadius: 10,
-    boxShadow: '0 18px 42px rgba(31,35,29,0.08)',
+    background: 'var(--bg-surface)',
+    border: '1px solid var(--border-soft)',
+    borderRadius: 'var(--radius-xl)',
+    boxShadow: 'var(--shadow-lg)',
     padding: 42,
     boxSizing: 'border-box',
     display: 'flex',
@@ -180,7 +205,7 @@ const s = {
     justifyContent: 'center',
   },
   introKicker: {
-    color: '#1f7a4f',
+    color: 'var(--yacht)',
     fontSize: 14,
     fontWeight: 850,
     marginBottom: 12,
@@ -189,10 +214,10 @@ const s = {
     fontSize: 34,
     fontWeight: 850,
     marginBottom: 22,
-    color: '#171917',
+    color: 'var(--fg)',
   },
   introText: {
-    color: '#40483d',
+    color: 'var(--fg-soft)',
     fontSize: 18,
     fontWeight: 650,
     lineHeight: 1.65,
@@ -204,13 +229,13 @@ const s = {
     margin: '0 0 30px',
     padding: 0,
     listStyle: 'none',
-    color: '#4f594b',
+    color: 'var(--fg-soft)',
     fontSize: 16,
     fontWeight: 700,
     lineHeight: 1.45,
   },
   scoreWrap: {
-    padding: '28px 28px 28px 0',
+    padding: '36px 42px 36px 0',
     boxSizing: 'border-box',
   },
   scoreHeader: {
@@ -224,13 +249,13 @@ const s = {
     width: 24,
     height: 24,
     borderRadius: '50%',
-    border: '1px solid #cfd6cc',
-    background: '#fff',
-    color: '#394237',
+    border: '1px solid var(--border)',
+    background: 'var(--bg-elev)',
+    color: 'var(--fg-soft)',
     fontSize: 14,
     fontWeight: 800,
     cursor: 'help',
-    boxShadow: '0 3px 8px rgba(31,35,29,0.06)',
+    boxShadow: 'var(--shadow-sm)',
     padding: 0,
     flexShrink: 0,
   },
@@ -241,11 +266,11 @@ const s = {
     width: 400,
     zIndex: 20,
     padding: '16px 18px',
-    border: '1px solid #d8ded5',
-    borderRadius: 10,
-    background: '#fff',
-    boxShadow: '0 18px 42px rgba(31,35,29,0.16)',
-    color: '#273024',
+    border: '1px solid var(--border)',
+    borderRadius: 'var(--radius)',
+    background: 'var(--bg-elev)',
+    boxShadow: 'var(--shadow-lg)',
+    color: 'var(--fg-soft)',
   },
   helpList: {
     display: 'grid',
@@ -260,25 +285,25 @@ const s = {
     display: 'inline-block',
     minWidth: 104,
     fontWeight: 800,
-    color: '#1f6f49',
+    color: 'var(--yacht)',
   },
   scoreboard: {
     borderCollapse: 'separate',
     borderSpacing: 0,
     width: '100%',
-    fontSize: 15,
+    fontSize: 18,
     overflow: 'hidden',
-    border: '1px solid #e2e6df',
-    borderRadius: 10,
+    border: '1px solid var(--border)',
+    borderRadius: 'var(--radius)',
   },
-  th: { background: '#f4f6f1', textAlign: 'left', padding: '12px 14px', fontWeight: 800, color: '#343a31' },
-  tdName: { padding: '10px 14px', borderBottom: '1px solid #edf0ea', fontWeight: 700 },
-  tdScore: { padding: '10px 14px', borderBottom: '1px solid #edf0ea', textAlign: 'right', fontVariantNumeric: 'tabular-nums' },
+  th: { background: 'var(--bg-elev)', textAlign: 'left', padding: '15px 18px', fontWeight: 800, color: 'var(--fg)', fontSize: 19 },
+  tdName: { padding: '13px 18px', borderBottom: '1px solid var(--border-soft)', fontWeight: 700 },
+  tdScore: { padding: '13px 18px', borderBottom: '1px solid var(--border-soft)', textAlign: 'right', fontVariantNumeric: 'tabular-nums' },
   scoreRow: clickable => ({
-    background: clickable ? '#dff0ff' : '#fff',
+    background: clickable ? 'color-mix(in oklch, var(--info) 16%, var(--bg-surface))' : 'var(--bg-surface)',
     cursor: clickable ? 'pointer' : 'default',
   }),
-  bonusRow: { background: '#f3f8ef', color: '#4d7538', fontWeight: 800 },
+  bonusRow: { background: 'color-mix(in oklch, var(--yacht) 10%, var(--bg-surface))', color: 'color-mix(in oklch, var(--yacht) 75%, var(--fg))', fontWeight: 800 },
   bonusCell: {
     display: 'flex',
     justifyContent: 'flex-end',
@@ -291,8 +316,8 @@ const s = {
     height: 22,
     padding: '0 8px',
     borderRadius: 999,
-    background: earned ? '#1f7a4f' : '#e5eae2',
-    color: earned ? '#fff' : '#6a7167',
+    background: earned ? 'var(--yacht)' : 'var(--bg-elev)',
+    color: earned ? '#17110c' : 'var(--fg-mute)',
     fontSize: 12,
     fontWeight: 850,
   }),
@@ -300,49 +325,50 @@ const s = {
   modalShade: {
     position: 'fixed',
     inset: 0,
-    background: 'rgba(22,27,20,0.18)',
+    background: 'color-mix(in oklch, var(--bg-deep) 70%, transparent)',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
     backdropFilter: 'blur(2px)',
   },
   leaderboard: {
-    width: 'min(1280px, calc(100vw - 40px))',
-    background: '#fff',
-    border: '1px solid #dfe3dc',
-    borderRadius: 10,
+    width: 'calc(100vw - 24px)',
+    maxHeight: 'calc(100vh - 24px)',
+    background: 'var(--bg-surface)',
+    border: '1px solid var(--border-soft)',
+    borderRadius: 'var(--radius-xl)',
     overflow: 'hidden',
-    boxShadow: '0 20px 60px rgba(31,35,29,0.16)',
+    boxShadow: 'var(--shadow-lg)',
   },
   leaderboardHeader: {
     height: 68,
-    background: '#f4f6f1',
+    background: 'var(--bg-elev)',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
     fontSize: 20,
     fontWeight: 800,
     position: 'relative',
-    borderBottom: '1px solid #e2e6df',
+    borderBottom: '1px solid var(--border)',
   },
   close: {
     position: 'absolute',
     right: 22,
     top: 15,
-    color: '#6e766a',
+    color: 'var(--fg-mute)',
     fontSize: 24,
     border: 0,
     background: 'transparent',
     cursor: 'pointer',
   },
   endShell: {
-    width: 'min(920px, calc(100vw - 48px))',
-    minHeight: 560,
-    margin: '0 auto',
-    background: '#fff',
-    border: '1px solid #dfe3dc',
-    borderRadius: 10,
-    boxShadow: '0 18px 42px rgba(31,35,29,0.08)',
+    width: '100vw',
+    minHeight: 'calc(100vh - 56px)',
+    margin: 0,
+    background: 'var(--bg-surface)',
+    border: '1px solid var(--border-soft)',
+    borderRadius: 0,
+    boxShadow: 'none',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
@@ -353,9 +379,9 @@ const s = {
   rankRow: {
     display: 'flex',
     justifyContent: 'space-between',
-    background: '#f4f6f1',
-    border: '1px solid #e2e6df',
-    borderRadius: 8,
+    background: 'var(--bg-elev)',
+    border: '1px solid var(--border)',
+    borderRadius: 'var(--radius)',
     padding: '15px 22px',
     marginBottom: 14,
     fontSize: 22,
@@ -363,7 +389,7 @@ const s = {
   endActions: { display: 'flex', gap: 16, justifyContent: 'center', marginTop: 26 },
   endText: {
     textAlign: 'center',
-    color: '#5e665b',
+    color: 'var(--fg-soft)',
     fontSize: 17,
     lineHeight: 1.5,
     marginBottom: 28,
@@ -552,15 +578,15 @@ export default function YachtGame({ players, tutorialMode = false, onExit, onCha
     <div style={s.page}>
       <style>{`
         @keyframes yachtTurnPulse {
-          0% { transform: scale(0.98); box-shadow: 0 0 0 0 rgba(31, 122, 79, 0.28); }
-          45% { transform: scale(1.03); box-shadow: 0 0 0 8px rgba(31, 122, 79, 0.16); }
-          100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(31, 122, 79, 0); }
+          0% { transform: scale(0.98); box-shadow: 0 0 0 0 color-mix(in oklch, var(--yacht) 32%, transparent); }
+          45% { transform: scale(1.03); box-shadow: 0 0 0 8px color-mix(in oklch, var(--yacht) 18%, transparent); }
+          100% { transform: scale(1); box-shadow: 0 0 0 0 transparent; }
         }
 
         @keyframes yachtScoreFlash {
-          0% { background: #dff8e6; }
-          55% { background: #c8efd4; }
-          100% { background: #fff; }
+          0% { background: color-mix(in oklch, var(--yacht) 30%, var(--bg-surface)); }
+          55% { background: color-mix(in oklch, var(--yacht) 20%, var(--bg-surface)); }
+          100% { background: var(--bg-surface); }
         }
 
         .yacht-turn-pulse {
@@ -573,23 +599,19 @@ export default function YachtGame({ players, tutorialMode = false, onExit, onCha
 
       `}</style>
       <div style={s.phaseText}>
-        {state.phase}
+        <span style={s.phaseTitle}>요트다이스</span>
+        <span style={s.phaseActions}>
+          <button
+            style={{ ...s.buttonSmall, ...(canUndo ? {} : s.buttonDisabled) }}
+            onClick={() => send('UNDO_ROUND')}
+            disabled={!canUndo}
+          >
+            되돌리기
+          </button>
+          <button style={s.buttonSmall} onClick={onExit}>나가기</button>
+        </span>
       </div>
       <div style={s.shell}>
-        <header style={s.header}>
-          <div style={s.title}>요트다이스</div>
-          <div style={s.headerActions}>
-            <button
-              style={{ ...s.button, ...(canUndo ? {} : s.buttonDisabled) }}
-              onClick={() => send('UNDO_ROUND')}
-              disabled={!canUndo}
-            >
-              되돌리기
-            </button>
-            <button style={s.button} onClick={onExit}>나가기</button>
-          </div>
-        </header>
-
         <main style={s.main}>
           {tutorialText && <div style={s.tutorialBubble}>{tutorialText}</div>}
 
@@ -766,8 +788,8 @@ function ScoreTable({ state, currentOnly = false, compact = false, recentScore, 
               style={s.scoreRow(canScore)}
               onClick={canScore ? () => onScore(key) : undefined}
             >
-              <td style={{ ...s.tdName, color: !hasScore && !available ? '#aaa' : '#111' }}>{label}</td>
-              <td style={{ ...s.tdScore, color: hasScore ? '#111' : '#999' }}>
+              <td style={{ ...s.tdName, color: !hasScore && !available ? 'var(--fg-faint)' : 'var(--fg)' }}>{label}</td>
+              <td style={{ ...s.tdScore, color: hasScore ? 'var(--fg)' : 'var(--fg-mute)' }}>
                 {displayScore}
               </td>
             </tr>
