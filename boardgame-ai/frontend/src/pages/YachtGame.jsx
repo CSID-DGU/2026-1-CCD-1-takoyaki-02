@@ -20,6 +20,8 @@ const CATEGORY_LABELS = [
 
 const UPPER = ['ones', 'twos', 'threes', 'fours', 'fives', 'sixes']
 const DISPLAY_CATEGORIES = CATEGORY_LABELS.filter(([key]) => key !== 'bonus').map(([key]) => key)
+const TUTORIAL_INTRO_TEXT =
+  '요트다이스는 플레이어가 순서대로 주사위 5개를 굴리고, 나온 눈 조합을 가장 유리한 점수 칸에 기록해 총점을 겨루는 게임입니다. 한 턴에는 최대 세 번까지 굴릴 수 있고, 마음에 드는 주사위는 킵한 뒤 나머지만 다시 굴릴 수 있습니다.'
 
 const s = {
   page: {
@@ -407,8 +409,17 @@ export default function YachtGame({ players, tutorialMode = false, onExit, onCha
   const [turnPulseKey, setTurnPulseKey] = useState(0)
   const [recentScore, setRecentScore] = useState(null)
   const startedRef = useRef(false)
+  const introTtsPlayedRef = useRef(false)
   const previousTurnRef = useRef(null)
   const previousScoresRef = useRef(new Map())
+
+  useEffect(() => {
+    if (!connected) return
+    if (!tutorialMode || tutorialIntroSeen) return
+    if (introTtsPlayedRef.current) return
+    introTtsPlayedRef.current = true
+    send('TTS_REQUEST', { text: TUTORIAL_INTRO_TEXT })
+  }, [connected, send, tutorialIntroSeen, tutorialMode])
 
   useEffect(() => {
     if (!connected) return
@@ -476,9 +487,17 @@ export default function YachtGame({ players, tutorialMode = false, onExit, onCha
     ['AWAITING_ROLL', 'AWAITING_KEEP'].includes(state?.phase) &&
     Number(state?.remaining_rolls || 0) > 0
   const tutorialText = isTutorial ? getTutorialText(state, currentPlayer) : null
+  const visibleStatusMessage =
+    isTutorial && ['AWAITING_ROLL', 'AWAITING_KEEP'].includes(state?.phase)
+      ? null
+      : statusMessage
 
   const startFullGame = () => {
     send('START_YACHT', { players: normalizePlayers(players), tutorial_mode: false })
+  }
+
+  const startTutorial = () => {
+    setTutorialIntroSeen(true)
   }
 
   if (tutorialMode && !tutorialIntroSeen) {
@@ -487,12 +506,7 @@ export default function YachtGame({ players, tutorialMode = false, onExit, onCha
         <div style={s.introShell}>
           <div style={s.introKicker}>튜토리얼 모드</div>
           <div style={s.introTitle}>요트다이스 한 라운드 체험</div>
-          <div style={s.introText}>
-            요트다이스는 플레이어가 순서대로 주사위 5개를 굴리고,
-            나온 눈 조합을 가장 유리한 점수 칸에 기록해 총점을 겨루는 게임입니다.
-            한 턴에는 최대 세 번까지 굴릴 수 있고, 마음에 드는 주사위는 킵한 뒤
-            나머지만 다시 굴릴 수 있습니다.
-          </div>
+          <div style={s.introText}>{TUTORIAL_INTRO_TEXT}</div>
           <ul style={s.introList}>
             <li>이 튜토리얼에서는 각 플레이어가 한 번씩 턴을 진행합니다.</li>
             <li>실제 주사위를 굴리면 카메라가 결과를 인식합니다.</li>
@@ -506,7 +520,7 @@ export default function YachtGame({ players, tutorialMode = false, onExit, onCha
                 ...(!connected ? s.buttonDisabled : {}),
               }}
               disabled={!connected}
-              onClick={() => setTutorialIntroSeen(true)}
+              onClick={startTutorial}
             >
               튜토리얼 시작
             </button>
@@ -648,7 +662,7 @@ export default function YachtGame({ players, tutorialMode = false, onExit, onCha
             )}
           </div>
 
-          <div style={s.rollMessage}>{statusMessage}</div>
+          {visibleStatusMessage && <div style={s.rollMessage}>{visibleStatusMessage}</div>}
         </main>
 
         <aside style={s.scoreWrap}>

@@ -15,7 +15,7 @@ from bridge.local_bridge import LocalBridge
 from core.constants import MsgType
 from core.envelope import WSMessage
 from core.events import FusionContext, GameEvent
-from games.yacht import YachtEventType, YachtFSM, YachtGameState, YachtInputType
+from games.yacht import YachtEventType, YachtFSM, YachtGameState, YachtInputType, YachtPhase
 
 from agents.context import AgentContext
 from agents.orchestrator import AgentOrchestrator
@@ -29,6 +29,12 @@ _AUDIO_MSG_TYPES = {
     MsgType.BGM_DUCK.value,
 }
 
+_TUTORIAL_KEEP_GUIDE = (
+    "원하는 주사위를 킵할 수 있습니다. 킵한 주사위는 다음 굴림에서 유지되며, "
+    "한 번 킵한 주사위를 다시 굴릴 수도 있습니다. 주사위는 세 번까지 굴릴 수 있으며, "
+    "그 전에 점수 칸을 선택해 턴을 끝낼 수도 있습니다. "
+    "점수판 오른쪽 위 물음표 버튼에서 족보 설명을 볼 수 있습니다."
+)
 
 class YachtSession:
     def __init__(
@@ -65,6 +71,7 @@ class YachtSession:
             await self._agent.on_game_event(event)
         with self._fsm_lock:
             messages = self.fsm.handle_event(event)
+            self._apply_tutorial_message_override(messages)
         await self.send_many(messages)
 
     async def handle_client_message(self, data: dict[str, Any]) -> None:
@@ -83,6 +90,13 @@ class YachtSession:
         if input_type == "SET_STRATEGY_COACHING":
             if self._agent is not None:
                 self._agent.set_strategy_enabled(bool(payload.get("enabled", False)))
+            return
+
+        if input_type == "TTS_REQUEST":
+            text = str(payload.get("text") or "").strip()
+            if text and self._audio_manager is not None:
+                state_version = self.fsm.state.state_version if self.fsm is not None else 0
+                await self._audio_manager.enqueue_tts(text=text, state_version=state_version)
             return
 
         # frontend bench hook → backend bench_log로 통합.
@@ -129,6 +143,7 @@ class YachtSession:
                         bench_log().info("roll_confirmed -")
                     except Exception:
                         pass
+                self._apply_tutorial_message_override(messages)
             await self.send_many(messages)
             return
 
@@ -152,6 +167,7 @@ class YachtSession:
         }:
             with self._fsm_lock:
                 messages = self.fsm.handle_input(input_type, payload, player_id)
+                self._apply_tutorial_message_override(messages)
             await self.send_many(messages)
             return
 
@@ -162,6 +178,7 @@ class YachtSession:
                 if self._score_was_recorded(previous_state, payload.get("category")):
                     self.undo_stack = []
                     self._finish_tutorial_if_complete(messages)
+                self._apply_tutorial_message_override(messages)
             await self.send_many(messages)
             return
 
@@ -208,7 +225,26 @@ class YachtSession:
             self.undo_stack = []
             self.fsm = YachtFSM(players)
             messages = self.fsm.start()
+            self._apply_tutorial_message_override(messages)
         await self.send_many(messages)
+
+    def _apply_tutorial_message_override(self, messages: list[WSMessage]) -> None:
+        if self.fsm is None or not self.tutorial_mode or self.tutorial_complete:
+            return
+        if self.fsm.state.phase == YachtPhase.AWAITING_ROLL.value:
+            self.fsm.state.last_message = (
+                f"{self.fsm.state.current_player.playername}님 차례입니다. "
+                "주사위 5개를 굴리면 카메라가 결과를 인식합니다."
+            )
+        elif self.fsm.state.phase == YachtPhase.AWAITING_KEEP.value:
+            self.fsm.state.last_message = _TUTORIAL_KEEP_GUIDE
+        else:
+            return
+
+        for message in messages:
+            if message.msg_type == MsgType.STATE_UPDATE.value:
+                message.payload = self.fsm.state.to_dict()
+                message.state_version = self.fsm.state.state_version
 
     def _roll_was_recorded(self, previous_state: YachtGameState) -> bool:
         if self.fsm is None:
