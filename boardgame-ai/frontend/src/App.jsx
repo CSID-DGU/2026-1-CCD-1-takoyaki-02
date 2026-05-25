@@ -1,9 +1,11 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import { useWebSocket } from './hooks/useWebSocket'
 import { useAudioPlayer, audio as audioApi } from './hooks/useAudioPlayer'
 import { useBenchBridge } from './hooks/useBenchBridge'
 import SeatRegistration from './components/common/SeatRegistration'
 import { colorForIndex } from './components/common/seatColors'
+import { orderForTurn, physicalSeatOrder } from './components/common/turnOrder'
 import Lobby from './pages/Lobby'
 import Countdown from './pages/Countdown'
 import WerewolfGame from './pages/WerewolfGame'
@@ -16,18 +18,6 @@ const WEREWOLF_PHASES = new Set([
   'night_drunk', 'night_insomniac',
   'day_discussion', 'vote_countdown', 'vote', 'result',
 ])
-
-/** firstPlayerId / direction에 맞게 좌석 순서로 재정렬 */
-function orderForTurn(players, firstPlayerId, direction) {
-  if (players.length === 0) return []
-  const byPos = [...players].sort((a, b) => (a.position ?? 0) - (b.position ?? 0))
-  const startIdx = Math.max(0, byPos.findIndex((p) => p.player_id === firstPlayerId))
-  const walked = [...byPos.slice(startIdx), ...byPos.slice(0, startIdx)]
-  if (direction === 'ccw') {
-    return [walked[0], ...walked.slice(1).reverse()]
-  }
-  return walked
-}
 
 export default function App() {
   const [page, setPage] = useState('seat')
@@ -66,9 +56,7 @@ export default function App() {
       return
     }
     if (!registeredPlayers.find((p) => p.player_id === firstPlayerId)) {
-      const byPos = [...registeredPlayers].sort(
-        (a, b) => (a.position ?? 0) - (b.position ?? 0),
-      )
+      const byPos = physicalSeatOrder(registeredPlayers, 'player_id')
       setFirstPlayerId(byPos[0].player_id)
     }
   }, [registeredPlayers, firstPlayerId])
@@ -88,13 +76,30 @@ export default function App() {
     }
   }, [phase, page])
 
+  // 좌석 등록 / 로비 화면에서 로비 BGM 재생. 게임 페이지로 나가면 backend가 stopBgm.
+  // - 좌석 ↔ 로비 사이 내부 전환은 끊김 없이 유지 (재트리거 안 함).
+  // - 게임/카운트다운에서 lobby-area로 복귀했을 때만 stopBgm → 0.5s 후 로비 BGM 시작.
+  const prevLobbyAreaRef = useRef(false)
+  useEffect(() => {
+    const isLobbyArea = page === 'lobby' || page === 'seat'
+    const wasLobbyArea = prevLobbyAreaRef.current
+    prevLobbyAreaRef.current = isLobbyArea
+    if (!isLobbyArea) return
+    if (wasLobbyArea) return  // 좌석 ↔ 로비 내부 전환은 그대로 두기
+    audioApi.stopBgm()
+    const timer = setTimeout(() => {
+      audioApi.playBgm('/bgm/lobby_loop.mp3', { loop: true, gain_db: -14 })
+    }, 500)
+    return () => clearTimeout(timer)
+  }, [page])
+
   // 좌석 등록 페이지에서 사용할 콜백
   const goLobby = () => setPage('lobby')
 
   // Lobby에서 게임 카드 선택 → 카운트다운 진입
   const handleSelectGame = (gameId, mode) => {
     // 진행 순서 픽스
-    const ordered = orderForTurn(registeredPlayers, firstPlayerId, direction)
+    const ordered = orderForTurn(registeredPlayers, firstPlayerId, direction, 'player_id')
     if (ordered.length === 0) return
 
     // UI용 플레이어 목록 (Countdown 화면 + 게임 페이지로 전달)
@@ -138,8 +143,9 @@ export default function App() {
     setPage('lobby')
   }
 
+  let pageEl = null
   if (page === 'seat') {
-    return (
+    pageEl = (
       <SeatRegistration
         players={players}
         registeringId={registeringId}
@@ -153,10 +159,8 @@ export default function App() {
         onStart={goLobby}
       />
     )
-  }
-
-  if (page === 'lobby') {
-    return (
+  } else if (page === 'lobby') {
+    pageEl = (
       <Lobby
         players={players}
         connected={connected}
@@ -164,10 +168,8 @@ export default function App() {
         onSelectGame={handleSelectGame}
       />
     )
-  }
-
-  if (page === 'countdown' && pendingGame && orderedPlayersAtStart) {
-    return (
+  } else if (page === 'countdown' && pendingGame && orderedPlayersAtStart) {
+    pageEl = (
       <Countdown
         players={orderedPlayersAtStart}
         gameId={pendingGame.gameType}
@@ -176,11 +178,9 @@ export default function App() {
         onReady={handleCountdownReady}
       />
     )
-  }
-
-  if (page === 'yacht') {
+  } else if (page === 'yacht') {
     const playersForGame = orderedPlayersAtStart ?? registeredPlayers
-    return (
+    pageEl = (
       <YachtGame
         players={playersForGame}
         tutorialMode={yachtTutorialMode}
@@ -188,11 +188,9 @@ export default function App() {
         onChangePlayers={() => { setOrderedPlayersAtStart(null); setPage('seat') }}
       />
     )
-  }
-
-  if (page === 'werewolf') {
+  } else if (page === 'werewolf') {
     const playersForGame = orderedPlayersAtStart ?? registeredPlayers
-    return (
+    pageEl = (
       <WerewolfGame
         key={gameKey}
         players={playersForGame}
@@ -206,5 +204,37 @@ export default function App() {
     )
   }
 
-  return null
+  return (
+    <>
+      {pageEl}
+      <OrientationLock />
+    </>
+  )
+}
+
+function OrientationLock() {
+  const host = typeof document !== 'undefined'
+    ? document.getElementById('orient-lock-root')
+    : null
+  if (!host) return null
+  return createPortal(
+    <div className="orient-lock" role="alert" aria-live="polite">
+      <div className="orient-lock-card">
+        <div className="orient-lock-icon" aria-hidden>
+          <svg width="64" height="64" viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="6" y="2.5" width="12" height="19" rx="2" />
+            <path d="M11 18.5h2" />
+          </svg>
+        </div>
+        <div>
+          <div className="orient-lock-title">가로로 돌려주세요</div>
+          <div className="orient-lock-sub">
+            이 앱은 태블릿을 가로 방향에 두고 사용하도록 설계되었습니다.
+          </div>
+        </div>
+      </div>
+    </div>,
+    host,
+  )
 }

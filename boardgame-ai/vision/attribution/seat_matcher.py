@@ -4,13 +4,19 @@
 등록된 플레이어 SeatZone과 비교해 player_id를 결정한다.
 
 신호 (가중합, 낮을수록 좋음):
-  1. arm_angle 차이 (0~π)             — 1차, 가장 강함
-  2. entry wrist 위치 거리             — 2차, 손이 가운데 모이기 전 분리
-  3. 손 → 외삽 body_xy ↔ 등록 body_xy 거리 — 3차, 같은 사람 두 손 검증
+  1. arm_angle 차이 (0~π)             — 팔 방향
+  2. entry wrist 위치 거리             — 손 진입 위치
+  3. 손 → 외삽 body_xy ↔ 등록 body_xy 거리 — 옆자리 구분 핵심
+
+가중치는 4:2:4. body 거리 가중을 키워 옆자리 변별력을 보강하고,
+entry 가중은 옆자리에선 변별력이 낮으므로 줄였다.
 
 handedness가 일치하는 ArmAnchor만 비교. 매칭 결과 None 금지 — 후보 풀이
 비지 않으면 항상 best player_id 반환. 양손 모두 다른 활성 트랙에 잡힌
 플레이어는 후보에서 제외.
+
+best vs 2nd-best 점수 차(margin)도 함께 반환한다. 호출자는 margin이
+MARGIN_THRESHOLD 미만이면 "모호함"으로 판단해 Hold 후 재시도할 수 있다.
 """
 
 from __future__ import annotations
@@ -20,10 +26,14 @@ import math
 from core.models import Player
 from vision.geometry.arm_vector import angular_diff, extrapolate_body_from_hand
 
-# 가중치
-_W_ANGLE = 0.5  # arm_angle 차이 (정규화 0~1, π 나눔)
-_W_ENTRY = 0.3  # entry wrist 위치 거리 (정규화)
-_W_BODY = 0.2  # body_xy 외삽 거리 (정규화)
+# 가중치 (4:2:4) — body_xy 외삽 거리 가중을 키워 옆자리 변별력 보강.
+_W_ANGLE = 0.4  # arm_angle 차이 (정규화 0~1, π 나눔)
+_W_ENTRY = 0.2  # entry wrist 위치 거리 (정규화)
+_W_BODY = 0.4  # body_xy 외삽 거리 (정규화)
+
+# best vs 2nd-best 점수 차이가 이 값 미만이면 "옆자리 후보와 모호" 판단.
+# 호출자가 Hold(재시도) 여부 결정에 사용. 정규화 좌표계 기준 경험치.
+MARGIN_THRESHOLD = 0.05
 
 
 def match_player_by_arm(
@@ -32,7 +42,7 @@ def match_player_by_arm(
     entry_arm_angle: float,
     players: list[Player],
     excluded_player_ids: set[str] | None = None,
-) -> tuple[str | None, float]:
+) -> tuple[str | None, float, float]:
     """팔 방향 + entry 위치 + body 외삽으로 player_id 결정.
 
     Parameters
@@ -45,13 +55,15 @@ def match_player_by_arm(
 
     Returns
     -------
-    (player_id | None, best_score)
+    (player_id | None, best_score, margin)
     풀이 비지 않으면 항상 best 반환. 풀이 비면(seat_zone 등록자 0명) None.
+    margin = 2nd_best_score - best_score (후보 1명뿐이면 inf).
     """
     excluded = excluded_player_ids or set()
 
     best_id: str | None = None
     best_score = float("inf")
+    second_score = float("inf")
 
     for player in players:
         if player.player_id in excluded:
@@ -76,10 +88,14 @@ def match_player_by_arm(
 
         score = _W_ANGLE * d_angle + _W_ENTRY * d_entry + _W_BODY * d_body
         if score < best_score:
+            second_score = best_score
             best_score = score
             best_id = player.player_id
+        elif score < second_score:
+            second_score = score
 
-    return best_id, best_score
+    margin = second_score - best_score if best_id is not None else float("inf")
+    return best_id, best_score, margin
 
 
 def players_with_both_hands_tracked(

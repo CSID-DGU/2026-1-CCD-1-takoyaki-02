@@ -27,6 +27,7 @@ from bridge.interface import Bridge
 from core.events import FusionContext
 from core.models import Player
 from vision.attribution.seat_matcher import (
+    MARGIN_THRESHOLD,
     match_player_by_arm,
     players_with_both_hands_tracked,
 )
@@ -39,7 +40,7 @@ from vision.fusion.werewolf_rules import WerewolfRules
 from vision.geometry.arm_vector import compute_arm_angle
 from vision.schemas import FramePerception, HandDet
 from vision.tracking.card_tracker import CardTracker
-from vision.tracking.hand_tracker import HandTracker
+from vision.tracking.hand_tracker import MAX_MATCH_ATTEMPTS, HandTracker
 from vision.werewolf.config import WerewolfVisionConfig
 
 
@@ -173,11 +174,7 @@ class WerewolfVisionPipeline:
             hand_info = [(h.handedness, h.player_id, h.gesture) for h in hands]
             cards = self._card_tracker.get_tracked_cards()
             card_info = [(c.player_id, c.cls_name, c.face_up) for c in cards]
-            print(
-                f"[werewolf f{frame_id}] "
-                f"cards={card_info}  "
-                f"hands={hand_info}"
-            )
+            print(f"[werewolf f{frame_id}] " f"cards={card_info}  " f"hands={hand_info}")
 
         # 5) FusionEngine → GameEvent 생성
         #    WerewolfRules 는 내부에서 self._card_tracker 를 직접 참조
@@ -212,15 +209,19 @@ class WerewolfVisionPipeline:
             stable_handedness = track.confirmed_handedness or raw.handedness
 
             if track.pending_match and track.frames_since_entry >= 3 and self._players:
-                pid, _score = match_player_by_arm(
+                pid, _score, margin = match_player_by_arm(
                     handedness=stable_handedness,
                     entry_wrist_xy=track.entry_wrist_xy,
                     entry_arm_angle=track.entry_arm_angle,
                     players=self._players,
                     excluded_player_ids=excluded,
                 )
+                # margin 충분 → 즉시 확정. 부족하면 Hold(여러 프레임 voting 누적),
+                # MAX_MATCH_ATTEMPTS 도달 시 best로 강제 확정(타임아웃).
                 track.player_id_buf.append(pid)
-                track.pending_match = False
+                track.match_attempts += 1
+                if margin >= MARGIN_THRESHOLD or track.match_attempts >= MAX_MATCH_ATTEMPTS:
+                    track.pending_match = False
 
             player_id = track.confirmed_player_id
             prev_gesture = self._prev_gestures.get(track.track_id)

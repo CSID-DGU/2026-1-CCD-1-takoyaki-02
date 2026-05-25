@@ -112,9 +112,11 @@ export default function TableVisualization({
               <div className="tv-seat-circle">
                 <span className="tv-seat-initial">{initial}</span>
               </div>
-              <div className={`tv-seat-label tv-seat-label-${s.side || 'bottom'}`}>
-                <div className="tv-name">{s.name}</div>
-                <div className="tv-order">#{i + 1}</div>
+              <div className="tv-seat-label tv-seat-label-bottom">
+                <div className="tv-name">
+                  <span className="tv-order">#{i + 1}</span>
+                  <span className="tv-name-text">{s.name}</span>
+                </div>
               </div>
             </div>
           )
@@ -158,7 +160,9 @@ export default function TableVisualization({
           color: #1a1410;
           display: grid; place-items: center;
           font-weight: 700;
-          font-size: clamp(13px, 1.7cqw, 18px);
+          /* 원 크기(seatRadius * 2 = 7.6cqw)의 약 0.42 비율로 → 좌측 prow-avatar(36px/15px ≈ 0.42)와 일치 */
+          font-size: clamp(11px, 3.2cqw, 19px);
+          line-height: 1;
           box-shadow:
             0 1px 0 rgba(255,255,255,0.2) inset,
             0 2px 6px rgba(0,0,0,0.3);
@@ -187,14 +191,18 @@ export default function TableVisualization({
           pointer-events: none;
         }
         .tv-seat-label .tv-name {
-          font-size: clamp(11px, 1.25cqw, 15px);
+          font-size: clamp(13px, 1.45cqw, 16px);
           letter-spacing: -0.01em;
+          display: inline-flex; align-items: baseline; gap: 6px;
         }
         .tv-seat-label .tv-order {
-          font-size: clamp(8px, 0.9cqw, 11px);
-          color: var(--fg-mute);
+          color: var(--seat-color);
           font-variant-numeric: tabular-nums;
-          margin-top: 2px;
+          font-weight: 700;
+          letter-spacing: -0.01em;
+        }
+        .tv-seat-label .tv-name-text {
+          color: var(--fg);
         }
         .tv-seat-label-top    { left: 50%; bottom: calc(100% + 6px); transform: translateX(-50%); }
         .tv-seat-label-bottom { left: 50%; top:    calc(100% + 6px); transform: translateX(-50%); }

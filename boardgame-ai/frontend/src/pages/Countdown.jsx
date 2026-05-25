@@ -5,7 +5,7 @@ import { colorForIndex } from '../components/common/seatColors'
 const GAME_META = {
   yacht: {
     title: '요트 다이스',
-    tagline: '주사위 운빨과 전략의 만남',
+    tagline: '행운과 전략의 만남',
     accent: 'var(--yacht)',
     art: 'yacht',
   },
@@ -17,7 +17,7 @@ const GAME_META = {
   },
   werewolf: {
     title: '한밤의 늑대인간',
-    tagline: '한 밤의 추리와 거짓말',
+    tagline: '한밤의 진실과 거짓',
     accent: 'var(--werewolf)',
     art: 'wolf',
   },
@@ -71,7 +71,14 @@ export default function Countdown({
       <div className="cd-veil" />
 
       <div className="cd-content slide-up">
-        <div className="cd-eyebrow">{eyebrow}</div>
+        {mode === 'tutorial' || mode === 'practice' ? (
+          <div className="cd-practice-badge">
+            <span className="cd-practice-dot" />
+            {eyebrow}
+          </div>
+        ) : (
+          <div className="cd-eyebrow">{eyebrow}</div>
+        )}
         <h1 className="cd-title">{meta.title}</h1>
         <div className="cd-subtitle">{meta.tagline}</div>
 
@@ -82,7 +89,7 @@ export default function Countdown({
               className="cd-slot"
               style={{ '--seat-color': p.color || colorForIndex(i) }}
             >
-              <div className="cd-slot-no">{i + 1}</div>
+              <div className="cd-slot-no">#{i + 1}</div>
               <div className="cd-slot-av">{(p.name || '?').charAt(0)}</div>
               <div className="cd-slot-name">{p.name}</div>
             </div>
@@ -145,6 +152,24 @@ export default function Countdown({
           color: var(--cd-accent);
           white-space: nowrap;
         }
+        .cd-practice-badge {
+          display: inline-flex; align-items: center; gap: 10px;
+          padding: 8px 18px;
+          margin-bottom: 6px;
+          border-radius: 999px;
+          background: color-mix(in oklch, var(--cd-accent) 18%, transparent);
+          border: 1px solid color-mix(in oklch, var(--cd-accent) 45%, transparent);
+          color: var(--cd-accent);
+          font-size: 18px; font-weight: 700;
+          letter-spacing: 0.04em;
+          white-space: nowrap;
+          backdrop-filter: blur(20px);
+        }
+        .cd-practice-dot {
+          width: 8px; height: 8px; border-radius: 50%;
+          background: var(--cd-accent);
+          box-shadow: 0 0 0 4px color-mix(in oklch, var(--cd-accent) 25%, transparent);
+        }
         .cd-title {
           font-size: 44px; font-weight: 800; letter-spacing: -0.03em;
           text-shadow: 0 4px 24px rgba(0,0,0,0.5);
@@ -164,9 +189,11 @@ export default function Countdown({
           backdrop-filter: blur(20px);
           border-radius: 18px;
           max-width: 100%;
+          overflow: visible;
         }
         .cd-slot {
           position: relative;
+          flex-shrink: 0;
           padding: 10px 16px 10px 10px;
           background: color-mix(in oklch, var(--bg-app) 80%, transparent);
           border: 1px solid color-mix(in oklch, var(--seat-color) 35%, transparent);
@@ -176,11 +203,11 @@ export default function Countdown({
           white-space: nowrap;
         }
         .cd-slot-no {
-          font-size: 12px;
+          font-size: 14px;
           color: var(--seat-color);
           font-weight: 700;
           font-variant-numeric: tabular-nums;
-          width: 18px; text-align: center;
+          letter-spacing: -0.01em;
         }
         .cd-slot-av {
           width: 28px; height: 28px;

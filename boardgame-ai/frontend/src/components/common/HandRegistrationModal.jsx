@@ -207,15 +207,15 @@ function StepDot({ label, active, done }) {
           transition: all 200ms ease;
         }
         .step-dot.active .sd-mark {
-          background: var(--accent);
-          border-color: var(--accent);
-          color: #1a1410;
-          box-shadow: 0 0 0 4px color-mix(in oklch, var(--accent) 25%, transparent);
+          background: #22c55e;
+          border-color: #22c55e;
+          color: #052e16;
+          box-shadow: 0 0 0 4px rgba(34, 197, 94, 0.24);
         }
         .step-dot.done .sd-mark {
-          background: var(--accent-deep);
-          border-color: var(--accent-deep);
-          color: #1a1410;
+          background: #16a34a;
+          border-color: #16a34a;
+          color: #052e16;
         }
         .sd-dot { width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
         .sd-label { font-size: 12px; color: var(--fg-mute); font-weight: 500; white-space: nowrap; }
@@ -232,17 +232,18 @@ function HandStep({ kind }) {
     : '이번엔 왼손을 들어 OK 사인을 보여 주세요'
   const titleSub = isV
     ? '테이블 중앙으로 손을 뻗어 카메라가 잘 보이게 해주세요'
-    : '오른손은 잠시 내려도 됩니다'
+    : ''
 
+  // 오른손(V) → 손 아이콘 오른쪽 / 왼손(OK) → 손 아이콘 왼쪽 (실제 손 위치와 일치)
   return (
-    <div className="hs-wrap fade-in" key={kind}>
+    <div className={`hs-wrap ${isV ? 'hs-hand-right' : 'hs-hand-left'}`} key={kind}>
       <div className="hs-camera">
         <div className="hs-frame">
           <div className="hs-corner tl" />
           <div className="hs-corner tr" />
           <div className="hs-corner bl" />
           <div className="hs-corner br" />
-          <div className={`hs-hand ${isV ? '' : 'hs-flip'}`} style={{ color: '#fff' }}>
+          <div className={`hs-hand ${isV ? '' : 'hs-flip'}`} style={{ color: '#f3d6b8' }}>
             {isV ? <IconHandV size={140} /> : <IconHandOK size={140} />}
           </div>
         </div>
@@ -251,10 +252,10 @@ function HandStep({ kind }) {
         </div>
       </div>
 
-      <div className="hs-text">
+      <div className={`hs-text ${titleSub ? '' : 'hs-no-sub'}`}>
         <div className="hs-eyebrow">{isV ? '1 / 2' : '2 / 2'}</div>
         <h2 className="hs-title">{titleMain}</h2>
-        <p className="hs-sub">{titleSub}</p>
+        {titleSub && <p className="hs-sub">{titleSub}</p>}
         <ul className="hs-tips">
           <li><span className="hs-bullet" /> 손가락을 또렷하게 펴 주세요</li>
           <li><span className="hs-bullet" /> 다른 사람은 잠시 손을 치워 주세요</li>
@@ -264,10 +265,27 @@ function HandStep({ kind }) {
       <style>{`
         .hs-wrap {
           display: grid;
-          grid-template-columns: 240px 1fr;
           gap: 28px;
           align-items: center;
         }
+        /* 왼손 단계: [손] [텍스트] */
+        .hs-wrap.hs-hand-left  { grid-template-columns: 240px 1fr; }
+        /* 오른손 단계: [텍스트] [손]  — 텍스트는 항상 왼쪽 정렬 유지 */
+        .hs-wrap.hs-hand-right { grid-template-columns: 1fr 240px; }
+        .hs-wrap.hs-hand-right .hs-camera { order: 2; }
+        .hs-wrap.hs-hand-right .hs-text   { order: 1; padding: 0 6px 0 0; }
+        @keyframes hs-slide-in-left {
+          from { opacity: 0; transform: translateX(-18px); }
+          to   { opacity: 1; transform: none; }
+        }
+        @keyframes hs-slide-in-right {
+          from { opacity: 0; transform: translateX(18px); }
+          to   { opacity: 1; transform: none; }
+        }
+        .hs-wrap.hs-hand-left  .hs-camera { animation: hs-slide-in-left 240ms cubic-bezier(.2,.7,.2,1.05) both; }
+        .hs-wrap.hs-hand-left  .hs-text   { animation: hs-slide-in-right 240ms cubic-bezier(.2,.7,.2,1.05) both; }
+        .hs-wrap.hs-hand-right .hs-camera { animation: hs-slide-in-right 240ms cubic-bezier(.2,.7,.2,1.05) both; }
+        .hs-wrap.hs-hand-right .hs-text   { animation: hs-slide-in-left 240ms cubic-bezier(.2,.7,.2,1.05) both; }
         .hs-camera { display: flex; flex-direction: column; gap: 10px; }
         .hs-frame {
           position: relative;
@@ -321,6 +339,9 @@ function HandStep({ kind }) {
           margin: 8px 0 16px; font-size: 14px;
           color: var(--fg-soft); line-height: 1.55;
         }
+        .hs-no-sub .hs-title {
+          margin-bottom: 10px;
+        }
         .hs-tips {
           list-style: none; padding: 0; margin: 0;
           display: flex; flex-direction: column; gap: 6px;
@@ -342,7 +363,7 @@ function NameStep({ name, setName, defaultName, onRandom, existingNames, onEnter
       <div className="ns-head">
         <div className="ns-eyebrow">3 / 3</div>
         <h2 className="ns-title">플레이어 이름을 정해 주세요</h2>
-        <p className="ns-sub">게임 화면과 알림에 이 이름이 표시됩니다</p>
+        <p className="ns-sub">게임 화면과 알림에 표시될 이름입니다</p>
       </div>
 
       <div className="ns-input-row">

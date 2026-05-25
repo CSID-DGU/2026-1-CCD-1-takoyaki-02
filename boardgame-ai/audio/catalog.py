@@ -128,12 +128,16 @@ SFX_REGISTRY: dict[str, str] = {
     "score_select": "/sfx/score_select.mp3",    # 점수판 카테고리 선택
     "game_start": "/sfx/game_start.mp3",        # 게임 시작 알림
     "game_end": "/sfx/game_end.mp3",            # 결과 발표 징글
+    "wolf_sound": "/sfx/wolf_sound.mp3",        # 늑대 울음. 늑대인간 밤 시작 분위기.
 }
 
 # BGM 레지스트리. 자산 파일: audio/assets/bgm/<filename>. 서버 /bgm/<filename>.
 BGM_REGISTRY: dict[str, str] = {
     "lobby_loop": "/bgm/lobby_loop.mp3",  # 로비/게임 진행 중 배경음 (loop)
     "game_outro": "/bgm/game_outro.mp3",  # 우승자 발표 후 배경음
+    "yacht_walk": "/bgm/Yacht%20Theme_%20Walk%20Through%20The%20Park.mp3",
+    "werewolf_night": "/bgm/werewolf_night.mp3",  # 늑대인간 밤 단계
+    "werewolf_day": "/bgm/werewolf_day.mp3",      # 늑대인간 낮(토론) 단계
 }
 
 

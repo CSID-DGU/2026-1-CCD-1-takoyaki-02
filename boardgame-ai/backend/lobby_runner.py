@@ -40,3 +40,8 @@ class LobbyRunner:
     def update_players(self, players: list) -> None:
         if self._pipeline is not None:
             self._pipeline.update_players(players)
+
+    def debug_snapshot(self) -> dict:
+        if self._pipeline is None:
+            return {"running": False}
+        return {"running": True, **self._pipeline.debug_snapshot()}

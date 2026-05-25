@@ -8,7 +8,7 @@ const GAMES = [
   {
     id: 'yacht',
     title: '요트 다이스',
-    tagline: '주사위 운빨과 전략의 만남',
+    tagline: '행운과 전략의 만남',
     players: '1–6명',
     duration: '20–30분',
     difficulty: '초급',
@@ -22,7 +22,7 @@ const GAMES = [
   {
     id: 'werewolf',
     title: '한밤의 늑대인간',
-    tagline: '한 밤의 추리와 거짓말',
+    tagline: '한밤의 진실과 거짓',
     players: '4–10명',
     duration: '10–15분',
     difficulty: '중급',
@@ -70,6 +70,7 @@ export default function Lobby({
         </div>
       </div>
 
+      <div className="gs-divider-top" />
       <div className="gs-hd">
         <h1 className="gs-title">어떤 게임을 시작할까요?</h1>
         <p className="gs-sub">바로 시작 버튼을 눌러 해당 게임을 시작하거나, 튜토리얼 모드로 규칙부터 익힐 수 있어요.</p>
@@ -109,6 +110,12 @@ export default function Lobby({
           position: absolute; inset: 0;
           padding-top: 56px;
           display: flex; flex-direction: column;
+          --gs-rule: color-mix(in oklch, var(--border-soft) 50%, var(--border));
+        }
+        .gs-divider-top {
+          height: 1px;
+          margin: 0 24px;
+          background: var(--gs-rule);
         }
         .btn-back {
           appearance: none; border: 1px solid var(--border-soft);
@@ -143,6 +150,7 @@ export default function Lobby({
           padding: 0 40px;
           color: var(--fg-mute);
           font-size: 14px;
+          border-top: 1px solid var(--gs-rule);
         }
         .gs-foot-info { display: flex; align-items: center; gap: 8px; white-space: nowrap; }
       `}</style>
