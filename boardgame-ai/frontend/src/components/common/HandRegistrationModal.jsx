@@ -234,15 +234,16 @@ function HandStep({ kind }) {
     ? '테이블 중앙으로 손을 뻗어 카메라가 잘 보이게 해주세요'
     : '오른손은 잠시 내려도 됩니다'
 
+  // 오른손(V) → 손 아이콘 오른쪽 / 왼손(OK) → 손 아이콘 왼쪽 (실제 손 위치와 일치)
   return (
-    <div className="hs-wrap fade-in" key={kind}>
+    <div className={`hs-wrap ${isV ? 'hs-hand-right' : 'hs-hand-left'}`} key={kind}>
       <div className="hs-camera">
         <div className="hs-frame">
           <div className="hs-corner tl" />
           <div className="hs-corner tr" />
           <div className="hs-corner bl" />
           <div className="hs-corner br" />
-          <div className={`hs-hand ${isV ? '' : 'hs-flip'}`} style={{ color: '#fff' }}>
+          <div className={`hs-hand ${isV ? '' : 'hs-flip'}`} style={{ color: '#f3d6b8' }}>
             {isV ? <IconHandV size={140} /> : <IconHandOK size={140} />}
           </div>
         </div>
@@ -264,10 +265,27 @@ function HandStep({ kind }) {
       <style>{`
         .hs-wrap {
           display: grid;
-          grid-template-columns: 240px 1fr;
           gap: 28px;
           align-items: center;
         }
+        /* 왼손 단계: [손] [텍스트] */
+        .hs-wrap.hs-hand-left  { grid-template-columns: 240px 1fr; }
+        /* 오른손 단계: [텍스트] [손]  — 텍스트는 항상 왼쪽 정렬 유지 */
+        .hs-wrap.hs-hand-right { grid-template-columns: 1fr 240px; }
+        .hs-wrap.hs-hand-right .hs-camera { order: 2; }
+        .hs-wrap.hs-hand-right .hs-text   { order: 1; padding: 0 6px 0 0; }
+        @keyframes hs-slide-in-left {
+          from { opacity: 0; transform: translateX(-18px); }
+          to   { opacity: 1; transform: none; }
+        }
+        @keyframes hs-slide-in-right {
+          from { opacity: 0; transform: translateX(18px); }
+          to   { opacity: 1; transform: none; }
+        }
+        .hs-wrap.hs-hand-left  .hs-camera { animation: hs-slide-in-left 240ms cubic-bezier(.2,.7,.2,1.05) both; }
+        .hs-wrap.hs-hand-left  .hs-text   { animation: hs-slide-in-right 240ms cubic-bezier(.2,.7,.2,1.05) both; }
+        .hs-wrap.hs-hand-right .hs-camera { animation: hs-slide-in-right 240ms cubic-bezier(.2,.7,.2,1.05) both; }
+        .hs-wrap.hs-hand-right .hs-text   { animation: hs-slide-in-left 240ms cubic-bezier(.2,.7,.2,1.05) both; }
         .hs-camera { display: flex; flex-direction: column; gap: 10px; }
         .hs-frame {
           position: relative;

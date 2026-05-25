@@ -70,6 +70,7 @@ export default function Lobby({
         </div>
       </div>
 
+      <div className="gs-divider-top" />
       <div className="gs-hd">
         <h1 className="gs-title">어떤 게임을 시작할까요?</h1>
         <p className="gs-sub">바로 시작 버튼을 눌러 해당 게임을 시작하거나, 튜토리얼 모드로 규칙부터 익힐 수 있어요.</p>
@@ -109,6 +110,12 @@ export default function Lobby({
           position: absolute; inset: 0;
           padding-top: 56px;
           display: flex; flex-direction: column;
+          --gs-rule: color-mix(in oklch, var(--border-soft) 50%, var(--border));
+        }
+        .gs-divider-top {
+          height: 1px;
+          margin: 0 24px;
+          background: var(--gs-rule);
         }
         .btn-back {
           appearance: none; border: 1px solid var(--border-soft);
@@ -143,6 +150,7 @@ export default function Lobby({
           padding: 0 40px;
           color: var(--fg-mute);
           font-size: 14px;
+          border-top: 1px solid var(--gs-rule);
         }
         .gs-foot-info { display: flex; align-items: center; gap: 8px; white-space: nowrap; }
       `}</style>

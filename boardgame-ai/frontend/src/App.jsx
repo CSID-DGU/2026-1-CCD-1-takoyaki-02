@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
+import { createPortal } from 'react-dom'
 import { useWebSocket } from './hooks/useWebSocket'
 import { useAudioPlayer, audio as audioApi } from './hooks/useAudioPlayer'
 import { useBenchBridge } from './hooks/useBenchBridge'
@@ -138,8 +139,9 @@ export default function App() {
     setPage('lobby')
   }
 
+  let pageEl = null
   if (page === 'seat') {
-    return (
+    pageEl = (
       <SeatRegistration
         players={players}
         registeringId={registeringId}
@@ -153,10 +155,8 @@ export default function App() {
         onStart={goLobby}
       />
     )
-  }
-
-  if (page === 'lobby') {
-    return (
+  } else if (page === 'lobby') {
+    pageEl = (
       <Lobby
         players={players}
         connected={connected}
@@ -164,10 +164,8 @@ export default function App() {
         onSelectGame={handleSelectGame}
       />
     )
-  }
-
-  if (page === 'countdown' && pendingGame && orderedPlayersAtStart) {
-    return (
+  } else if (page === 'countdown' && pendingGame && orderedPlayersAtStart) {
+    pageEl = (
       <Countdown
         players={orderedPlayersAtStart}
         gameId={pendingGame.gameType}
@@ -176,11 +174,9 @@ export default function App() {
         onReady={handleCountdownReady}
       />
     )
-  }
-
-  if (page === 'yacht') {
+  } else if (page === 'yacht') {
     const playersForGame = orderedPlayersAtStart ?? registeredPlayers
-    return (
+    pageEl = (
       <YachtGame
         players={playersForGame}
         tutorialMode={yachtTutorialMode}
@@ -188,11 +184,9 @@ export default function App() {
         onChangePlayers={() => { setOrderedPlayersAtStart(null); setPage('seat') }}
       />
     )
-  }
-
-  if (page === 'werewolf') {
+  } else if (page === 'werewolf') {
     const playersForGame = orderedPlayersAtStart ?? registeredPlayers
-    return (
+    pageEl = (
       <WerewolfGame
         key={gameKey}
         players={playersForGame}
@@ -206,5 +200,37 @@ export default function App() {
     )
   }
 
-  return null
+  return (
+    <>
+      {pageEl}
+      <OrientationLock />
+    </>
+  )
+}
+
+function OrientationLock() {
+  const host = typeof document !== 'undefined'
+    ? document.getElementById('orient-lock-root')
+    : null
+  if (!host) return null
+  return createPortal(
+    <div className="orient-lock" role="alert" aria-live="polite">
+      <div className="orient-lock-card">
+        <div className="orient-lock-icon" aria-hidden>
+          <svg width="64" height="64" viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="6" y="2.5" width="12" height="19" rx="2" />
+            <path d="M11 18.5h2" />
+          </svg>
+        </div>
+        <div>
+          <div className="orient-lock-title">가로로 돌려주세요</div>
+          <div className="orient-lock-sub">
+            이 앱은 태블릿을 가로 방향에 두고 사용하도록 설계되었습니다.
+          </div>
+        </div>
+      </div>
+    </div>,
+    host,
+  )
 }
