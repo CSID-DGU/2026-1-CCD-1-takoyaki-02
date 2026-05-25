@@ -3,10 +3,10 @@ import { audio } from '../../hooks/useAudioPlayer'
 
 export default function NightStart({ onComplete, send, onExit, isPracticeMode }) {
   useEffect(() => {
-    const ttsText = isPracticeMode
-      ? '연습모드입니다. 눈을 감지 않고 진행합니다. 차례가 되면 해당 역할 플레이어가 행동을 수행해주세요.'
-      : '밤이 되었습니다. 모두 눈을 감아주세요.'
-    send?.('TTS_REQUEST', { text: ttsText })
+    // 연습모드만 프론트에서 발화 — 비연습모드는 ProgressAgent가 담당
+    if (isPracticeMode) {
+      send?.('TTS_REQUEST', { text: '연습모드입니다. 눈을 감지 않고 진행합니다. 차례가 되면 해당 역할 플레이어가 행동을 수행해주세요.' })
+    }
     let timer = null
     const unsubscribe = audio.onNextTtsEnded(() => {
       timer = setTimeout(onComplete, isPracticeMode ? 4000 : 8000)

@@ -1,416 +1,799 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
+import {
+  IconPlus, IconCheck, IconArrowRight, IconEdit, IconTrash, IconUsers,
+} from './Icons'
+import TableVisualization from './TableVisualization'
+import HandRegistrationModal from './HandRegistrationModal'
+import { colorForPlayerId } from './seatColors'
 
-const s = {
-  page: {
-    minHeight: '100vh',
-    background: '#f5f5f7',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    fontFamily: "'Segoe UI', sans-serif",
-    color: '#111',
-  },
-  card: {
-    background: '#fff',
-    border: '1px solid #e0e0e0',
-    borderRadius: 16,
-    padding: 32,
-    width: 720,
-    boxShadow: '0 2px 12px rgba(0,0,0,0.07)',
-  },
-  title: { fontSize: 20, fontWeight: 600, marginBottom: 20 },
-  connDot: (ok) => ({
-    display: 'inline-block',
-    width: 8,
-    height: 8,
-    borderRadius: '50%',
-    background: ok ? '#1a7a4a' : '#d44',
-    marginRight: 6,
-    verticalAlign: 'middle',
-  }),
-  hint: { color: '#666', fontSize: 13, marginBottom: 16 },
-
-  listArea: { display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 },
-  playerRow: (registering) => ({
-    display: 'flex',
-    alignItems: 'center',
-    gap: 8,
-    padding: '10px 12px',
-    background: registering ? '#fffbec' : '#f7f7f7',
-    borderRadius: 8,
-    border: registering ? '1px solid #f0c040' : '1px solid #ebebeb',
-  }),
-  nameText: { flex: 1, fontSize: 14, fontWeight: 500 },
-  statusText: (registered) => ({
-    fontSize: 12,
-    color: registered ? '#1a7a4a' : '#888',
-    marginRight: 4,
-    minWidth: 44,
-  }),
-  smallBtn: {
-    fontSize: 12,
-    padding: '4px 10px',
-    border: '1px solid #ccc',
-    borderRadius: 6,
-    background: '#fff',
-    cursor: 'pointer',
-  },
-  saveBtn: {
-    fontSize: 12,
-    padding: '5px 10px',
-    border: '1px solid #111',
-    borderRadius: 6,
-    background: '#111',
-    color: '#fff',
-    cursor: 'pointer',
-    whiteSpace: 'nowrap',
-    flexShrink: 0,
-  },
-  deleteBtn: {
-    fontSize: 12,
-    padding: '5px 10px',
-    border: '1px solid #d44',
-    borderRadius: 6,
-    background: '#fff',
-    color: '#d44',
-    cursor: 'pointer',
-    whiteSpace: 'nowrap',
-    flexShrink: 0,
-  },
-  addBtn: {
-    alignSelf: 'center',
-    padding: '8px 24px',
-    border: '1px dashed #b8b8b8',
-    borderRadius: 10,
-    background: '#fafafa',
-    cursor: 'pointer',
-    fontSize: 18,
-    color: '#555',
-    width: '100%',
-  },
-  footer: { display: 'flex', justifyContent: 'flex-end', marginTop: 12 },
-  startBtn: (enabled) => ({
-    padding: '10px 26px',
-    border: '1px solid #ccc',
-    borderRadius: 8,
-    background: enabled ? '#111' : '#e8e8e8',
-    color: enabled ? '#fff' : '#aaa',
-    cursor: enabled ? 'pointer' : 'default',
-    fontSize: 15,
-    fontWeight: 500,
-  }),
-
-  // 모달
-  backdrop: {
-    position: 'fixed', inset: 0,
-    background: 'rgba(0,0,0,0.4)',
-    display: 'flex', alignItems: 'center', justifyContent: 'center',
-    zIndex: 100,
-  },
-  modal: {
-    background: '#fff',
-    borderRadius: 16,
-    padding: '24px 28px',
-    width: 560,
-    boxShadow: '0 6px 32px rgba(0,0,0,0.2)',
-  },
-  modalTitle: { fontSize: 18, fontWeight: 600, marginBottom: 14, textAlign: 'center' },
-  handsRow: {
-    display: 'flex',
-    justifyContent: 'center',
-    gap: 40,
-    marginBottom: 12,
-  },
-  handIcon: (active) => ({
-    width: 116, height: 116,
-    borderRadius: '50%',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    background: active ? '#1973e8' : '#cfd2d6',
-    boxShadow: active
-      ? '0 6px 18px rgba(25, 115, 232, 0.35)'
-      : '0 2px 8px rgba(0, 0, 0, 0.08)',
-    transition: 'background 0.25s ease, box-shadow 0.25s ease',
-  }),
-  handLabel: (active) => ({
-    fontSize: 14,
-    color: active ? '#1973e8' : '#888',
-    fontWeight: active ? 600 : 500,
-    textAlign: 'center',
-    marginTop: 8,
-  }),
-  guideText: {
-    textAlign: 'center',
-    fontSize: 19,
-    fontWeight: 500,
-    color: '#222',
-    marginBottom: 16,
-    lineHeight: 1.45,
-    minHeight: 28,
-    letterSpacing: '-0.2px',
-  },
-  modalFooter: {
-    display: 'flex',
-    gap: 12,
-    justifyContent: 'center',
-  },
-  cancelBtn: {
-    padding: '10px 22px',
-    border: '1px solid #ccc',
-    borderRadius: 8,
-    background: '#fff',
-    cursor: 'pointer',
-    fontSize: 14,
-  },
-  primaryBtn: {
-    padding: '10px 26px',
-    border: 'none',
-    borderRadius: 8,
-    background: '#111',
-    color: '#fff',
-    cursor: 'pointer',
-    fontSize: 14,
-    fontWeight: 500,
-    whiteSpace: 'nowrap',
-    flexShrink: 0,
-  },
-  nameInput: {
-    width: '100%',
-    padding: '12px 14px',
-    border: '1px solid #bbb',
-    borderRadius: 10,
-    fontSize: 16,
-    outline: 'none',
-    marginBottom: 18,
-    boxSizing: 'border-box',
-  },
+/** position이 없는 등록 중 플레이어를 위해 균등 분배(임시) */
+function fillMissingPositions(players) {
+  const N = players.length
+  if (N === 0) return []
+  return players.map((p, i) => ({
+    ...p,
+    position: p.position == null ? i / N : p.position,
+  }))
 }
 
-/**
- * Microsoft Fluent Emoji High Contrast - victory-hand (V사인)
- * 라이선스: MIT (https://github.com/microsoft/fluentui-emoji)
- */
-function VictoryHandIcon() {
-  return (
-    <svg viewBox="0 0 32 32" width="64" height="64" fill="#fff" aria-hidden>
-      <path d="M15.047 30.906c4.518 0 7.144-1.828 8.552-3.363a9.6 9.6 0 0 0 2.328-4.554a4.9 4.9 0 0 0 .195-1.695q.012-.475-.023-.951c-.316-3.655-.446-5.169-.031-6.334l1.772-5.224a4.54 4.54 0 0 0-.083-3.339A3.26 3.26 0 0 0 25.8 3.755a3.55 3.55 0 0 0-4.618 2.132l-.665 1.97a106 106 0 0 0-.268-3.546A3.525 3.525 0 0 0 16.4 1.1a3.44 3.44 0 0 0-2.443 1.234a3.37 3.37 0 0 0-.83 2.316l.229 3.924q-.331-.06-.668-.06a3.4 3.4 0 0 0-1.093.118a3.4 3.4 0 0 0-.966.39q-.482.291-.838.738a3.4 3.4 0 0 0-1.135-.192a3.6 3.6 0 0 0-1.753.396a3.37 3.37 0 0 0-1.293 1.13a3.6 3.6 0 0 0-.641 2.27v2.252q0 .216.023.422a32.5 32.5 0 0 0 .363 6.143c.815 5.381 4.529 8.725 9.692 8.725M7.783 11.761c.237-.12.529-.19.873-.19q.296.002.522.098q.063.027.123.06c0 .339-.018.908-.037 1.552l-.006.185a76 76 0 0 0-.043 2.057c0 .48.081.955.21 1.39c-.19.091-.442.15-.769.15c-.546 0-.973-.166-1.248-.402a1.23 1.23 0 0 1-.417-.763a2 2 0 0 1-.021-.28V13.37l-.001-.01c.001-.551.14-.93.328-1.188a1.6 1.6 0 0 1 .486-.411m-.77 6.979c.51.217 1.073.323 1.643.323c.703 0 1.368-.162 1.925-.504a3.6 3.6 0 0 0 2.044.628c.796 0 1.52-.245 2.11-.673c.045.502.19 1.173.563 1.789q.125.207.284.4a10 10 0 0 0-.907.629c-.842.655-1.648 1.494-2.583 2.67a1 1 0 1 0 1.566 1.245c.878-1.104 1.572-1.813 2.245-2.337c.567-.44 1.145-.772 1.852-1.098q.18.016.37.016c.612 0 .974.267 1.32.718c.177.231.328.485.503.777l.035.06c.168.282.39.654.665.944c.597.632 1.303 1.023 2.06 1.101l.028.003a8 8 0 0 1-.611.761a9.28 9.28 0 0 1-7.078 2.714c-4.164 0-7.048-2.624-7.714-7.024a32 32 0 0 1-.32-3.143m9.3-3.484V12.69c0-1.11-.303-2.08-.876-2.818l-.316-5.382a1.5 1.5 0 0 1 .372-.871a1.47 1.47 0 0 1 1.064-.529a1.53 1.53 0 0 1 1.7 1.415c.19 1.914.393 5.656.483 7.31l.003.054l.009.139a1.23 1.23 0 0 0 .877 1.157A1.21 1.21 0 0 0 21 12.59q.061-.098.1-.208l1.968-5.828a1.546 1.546 0 0 1 2.1-.9a1.25 1.25 0 0 1 .791.656a2.63 2.63 0 0 1 0 1.809l-1.776 5.236c-.317.887-.407 1.801-.362 3.162a7 7 0 0 0-.565-.442c-1.435-1.002-3.243-1.421-5.173-1.34c-.707.03-1.295.225-1.77.52m-4.84 1.451a3.1 3.1 0 0 1-.258-1.184c0-.536.02-1.278.042-1.997l.006-.196c.02-.636.038-1.242.038-1.611c0-.29.043-.51.087-.659l.005-.019a1.4 1.4 0 0 1 .576-.44q.273-.083.656-.085c.476 0 .872.177 1.158.494c.29.321.53.86.53 1.68v2.55c0 1.26-.814 1.947-1.688 1.947a1.58 1.58 0 0 1-1.152-.48m12.649 4.636q-.024.576-.133 1.142c-.124.352-.313.613-.505.767c-.193.154-.385.206-.569.187c-.186-.02-.472-.125-.813-.485c-.098-.104-.212-.28-.404-.6l-.043-.072a10 10 0 0 0-.623-.953c-.58-.757-1.47-1.5-2.907-1.5c-.646 0-.937-.265-1.116-.562c-.22-.362-.29-.83-.29-1.11c0-.206.08-.577.305-.881c.194-.264.52-.516 1.143-.543c1.602-.067 2.949.287 3.943.981c.979.684 1.696 1.752 1.968 3.288q.03.175.044.34m-3.378-9.468v.078z" />
-    </svg>
-  )
-}
-
-/**
- * Microsoft Fluent Emoji High Contrast - ok-hand (엄지+검지 동그라미, 나머지 펴짐)
- * 라이선스: MIT (https://github.com/microsoft/fluentui-emoji)
- */
-function OkHandIcon() {
-  return (
-    <svg viewBox="0 0 32 32" width="64" height="64" fill="#fff" aria-hidden>
-      <path d="M16.552 1.189c2.1-.478 3.613 1.011 3.978 2.256l.003.012l.13.466c.578-.591 1.37-.923 2.321-.923a3.28 3.28 0 0 1 3.28 3.28c0 2.093-.011 4.23-.023 6.364v.001c-.011 2.136-.022 4.268-.022 6.355c0 6.848-5.02 11.81-10.62 11.844h-.003c-4.46.01-8.363-2.586-9.732-6.683l-.012-.039a3.53 3.53 0 0 1 .904-3.478a4 4 0 0 1-.361-.437c-.594-.837-.893-1.99-.503-3.101c.81-2.303 2.692-4.256 5.19-5.397L7.968 6.613c-.482-.809-.56-1.774-.363-2.617c.198-.84.702-1.677 1.534-2.159c1.632-.943 3.828-.532 4.78 1.092l.296.478a3.33 3.33 0 0 1 2.336-2.218m-7.41 18.516c.55 0 .86-.22 1.225-.674a10 10 0 0 0 .397-.541q.109-.158.245-.347c.238-.33.533-.71.915-1.04a4.9 4.9 0 0 1 3.325-1.165h.006c1.492.054 2.663.685 3.443 1.638c.764.934 1.114 2.125 1.1 3.275s-.393 2.33-1.18 3.239c-.804.929-1.99 1.52-3.477 1.52c-.98 0-1.974-.352-2.791-.886c-.815-.533-1.546-1.31-1.903-2.253c-.137-.365-.68-.739-1.338-.766l-.074-.002H9.03c-.803 0-1.533.874-1.263 1.844c1.077 3.191 4.15 5.305 7.821 5.297c4.38-.027 8.63-3.974 8.63-9.844c0-2.093.011-4.23.022-6.364v-.001c.012-2.136.023-4.268.023-6.355c0-.708-.572-1.28-1.28-1.28c-.543 0-.84.202-1.039.51l-.034.055a3.4 3.4 0 0 0-.145 1.022v.014l-.12 2.886c-.036.857-1.25.992-1.474.164l-.518-1.926l-.023-.073l-1.022-3.649c-.136-.454-.753-1.047-1.593-.869a1.32 1.32 0 0 0-.773.605q-.01.06-.018.129c-.047.42.015.888.089 1.183l.002.01l1 4.404c.188.831-.935 1.283-1.375.553l-1.019-1.694l-2.708-4.35l-.017-.028c-.314-.544-1.232-.854-2.056-.377c-.257.149-.488.46-.588.885c-.1.423-.04.84.132 1.132l3.338 5.465q.189.166.416.301a.8.8 0 0 1 .356.483c.046.16.049.329.027.478a1.1 1.1 0 0 1-.171.455a.77.77 0 0 1-.526.341a6 6 0 0 0-.243.039l-.012.004c-2.57.855-4.395 2.637-5.09 4.617c-.133.376-.055.857.246 1.281c.289.408.692.635 1.063.653zm2.438.97c.316.293.574.655.738 1.089c.17.452.57.922 1.126 1.286c.555.363 1.176.56 1.697.56c.917 0 1.548-.347 1.966-.83c.434-.502.682-1.207.691-1.953c.01-.747-.22-1.463-.647-1.984c-.41-.5-1.04-.872-1.965-.906a2.9 2.9 0 0 0-1.952.677l-.004.003c-.2.173-.385.399-.598.695q-.083.114-.18.253c-.159.229-.344.494-.527.721q-.158.199-.345.389" />
-    </svg>
-  )
-}
-
-function HandIcon({ side, active }) {
-  const Icon = side === 'right' ? VictoryHandIcon : OkHandIcon
-  const label = side === 'right' ? '오른손 V사인' : '왼손 OK사인'
-  return (
-    <div>
-      <div style={s.handIcon(active)}>
-        <Icon />
-      </div>
-      <div style={s.handLabel(active)}>{label}</div>
-    </div>
-  )
-}
-
-function RegistrationModal({ seatStep, registeringId, defaultName, onCancel, onFinalize }) {
-  const [name, setName] = useState('')
-
-  const rightActive = seatStep === 'right_done' || seatStep === 'completed'
-  const leftActive = seatStep === 'completed'
-
-  let guide = ''
-  if (seatStep === 'right_pending') {
-    guide = '테이블 중앙으로 오른손을 뻗어 V 사인을 해주세요'
-  } else if (seatStep === 'right_done') {
-    guide = '오른손 인식 완료! 이번엔 왼손을 뻗어 OK 사인을 해주세요'
-  } else if (seatStep === 'completed') {
-    guide = '좌석 등록이 완료되었습니다. 이름을 입력해주세요'
+/** firstPlayerId/direction에 맞게 좌석 순서로 정렬 */
+function orderForTurn(players, firstPlayerId, direction) {
+  if (players.length === 0) return []
+  const byPos = [...players].sort((a, b) => (a.position ?? 0) - (b.position ?? 0))
+  const startIdx = Math.max(0, byPos.findIndex((p) => p.id === firstPlayerId))
+  const walked = [...byPos.slice(startIdx), ...byPos.slice(0, startIdx)]
+  if (direction === 'ccw') {
+    return [walked[0], ...walked.slice(1).reverse()]
   }
-
-  const handleConfirm = () => {
-    if (!registeringId) return
-    const n = name.trim() || defaultName
-    onFinalize(registeringId, n)
-    setName('')
-  }
-
-  return (
-    <div style={s.backdrop}>
-      <div style={s.modal}>
-        <div style={s.modalTitle}>플레이어 좌석 등록</div>
-        <div style={s.handsRow}>
-          <HandIcon side="left" active={leftActive} />
-          <HandIcon side="right" active={rightActive} />
-        </div>
-        <div style={s.guideText}>{guide}</div>
-        {seatStep === 'completed' ? (
-          <>
-            <input
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleConfirm()}
-              style={s.nameInput}
-              autoFocus
-              placeholder={defaultName}
-            />
-            <div style={s.modalFooter}>
-              <button style={s.cancelBtn} onClick={onCancel}>취소</button>
-              <button style={s.primaryBtn} onClick={handleConfirm}>등록 완료</button>
-            </div>
-          </>
-        ) : (
-          <div style={s.modalFooter}>
-            <button style={s.cancelBtn} onClick={onCancel}>취소</button>
-          </div>
-        )}
-      </div>
-    </div>
-  )
+  return walked
 }
 
 export default function SeatRegistration({
-  players,
+  players,            // backend snapshot players (raw)
   registeringId,
   seatStep = 'idle',
   connected,
+  firstPlayerId,
+  direction,
+  onChangeFirst,
+  onChangeDirection,
   send,
   onStart,
 }) {
   const [editingId, setEditingId] = useState(null)
-  const [editName, setEditName] = useState('')
+  const [activeId, setActiveId] = useState(null)
 
-  const showModal = !!registeringId
+  // backend players → UI players (id, name, position, color)
+  const uiPlayers = useMemo(() => {
+    const named = players
+      .filter((p) => p.playername || p.player_id === registeringId)
+      .map((p) => ({
+        id: p.player_id,
+        name: p.playername || '',
+        position: p.position ?? null,
+        registered: p.registered,
+        color: colorForPlayerId(p.player_id),
+        raw: p,
+      }))
+    return fillMissingPositions(named)
+  }, [players, registeringId])
 
-  const startRegistration = () => {
-    send('start_registration', {})
-  }
+  const ordered = useMemo(
+    () => orderForTurn(uiPlayers, firstPlayerId, direction),
+    [uiPlayers, firstPlayerId, direction],
+  )
 
+  const totalPlayers = ordered.length
+  const namedPlayers = ordered.filter((p) => p.name)
+  const canStart =
+    namedPlayers.length > 0 && namedPlayers.every((p) => p.registered)
+
+  const cameraLabel = connected
+    ? { dot: 'ok', text: '카메라 연결됨', sub: '테이블 전체 인식 중' }
+    : { dot: 'err', text: '카메라 오류', sub: '연결 상태를 확인해 주세요' }
+
+  const startRegistration = () => send('start_registration', {})
   const cancelRegistration = () => {
+    if (registeringId) send('cancel_seat_registration', { player_id: registeringId })
+    setEditingId(null)
+  }
+  const finalizePlayer = (name) => {
     if (!registeringId) return
-    send('cancel_seat_registration', { player_id: registeringId })
+    send('finalize_player', { player_id: registeringId, playername: name })
   }
-
-  const finalizePlayer = (player_id, name) => {
-    send('finalize_player', { player_id, playername: name })
-  }
-
-  const startEdit = (p) => {
-    setEditingId(p.player_id)
-    setEditName(p.playername || '')
-  }
-
-  const confirmEdit = (player_id) => {
-    const name = editName.trim()
-    if (!name) return
+  const submitEdit = (player_id, name) => {
     send('player_edit', { player_id, playername: name })
     setEditingId(null)
-    setEditName('')
   }
-
-  const deletePlayer = (player_id) => {
+  const removePlayer = (player_id) => {
     send('player_remove', { player_id })
-    if (editingId === player_id) {
-      setEditingId(null)
-      setEditName('')
-    }
+    if (editingId === player_id) setEditingId(null)
   }
-
   const restartRegistration = (player_id) => {
     send('start_seat_registration', { player_id })
   }
 
-  const named = players.filter((p) => p.playername)
-  const canStart = named.length > 0 && named.every((p) => p.registered)
-  const defaultName = `플레이어${named.length + 1}`
+  const showHandModal = !!registeringId
+  const editingPlayer =
+    editingId && uiPlayers.find((p) => p.id === editingId)
+
+  const defaultName = `플레이어${namedPlayers.length + 1}`
 
   return (
-    <div style={s.page}>
-      <div style={s.card}>
-        <div style={s.title}>
-          <span style={s.connDot(connected)} />
-          플레이어 등록
+    <div className="scr scr-register">
+      <div className="topbar">
+        <div className="logo"><span>보드게임 AI</span></div>
+        <div className="crumbs">
+          <span>플레이어 등록</span>
+          <span className="sep">→</span>
+          <span style={{ opacity: 0.5 }}>게임 선택</span>
+          <span className="sep">→</span>
+          <span style={{ opacity: 0.5 }}>플레이</span>
         </div>
-        <div style={s.hint}>
-          "+" 버튼을 누르면 카메라가 즉시 손을 인식합니다.
-          본인의 자리에서 테이블 중앙으로 손을 뻗어 <b>오른손 V사인 → 왼손 OK사인</b> 순서로 보여주세요.
-          <br />
-          등록 중인 사람 외에는 손을 테이블 밖으로 치워주세요.
-        </div>
-
-        <div style={s.listArea}>
-          {named.map((p) => (
-            <div key={p.player_id} style={s.playerRow(false)}>
-              {editingId === p.player_id ? (
-                <>
-                  <input
-                    value={editName}
-                    onChange={(e) => setEditName(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && confirmEdit(p.player_id)}
-                    style={{ ...s.nameInput, flex: 1, minWidth: 0, marginBottom: 0 }}
-                    autoFocus
-                    placeholder="이름 입력"
-                  />
-                  <button style={s.saveBtn} onClick={() => confirmEdit(p.player_id)}>
-                    저장
-                  </button>
-                  <button style={s.deleteBtn} onClick={() => deletePlayer(p.player_id)}>
-                    삭제
-                  </button>
-                </>
-              ) : (
-                <>
-                  <span style={s.nameText}>{p.playername}</span>
-                  <span style={s.statusText(p.registered)}>
-                    {p.registered ? '등록됨' : '미등록'}
-                  </span>
-                  {!p.registered && (
-                    <button style={s.smallBtn} onClick={() => restartRegistration(p.player_id)}>
-                      재등록
-                    </button>
-                  )}
-                  <button style={s.smallBtn} onClick={() => startEdit(p)}>
-                    수정
-                  </button>
-                </>
-              )}
+        <div className="right">
+          <div className="camera-badge">
+            <span className={`status-dot ${cameraLabel.dot} pulse`} />
+            <div>
+              <div style={{ color: 'var(--fg)', fontWeight: 500 }}>{cameraLabel.text}</div>
+              <div style={{ fontSize: 13, color: 'var(--fg-mute)' }}>{cameraLabel.sub}</div>
             </div>
-          ))}
+          </div>
+        </div>
+      </div>
 
-          {!showModal && (
-            <button style={s.addBtn} onClick={startRegistration}>
-              + 플레이어 추가
-            </button>
+      <div className="reg-page-hd">
+        <h1 className="reg-title">플레이어 등록</h1>
+      </div>
+      <div className="reg-divider-top" />
+      <div className="reg-grid">
+        <div className="reg-left scroll">
+          <div className="reg-section-hd">
+            <h2 className="reg-section-title">등록된 플레이어</h2>
+          </div>
+
+          <div className="player-list">
+            {ordered.length > 0 && (
+              <div className="prow-head">
+                <div className="ph-order">순서</div>
+                <div className="ph-avatar" aria-hidden />
+                <div className="ph-name">플레이어 이름</div>
+                <div className="ph-actions">
+                  <span>수정</span>
+                  <span>삭제</span>
+                </div>
+              </div>
+            )}
+
+            {ordered.map((p, i) => (
+              <PlayerRow
+                key={p.id}
+                player={p}
+                index={i}
+                isActive={activeId === p.id}
+                onHover={() => setActiveId(p.id)}
+                onLeave={() => setActiveId(null)}
+                onEdit={() => setEditingId(p.id)}
+                onRemove={() => removePlayer(p.id)}
+                onReregister={() => restartRegistration(p.id)}
+              />
+            ))}
+
+            {!showHandModal && (
+              <div className="add-player-wrap">
+                <button className="add-player" onClick={startRegistration}>
+                  <IconPlus size={18} />
+                  <span>플레이어 추가</span>
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="reg-right">
+          <div className="reg-section-hd">
+            <h2 className="reg-section-title">실제 좌석 배치</h2>
+          </div>
+
+          <div className="rr-table">
+            <TableVisualization
+              players={ordered}
+              activeId={activeId}
+              onSelect={setActiveId}
+              shape="rect"
+              showTablet={totalPlayers > 0}
+            />
+            {totalPlayers === 0 && (
+              <div className="rr-empty">
+                <IconUsers size={40} />
+                <p>플레이어를 추가하면 좌석이 여기에 표시됩니다</p>
+              </div>
+            )}
+          </div>
+
+          <TurnControls
+            players={ordered}
+            firstPlayerId={firstPlayerId}
+            onChangeFirst={onChangeFirst}
+            direction={direction}
+            onChangeDirection={onChangeDirection}
+          />
+        </div>
+      </div>
+
+      <div className="reg-foot">
+        <div className="foot-info">
+          {totalPlayers > 0 ? (
+            <>
+              <IconCheck size={16} style={{ color: 'var(--ok)' }} />
+              <span><b>{namedPlayers.length}명</b>의 플레이어가 준비되었습니다</span>
+            </>
+          ) : (
+            <span style={{ color: 'var(--fg-mute)' }}>
+              플레이어를 한 명 이상 추가해 주세요
+            </span>
           )}
         </div>
+        <button
+          className="btn btn-primary btn-lg"
+          disabled={!canStart}
+          onClick={canStart ? onStart : undefined}
+        >
+          게임 선택 <IconArrowRight size={18} />
+        </button>
+      </div>
 
-        <div style={s.footer}>
-          <button style={s.startBtn(canStart)} onClick={canStart ? onStart : undefined}>
-            게임 시작 →
+      {showHandModal && (
+        <HandRegistrationModal
+          seatStep={seatStep}
+          defaultName={defaultName}
+          existingNames={uiPlayers
+            .filter((p) => p.id !== registeringId && p.name)
+            .map((p) => p.name)}
+          onCancel={cancelRegistration}
+          onSubmit={finalizePlayer}
+        />
+      )}
+
+      {editingPlayer && (
+        <EditNameModal
+          initialName={editingPlayer.name}
+          existingNames={uiPlayers
+            .filter((p) => p.id !== editingPlayer.id && p.name)
+            .map((p) => p.name)}
+          onCancel={() => setEditingId(null)}
+          onSubmit={(name) => submitEdit(editingPlayer.id, name)}
+        />
+      )}
+
+      <style>{`
+        .scr-register {
+          position: absolute; inset: 0;
+          display: flex; flex-direction: column;
+          padding-top: 56px;
+          --reg-rule: color-mix(in oklch, var(--border-soft) 50%, var(--border));
+        }
+        .reg-divider-top {
+          height: 1px;
+          margin: 0 24px;
+          background: var(--reg-rule);
+        }
+        .reg-page-hd {
+          padding: 14px 32px 14px;
+          display: flex; align-items: center;
+        }
+        .reg-title {
+          font-size: 32px; font-weight: 700; letter-spacing: -0.03em;
+        }
+        .reg-section-hd {
+          padding: 0;
+          display: flex; align-items: center;
+          min-height: 28px;
+        }
+        .reg-section-title {
+          font-size: 16px; font-weight: 600; letter-spacing: -0.01em;
+          color: var(--fg-soft);
+          text-transform: uppercase;
+          letter-spacing: 0.05em;
+        }
+        .scr-register .camera-badge {
+          display: flex; align-items: center; gap: 10px;
+          padding: 8px 16px;
+          background: var(--bg-surface);
+          border: 1px solid var(--border-soft);
+          border-radius: 999px;
+          font-size: 14px;
+        }
+        .reg-grid {
+          flex: 1;
+          display: grid;
+          grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+          min-height: 0;
+        }
+        .reg-left {
+          padding: 14px 24px 14px 32px;
+          overflow-y: auto;
+          display: flex; flex-direction: column; gap: 12px;
+          border-right: 1px solid var(--reg-rule);
+        }
+        .player-list { display: flex; flex-direction: column; gap: 8px; }
+
+        /* 컬럼 헤더 — PlayerRow와 동일 grid 트랙으로 정렬 */
+        .prow-head {
+          display: grid;
+          grid-template-columns: 32px 36px 1fr auto;
+          align-items: center;
+          gap: 12px;
+          padding: 4px 14px 8px;
+          font-size: 11px;
+          color: var(--fg-mute);
+          font-weight: 600;
+          letter-spacing: 0.08em;
+          text-transform: uppercase;
+          border-bottom: 1px solid var(--border-soft);
+          margin-bottom: 2px;
+        }
+        .prow-head .ph-order  { text-align: center; }
+        .prow-head .ph-actions {
+          display: grid;
+          grid-template-columns: 36px 36px;
+          gap: 2px;
+          font-size: 11px;
+        }
+        .prow-head .ph-actions span { text-align: center; }
+
+        .add-player-wrap {
+          display: flex; justify-content: center;
+          margin-top: 10px;
+        }
+        .add-player {
+          appearance: none;
+          border: 1px solid var(--border);
+          background: var(--bg-hover);
+          color: var(--fg);
+          height: 44px;
+          padding: 0 22px;
+          border-radius: 999px;
+          display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+          font: inherit;
+          font-size: 15px; font-weight: 600; letter-spacing: -0.01em;
+          cursor: pointer;
+          transition: all 160ms ease;
+          white-space: nowrap;
+          box-shadow: 0 1px 0 rgba(255,255,255,.05) inset, 0 1px 3px rgba(0,0,0,.15);
+        }
+        .add-player:hover {
+          background: color-mix(in oklch, var(--bg-hover) 80%, var(--accent));
+          border-color: color-mix(in oklch, var(--accent) 40%, var(--border));
+        }
+        .add-player svg { color: var(--accent); }
+
+        .reg-right {
+          padding: 14px 32px 14px 24px;
+          display: flex; flex-direction: column;
+          min-height: 0;
+          gap: 12px;
+        }
+        .rr-table {
+          flex: 1;
+          position: relative;
+          background:
+            radial-gradient(ellipse at 50% 30%, color-mix(in oklch, var(--accent) 4%, transparent), transparent 60%),
+            var(--bg-app);
+          border: 1px solid color-mix(in oklch, var(--border) 45%, var(--fg-faint));
+          border-radius: var(--radius-lg);
+          padding: 20px 32px;
+          display: grid;
+          place-items: center;
+          container-type: inline-size;
+          min-height: 0;
+        }
+        .rr-empty {
+          position: absolute; inset: 0;
+          display: flex; flex-direction: column;
+          align-items: center; justify-content: center;
+          gap: 12px;
+          color: var(--fg-faint);
+          font-size: 13px;
+          pointer-events: none;
+        }
+
+        .reg-foot {
+          height: 76px;
+          padding: 0 32px;
+          display: flex; align-items: center; gap: 16px;
+          border-top: 1px solid var(--reg-rule);
+          background: linear-gradient(180deg, transparent, color-mix(in oklch, var(--bg-deep) 50%, transparent));
+        }
+        .foot-info {
+          display: flex; align-items: center; gap: 8px;
+          font-size: 16px; color: var(--fg-soft);
+          white-space: nowrap;
+        }
+        .reg-foot .btn-primary { margin-left: auto; }
+      `}</style>
+    </div>
+  )
+}
+
+function PlayerRow({ player, index, isActive, onHover, onLeave, onEdit, onRemove, onReregister }) {
+  return (
+    <div
+      className={`prow ${isActive ? 'active' : ''}`}
+      onMouseEnter={onHover}
+      onMouseLeave={onLeave}
+      style={{ '--row-color': player.color }}
+    >
+      <div className="prow-order">{index + 1}</div>
+      <div className="prow-avatar">
+        <span>{(player.name || '?').charAt(0)}</span>
+      </div>
+      <div className="prow-main">
+        <div className="prow-name">
+          {player.name || '등록 중…'}
+          {!player.registered && (
+            <button className="prow-rere" onClick={onReregister} title="재등록">↻</button>
+          )}
+        </div>
+        {!player.registered && (
+          <div className="prow-sub">등록 미완료</div>
+        )}
+      </div>
+      <div className="prow-actions">
+        <button className="btn-icn" onClick={onEdit} title="수정">
+          <IconEdit size={16} />
+        </button>
+        <button className="btn-icn danger" onClick={onRemove} title="삭제">
+          <IconTrash size={16} />
+        </button>
+      </div>
+
+      <style>{`
+        .prow {
+          display: grid;
+          grid-template-columns: 32px 36px 1fr auto;
+          align-items: center;
+          gap: 12px;
+          padding: 10px 14px;
+          background: var(--bg-surface);
+          border: 1px solid var(--border-soft);
+          border-radius: var(--radius);
+          transition: all 160ms ease;
+          position: relative;
+        }
+        .prow.active {
+          border-color: color-mix(in oklch, var(--row-color) 50%, var(--border));
+          background: color-mix(in oklch, var(--row-color) 6%, var(--bg-surface));
+        }
+        .prow-order {
+          font-size: 15px; font-weight: 700;
+          color: var(--row-color);
+          font-variant-numeric: tabular-nums;
+          text-align: center;
+          letter-spacing: -0.01em;
+        }
+        .prow-avatar {
+          width: 36px; height: 36px; border-radius: 50%;
+          background: linear-gradient(145deg,
+            color-mix(in oklch, var(--row-color) 95%, white 5%),
+            color-mix(in oklch, var(--row-color) 100%, black 14%));
+          color: #1a1410;
+          display: grid; place-items: center;
+          font-weight: 700; font-size: 15px;
+          box-shadow: 0 1px 0 rgba(255,255,255,0.2) inset, 0 2px 6px rgba(0,0,0,0.3);
+        }
+        .prow-main { min-width: 0; }
+        .prow-name {
+          font-size: 17px; font-weight: 600; color: var(--fg);
+          letter-spacing: -0.01em;
+          white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+          display: inline-flex; align-items: center; gap: 8px;
+          max-width: 100%;
+        }
+        .prow-rere {
+          appearance: none; border: 1px solid var(--border-soft);
+          background: transparent;
+          color: var(--fg-mute);
+          width: 22px; height: 22px; border-radius: 50%;
+          display: grid; place-items: center;
+          cursor: pointer; font-size: 13px; line-height: 1;
+          flex-shrink: 0;
+        }
+        .prow-rere:hover { color: var(--accent); border-color: var(--accent); }
+        .prow-sub { font-size: 12px; color: var(--warn); margin-top: 2px; }
+        .prow-actions {
+          display: grid;
+          grid-template-columns: 36px 36px;
+          gap: 2px;
+        }
+        .btn-icn {
+          appearance: none; border: 1px solid transparent;
+          background: transparent;
+          color: var(--fg-mute);
+          width: 36px; height: 36px; border-radius: 8px;
+          display: grid; place-items: center;
+          cursor: pointer;
+          transition: all 120ms ease;
+          font-size: 16px;
+        }
+        .btn-icn:hover { background: var(--bg-elev); color: var(--fg); }
+        .btn-icn.danger:hover { color: var(--err); background: color-mix(in oklch, var(--err) 14%, transparent); }
+      `}</style>
+    </div>
+  )
+}
+
+function TurnControls({ players, firstPlayerId, onChangeFirst, direction, onChangeDirection }) {
+  const [open, setOpen] = useState(false)
+  if (!players.length) return null
+  const first = players[0]
+
+  return (
+    <div className="turn-ctrls">
+      <div className="tc-first">
+        <span className="tc-eyebrow">시작 플레이어</span>
+        <button className={`tc-first-pick ${open ? 'open' : ''}`} onClick={() => setOpen((o) => !o)}>
+          <span className="tc-first-av" style={{ '--seat-color': first.color }}>
+            {(first.name || '?').charAt(0)}
+          </span>
+          <span className="tc-first-name">{first.name || '등록 중'}</span>
+          <span className="tc-chev" aria-hidden>▾</span>
+        </button>
+        {open && (
+          <div className="tc-menu">
+            {players.map((p) => (
+              <button
+                key={p.id}
+                className={`tc-menu-item ${p.id === firstPlayerId ? 'active' : ''}`}
+                onClick={() => { onChangeFirst(p.id); setOpen(false) }}
+              >
+                <span className="tc-menu-av" style={{ '--seat-color': p.color }}>
+                  {(p.name || '?').charAt(0)}
+                </span>
+                <span className="tc-menu-name">{p.name || '등록 중'}</span>
+                {p.id === firstPlayerId && (
+                  <IconCheck size={14} style={{ marginLeft: 'auto', color: 'var(--accent)' }} />
+                )}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="tc-dir">
+        <span className="tc-eyebrow">진행 방향</span>
+        <div className="tc-dir-seg" role="radiogroup">
+          <button
+            className={`tc-dir-btn ${direction === 'cw' ? 'active' : ''}`}
+            onClick={() => onChangeDirection('cw')}
+            role="radio"
+            aria-checked={direction === 'cw'}
+          >
+            <DirIcon kind="cw" />
+            <span>시계방향</span>
+          </button>
+          <button
+            className={`tc-dir-btn ${direction === 'ccw' ? 'active' : ''}`}
+            onClick={() => onChangeDirection('ccw')}
+            role="radio"
+            aria-checked={direction === 'ccw'}
+          >
+            <DirIcon kind="ccw" />
+            <span>반시계방향</span>
           </button>
         </div>
       </div>
 
-      {showModal && (
-        <RegistrationModal
-          seatStep={seatStep}
-          registeringId={registeringId}
-          defaultName={defaultName}
-          onCancel={cancelRegistration}
-          onFinalize={finalizePlayer}
-        />
-      )}
+      <style>{`
+        .turn-ctrls {
+          margin-top: 14px;
+          display: grid;
+          grid-template-columns: minmax(0, 1fr) auto;
+          gap: 16px;
+          align-items: start;
+        }
+        .tc-first, .tc-dir { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+        .tc-eyebrow {
+          font-size: 11px; letter-spacing: 0.08em;
+          text-transform: uppercase; font-weight: 600;
+          color: var(--fg-mute);
+          display: block;
+        }
+        .tc-first { position: relative; align-items: flex-start; }
+        .tc-first-pick {
+          appearance: none;
+          background: var(--bg-surface);
+          border: 1px solid var(--border);
+          border-radius: 999px;
+          height: 40px;
+          padding: 0 14px 0 5px;
+          color: var(--fg);
+          display: inline-flex; align-items: center; gap: 8px;
+          font: inherit;
+          font-size: 14px; font-weight: 500;
+          cursor: pointer;
+          transition: all 120ms ease;
+          width: auto; max-width: 100%;
+        }
+        .tc-first-pick:hover { background: var(--bg-elev); }
+        .tc-first-av {
+          width: 28px; height: 28px; border-radius: 50%;
+          background: linear-gradient(145deg,
+            color-mix(in oklch, var(--seat-color) 95%, white 5%),
+            color-mix(in oklch, var(--seat-color) 100%, black 14%));
+          color: #1a1410;
+          display: grid; place-items: center;
+          font-weight: 700; font-size: 13px;
+          flex-shrink: 0;
+        }
+        .tc-first-name {
+          overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+          min-width: 0;
+        }
+        .tc-chev {
+          font-size: 11px; color: var(--fg-mute);
+          margin-left: 2px;
+          transition: transform 180ms ease;
+        }
+        .tc-first-pick.open .tc-chev { transform: rotate(180deg); }
+
+        .tc-menu {
+          position: absolute;
+          bottom: calc(100% + 4px);
+          left: 0;
+          min-width: 200px; max-width: 280px;
+          background: var(--bg-elev);
+          border: 1px solid var(--border);
+          border-radius: 10px;
+          box-shadow: var(--shadow);
+          padding: 4px;
+          z-index: 30;
+          max-height: 240px;
+          overflow-y: auto;
+        }
+        .tc-menu-item {
+          appearance: none; border: 0;
+          background: transparent;
+          color: var(--fg);
+          width: 100%;
+          padding: 7px 10px;
+          border-radius: 7px;
+          display: flex; align-items: center; gap: 8px;
+          cursor: pointer;
+          font: inherit; font-size: 15px;
+          text-align: left;
+        }
+        .tc-menu-name {
+          flex: 1; min-width: 0;
+          white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+        .tc-menu-item:hover { background: var(--bg-hover); }
+        .tc-menu-item.active { background: color-mix(in oklch, var(--accent) 12%, transparent); }
+        .tc-menu-av {
+          width: 24px; height: 24px; border-radius: 50%;
+          background: linear-gradient(145deg,
+            color-mix(in oklch, var(--seat-color) 95%, white 5%),
+            color-mix(in oklch, var(--seat-color) 100%, black 14%));
+          color: #1a1410;
+          display: grid; place-items: center;
+          font-weight: 700; font-size: 12px;
+          flex-shrink: 0;
+        }
+
+        .tc-dir-seg {
+          display: inline-flex;
+          background: var(--bg-surface);
+          border: 1px solid var(--border);
+          border-radius: 999px;
+          padding: 3px; gap: 2px;
+          height: 40px; align-items: center;
+        }
+        .tc-dir-btn {
+          appearance: none; border: 0;
+          background: transparent;
+          color: var(--fg-mute);
+          height: 32px;
+          padding: 0 14px;
+          border-radius: 999px;
+          font: inherit; font-size: 13px; font-weight: 500;
+          display: inline-flex; align-items: center; gap: 6px;
+          cursor: pointer;
+          transition: all 140ms ease;
+          white-space: nowrap;
+        }
+        .tc-dir-btn:hover { color: var(--fg); }
+        .tc-dir-btn.active {
+          background: var(--accent);
+          color: #1a1410;
+          box-shadow: 0 1px 3px rgba(0,0,0,0.25);
+        }
+        :root[data-mode="light"][data-accent="white"] .tc-dir-btn.active { color: #fff; }
+        .tc-dir-btn svg { flex-shrink: 0; }
+      `}</style>
     </div>
+  )
+}
+
+function DirIcon({ kind, size = 14 }) {
+  if (kind === 'cw') {
+    return (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
+        stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+        <path d="M21 12a9 9 0 1 1-4.5-7.8" />
+        <polyline points="21 4 21 9 16 9" />
+      </svg>
+    )
+  }
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
+      stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M3 12a9 9 0 1 0 4.5-7.8" />
+      <polyline points="3 4 3 9 8 9" />
+    </svg>
+  )
+}
+
+function EditNameModal({ initialName, existingNames, onCancel, onSubmit }) {
+  const [name, setName] = useState(initialName)
+  const isUsed = existingNames.includes(name.trim()) && name.trim().length > 0
+
+  const submit = () => {
+    const trimmed = name.trim()
+    if (!trimmed || isUsed) return
+    onSubmit(trimmed)
+  }
+
+  return (
+    <>
+      <div className="backdrop" onClick={onCancel} />
+      <div className="enm-modal">
+        <div className="enm-head">
+          <div className="enm-title">이름 변경</div>
+        </div>
+        <div className="enm-body">
+          <input
+            className="input"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && submit()}
+            maxLength={16}
+            autoFocus
+          />
+          {isUsed && (
+            <div className="enm-warn">
+              <span className="status-dot warn" /> 이미 사용 중인 이름이에요.
+            </div>
+          )}
+        </div>
+        <div className="enm-foot">
+          <button className="btn btn-ghost" onClick={onCancel}>취소</button>
+          <button className="btn btn-primary" onClick={submit} disabled={!name.trim() || isUsed}>
+            저장 <IconCheck size={18} />
+          </button>
+        </div>
+
+        <style>{`
+          .enm-modal {
+            position: absolute;
+            left: 50%; top: 50%;
+            transform: translate(-50%, -50%);
+            width: min(480px, 88%);
+            background: var(--bg-surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-xl);
+            box-shadow: var(--shadow-lg);
+            z-index: 100;
+            display: flex; flex-direction: column;
+            overflow: hidden;
+            animation: enm-pop 240ms cubic-bezier(.2,.7,.2,1.05) both;
+          }
+          @keyframes enm-pop {
+            from { transform: translate(-50%, -50%) scale(0.96); }
+            to   { transform: translate(-50%, -50%) scale(1); }
+          }
+          .enm-head {
+            padding: 16px 20px;
+            border-bottom: 1px solid var(--border-soft);
+          }
+          .enm-title {
+            font-size: 17px; font-weight: 700; letter-spacing: -0.01em;
+            color: var(--fg);
+          }
+          .enm-body {
+            padding: 20px 24px;
+            display: flex; flex-direction: column; gap: 12px;
+          }
+          .enm-warn {
+            font-size: 14px; color: var(--warn);
+            display: flex; align-items: center; gap: 8px;
+          }
+          .enm-foot {
+            display: flex; gap: 10px; justify-content: flex-end;
+            padding: 14px 20px;
+            border-top: 1px solid var(--border-soft);
+            background: color-mix(in oklch, var(--bg-deep) 30%, transparent);
+          }
+        `}</style>
+      </div>
+    </>
   )
 }

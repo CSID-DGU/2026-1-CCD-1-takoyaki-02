@@ -296,6 +296,11 @@ async def werewolf_socket(websocket: WebSocket) -> None:
         pipeline_switcher=app.state.pipeline_switcher,
         audio_manager=app.state.audio_manager,
         agent_orchestrator=agent_orchestrator,
+        seat_positions_fn=lambda: {
+            p.player_id: p.seat_zone.body_xy
+            for p in app.state.orchestrator._pm.state.players
+            if p.seat_zone is not None
+        },
     )
     app.state.orchestrator.set_werewolf_event_handler(session.get_vision_event_handler())
     # WS 연결 즉시 웨어울프 파이프라인 활성화 (역할 선택 화면에서도 카메라 준비)
