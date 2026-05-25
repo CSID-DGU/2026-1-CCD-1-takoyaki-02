@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useWebSocket } from '../hooks/useWebSocket'
 import { audio as audioApi, useAudioPlayer } from '../hooks/useAudioPlayer'
-import { IconMusic } from '../components/common/Icons'
+import { IconMusic, IconVolume } from '../components/common/Icons'
 
 const CATEGORY_LABELS = [
   ['ones', 'Aces'],
@@ -419,6 +419,7 @@ export default function YachtGame({ players, tutorialMode = false, onExit, onCha
   useAudioPlayer(send)
   const [leaderboardOpen, setLeaderboardOpen] = useState(false)
   const [tutorialIntroSeen, setTutorialIntroSeen] = useState(!tutorialMode)
+  const [ttsEnabled, setTtsEnabled] = useState(true)
   const [bgmEnabled, setBgmEnabled] = useState(true)
   const [turnPulseKey, setTurnPulseKey] = useState(0)
   const [recentScore, setRecentScore] = useState(null)
@@ -426,6 +427,10 @@ export default function YachtGame({ players, tutorialMode = false, onExit, onCha
   const introTtsPlayedRef = useRef(false)
   const previousTurnRef = useRef(null)
   const previousScoresRef = useRef(new Map())
+
+  useEffect(() => {
+    audioApi.setTtsEnabled(true)
+  }, [])
 
   useEffect(() => {
     if (!connected) return
@@ -520,7 +525,14 @@ export default function YachtGame({ players, tutorialMode = false, onExit, onCha
     send('BGM_SET', { enabled: next })
   }
 
+  const toggleTts = () => {
+    const next = !ttsEnabled
+    setTtsEnabled(next)
+    audioApi.setTtsEnabled(next)
+  }
+
   const exitGame = () => {
+    audioApi.setTtsEnabled(true)
     send('BGM_STOP')
     onExit?.()
   }
@@ -640,6 +652,15 @@ export default function YachtGame({ players, tutorialMode = false, onExit, onCha
       <div style={s.phaseText}>
         <span style={s.phaseTitle}>요트다이스</span>
         <span style={s.phaseActions}>
+          <button
+            type="button"
+            style={s.iconButton(ttsEnabled)}
+            onClick={toggleTts}
+            title={ttsEnabled ? 'TTS 끄기' : 'TTS 켜기'}
+            aria-label={ttsEnabled ? 'TTS 끄기' : 'TTS 켜기'}
+          >
+            <IconVolume size={19} />
+          </button>
           <button
             type="button"
             style={s.iconButton(bgmEnabled)}
