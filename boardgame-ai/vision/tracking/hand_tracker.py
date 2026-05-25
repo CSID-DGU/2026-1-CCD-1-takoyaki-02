@@ -28,6 +28,10 @@ _PLAYER_ID_BUF = 7
 # 이 프레임 수 이상 매칭 안 되면 track 제거.
 _MAX_AGE = 15
 
+# Hold 모드 최대 매칭 시도 프레임 수. 옆자리 후보와 margin이 부족해
+# 모호한 동안 voting 누적, 이 횟수 도달 시 best로 강제 confirm(타임아웃).
+MAX_MATCH_ATTEMPTS = 5
+
 
 @dataclass
 class HandTrack:
@@ -47,7 +51,8 @@ class HandTrack:
 
     age: int = 0  # 마지막 매칭 이후 프레임 수
     frames_since_entry: int = 0  # 트랙 생성 이후 매칭된 프레임 수
-    pending_match: bool = True  # 신규 track → 매칭 1회 대기
+    pending_match: bool = True  # Hold 모드: 매칭 시도 반복 중. 확정 시 False.
+    match_attempts: int = 0  # Hold 중 누적 매칭 시도 수 (타임아웃 카운터)
 
     @property
     def confirmed_handedness(self) -> str | None:
