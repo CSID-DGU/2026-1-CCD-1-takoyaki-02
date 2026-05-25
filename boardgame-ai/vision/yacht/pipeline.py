@@ -17,6 +17,7 @@ from core.events import FusionContext
 from core.models import Player
 from vision.attribution.roll_attributor import RollAttributor
 from vision.attribution.seat_matcher import (
+    MARGIN_THRESHOLD,
     match_player_by_arm,
     players_with_both_hands_tracked,
 )
@@ -41,7 +42,7 @@ from vision.schemas import BBox, HandDet, YoloDet
 from vision.yacht.schemas import YachtFramePerception
 from vision.tracking.byte_tracker import ByteTracker
 from vision.tracking.dice_manager import DiceManager
-from vision.tracking.hand_tracker import HandTracker
+from vision.tracking.hand_tracker import MAX_MATCH_ATTEMPTS, HandTracker
 
 
 class VisionPipeline:
@@ -243,15 +244,19 @@ class VisionPipeline:
             stable_handedness = track.confirmed_handedness or raw.handedness
 
             if track.pending_match and track.frames_since_entry >= 3 and self._players:
-                pid, _score = match_player_by_arm(
+                pid, _score, margin = match_player_by_arm(
                     handedness=stable_handedness,
                     entry_wrist_xy=track.entry_wrist_xy,
                     entry_arm_angle=track.entry_arm_angle,
                     players=self._players,
                     excluded_player_ids=excluded,
                 )
+                # margin 충분 → 즉시 확정. 부족하면 Hold(여러 프레임 voting 누적),
+                # MAX_MATCH_ATTEMPTS 도달 시 best로 강제 확정(타임아웃).
                 track.player_id_buf.append(pid)
-                track.pending_match = False
+                track.match_attempts += 1
+                if margin >= MARGIN_THRESHOLD or track.match_attempts >= MAX_MATCH_ATTEMPTS:
+                    track.pending_match = False
 
             player_id = track.confirmed_player_id
             prev_gesture = self._prev_gestures.get(track.track_id)
@@ -299,9 +304,7 @@ def _split_dets(
     return tray, tray_inner, roll_tray, dice_dets
 
 
-def _filter_dice_inside_tray(
-    dice_dets: list[YoloDet], tray: BBox, padding: float
-) -> list[YoloDet]:
+def _filter_dice_inside_tray(dice_dets: list[YoloDet], tray: BBox, padding: float) -> list[YoloDet]:
     pad_x = tray.w * padding
     pad_y = tray.h * padding
     x1, y1 = tray.x1 - pad_x, tray.y1 - pad_y

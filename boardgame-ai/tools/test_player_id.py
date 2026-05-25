@@ -132,7 +132,7 @@ def main() -> None:
 
                 # 신규 트랙 매칭 (frames_since_entry >= 3 이후 1회)
                 if track.pending_match and track.frames_since_entry >= 3 and players:
-                    pid, score = match_player_by_arm(
+                    pid, score, margin = match_player_by_arm(
                         handedness=handedness,
                         entry_wrist_xy=track.entry_wrist_xy,
                         entry_arm_angle=track.entry_arm_angle,
@@ -145,7 +145,7 @@ def main() -> None:
                     print(
                         f"  track#{track.track_id}  {handedness:5s}  {gesture:8s}  "
                         f"angle={math.degrees(track.entry_arm_angle):.0f}°  "
-                        f"→ {pname}  score={score:.3f}"
+                        f"→ {pname}  score={score:.3f}  margin={margin:.3f}"
                     )
 
                 player_id = track.confirmed_player_id
