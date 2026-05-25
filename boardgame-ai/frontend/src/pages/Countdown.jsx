@@ -5,7 +5,7 @@ import { colorForIndex } from '../components/common/seatColors'
 const GAME_META = {
   yacht: {
     title: '요트 다이스',
-    tagline: '주사위 운빨과 전략의 만남',
+    tagline: '행운과 전략의 만남',
     accent: 'var(--yacht)',
     art: 'yacht',
   },
@@ -17,7 +17,7 @@ const GAME_META = {
   },
   werewolf: {
     title: '한밤의 늑대인간',
-    tagline: '한 밤의 추리와 거짓말',
+    tagline: '한밤의 진실과 거짓',
     accent: 'var(--werewolf)',
     art: 'wolf',
   },

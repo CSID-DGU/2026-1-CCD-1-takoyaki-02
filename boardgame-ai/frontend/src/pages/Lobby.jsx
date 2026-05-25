@@ -8,7 +8,7 @@ const GAMES = [
   {
     id: 'yacht',
     title: '요트 다이스',
-    tagline: '주사위 운빨과 전략의 만남',
+    tagline: '행운과 전략의 만남',
     players: '1–6명',
     duration: '20–30분',
     difficulty: '초급',
@@ -22,7 +22,7 @@ const GAMES = [
   {
     id: 'werewolf',
     title: '한밤의 늑대인간',
-    tagline: '한 밤의 추리와 거짓말',
+    tagline: '한밤의 진실과 거짓',
     players: '4–10명',
     duration: '10–15분',
     difficulty: '중급',
