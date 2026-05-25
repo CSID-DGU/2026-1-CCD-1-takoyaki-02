@@ -19,6 +19,7 @@ const player = {
   current: null,       // {playback_id, type, t0, fadeTimer}
   audio: null,         // 단일 재사용 Audio 인스턴스 (TTS/SFX 공용)
   unlocked: false,
+  ttsEnabled: true,
   ackSenders: new Set(),
   bgmAudio: null,
   bgmGainDb: 0,
@@ -71,6 +72,14 @@ async function playMessage(msg) {
   const payload = msg.payload || {}
   const audio_url = payload.audio_url
   const playback_id = payload.playback_id || `pb_${Math.random().toString(36).slice(2, 10)}`
+
+  if (msg.msg_type === 'tts_play' && !player.ttsEnabled) {
+    sendAck(playback_id, 'skipped', Date.now() / 1000)
+    const cbs = [...player.ttsEndCallbacks]
+    player.ttsEndCallbacks.clear()
+    cbs.forEach(cb => cb())
+    return
+  }
 
   if (!audio_url) {
     // 합성 실패한 text-only — ack만 보내 backend 큐 진행.
@@ -209,6 +218,12 @@ function enqueue(msg) {
     return
   }
   if (t !== 'tts_play' && t !== 'sfx_play') return
+  if (t === 'tts_play' && !player.ttsEnabled) {
+    const payload = msg.payload || {}
+    const playback_id = payload.playback_id || `pb_${Math.random().toString(36).slice(2, 10)}`
+    sendAck(playback_id, 'skipped', Date.now() / 1000)
+    return
+  }
   if (!player.unlocked) {
     player.pendingNext = msg
     return
@@ -222,18 +237,22 @@ function enqueue(msg) {
   playMessage(msg)
 }
 
-function handleBgmPlay({ audio_url, loop = true, gain_db = -6 }) {
-  // 빈 audio_url은 정지 신호.
+function handleBgmPlay({ audio_url, loop = true, gain_db = -6, preserve_position = false }) {
+  // 빈 audio_url은 정지/일시정지 신호.
   if (!audio_url) {
     if (player.bgmAudio) {
       try { player.bgmAudio.pause() } catch (_) {}
-      try { player.bgmAudio.currentTime = 0 } catch (_) {}
-      player.bgmAudio.src = ''
+      if (!preserve_position) {
+        try { player.bgmAudio.currentTime = 0 } catch (_) {}
+        player.bgmAudio.src = ''
+      }
     }
     return
   }
   const el = ensureBgmElement()
-  el.src = audio_url
+  if (el.src !== new URL(audio_url, window.location.href).href) {
+    el.src = audio_url
+  }
   el.loop = !!loop
   player.bgmGainDb = gain_db
   applyBgmGain()
@@ -262,6 +281,21 @@ function unlock() {
     const next = player.pendingNext
     player.pendingNext = null
     playMessage(next)
+  }
+}
+
+function setTtsEnabled(enabled) {
+  player.ttsEnabled = !!enabled
+  if (!player.ttsEnabled) {
+    if (player.current?.type === 'tts_play') {
+      fadeOutInterrupt(player.current.playback_id)
+    }
+    if (player.pendingNext?.msg_type === 'tts_play') {
+      const payload = player.pendingNext.payload || {}
+      const playback_id = payload.playback_id || `pb_${Math.random().toString(36).slice(2, 10)}`
+      player.pendingNext = null
+      sendAck(playback_id, 'skipped', Date.now() / 1000)
+    }
   }
 }
 
@@ -309,4 +343,11 @@ function onNextTtsStarted(callback) {
   return () => player.ttsStartCallbacks.delete(callback)
 }
 
-export const audio = { enqueue, interrupt: fadeOutInterrupt, unlock, onNextTtsEnded, onNextTtsStarted }
+export const audio = {
+  enqueue,
+  interrupt: fadeOutInterrupt,
+  unlock,
+  setTtsEnabled,
+  onNextTtsEnded,
+  onNextTtsStarted,
+}

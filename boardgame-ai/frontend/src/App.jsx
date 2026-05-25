@@ -5,6 +5,7 @@ import { useAudioPlayer, audio as audioApi } from './hooks/useAudioPlayer'
 import { useBenchBridge } from './hooks/useBenchBridge'
 import SeatRegistration from './components/common/SeatRegistration'
 import { colorForIndex } from './components/common/seatColors'
+import { orderForTurn, physicalSeatOrder } from './components/common/turnOrder'
 import Lobby from './pages/Lobby'
 import Countdown from './pages/Countdown'
 import WerewolfGame from './pages/WerewolfGame'
@@ -17,18 +18,6 @@ const WEREWOLF_PHASES = new Set([
   'night_drunk', 'night_insomniac',
   'day_discussion', 'vote_countdown', 'vote', 'result',
 ])
-
-/** firstPlayerId / direction에 맞게 좌석 순서로 재정렬 */
-function orderForTurn(players, firstPlayerId, direction) {
-  if (players.length === 0) return []
-  const byPos = [...players].sort((a, b) => (a.position ?? 0) - (b.position ?? 0))
-  const startIdx = Math.max(0, byPos.findIndex((p) => p.player_id === firstPlayerId))
-  const walked = [...byPos.slice(startIdx), ...byPos.slice(0, startIdx)]
-  if (direction === 'ccw') {
-    return [walked[0], ...walked.slice(1).reverse()]
-  }
-  return walked
-}
 
 export default function App() {
   const [page, setPage] = useState('seat')
@@ -67,9 +56,7 @@ export default function App() {
       return
     }
     if (!registeredPlayers.find((p) => p.player_id === firstPlayerId)) {
-      const byPos = [...registeredPlayers].sort(
-        (a, b) => (a.position ?? 0) - (b.position ?? 0),
-      )
+      const byPos = physicalSeatOrder(registeredPlayers, 'player_id')
       setFirstPlayerId(byPos[0].player_id)
     }
   }, [registeredPlayers, firstPlayerId])
@@ -95,7 +82,7 @@ export default function App() {
   // Lobby에서 게임 카드 선택 → 카운트다운 진입
   const handleSelectGame = (gameId, mode) => {
     // 진행 순서 픽스
-    const ordered = orderForTurn(registeredPlayers, firstPlayerId, direction)
+    const ordered = orderForTurn(registeredPlayers, firstPlayerId, direction, 'player_id')
     if (ordered.length === 0) return
 
     // UI용 플레이어 목록 (Countdown 화면 + 게임 페이지로 전달)

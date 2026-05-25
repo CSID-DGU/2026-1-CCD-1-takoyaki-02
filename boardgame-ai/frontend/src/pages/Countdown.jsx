@@ -5,7 +5,7 @@ import { colorForIndex } from '../components/common/seatColors'
 const GAME_META = {
   yacht: {
     title: '요트 다이스',
-    tagline: '주사위 운빨과 전략의 만남',
+    tagline: '행운과 전략의 만남',
     accent: 'var(--yacht)',
     art: 'yacht',
   },
@@ -17,7 +17,7 @@ const GAME_META = {
   },
   werewolf: {
     title: '한밤의 늑대인간',
-    tagline: '한 밤의 추리와 거짓말',
+    tagline: '한밤의 진실과 거짓',
     accent: 'var(--werewolf)',
     art: 'wolf',
   },
@@ -181,20 +181,16 @@ export default function Countdown({
         }
 
         .cd-roster {
-          display: flex; gap: 8px; flex-wrap: nowrap;
-          justify-content: flex-start;
+          display: flex; gap: 8px; flex-wrap: wrap;
+          justify-content: center;
           padding: 14px 18px;
           background: color-mix(in oklch, var(--bg-deep) 55%, transparent);
           border: 1px solid color-mix(in oklch, white 6%, transparent);
           backdrop-filter: blur(20px);
           border-radius: 18px;
           max-width: 100%;
-          overflow-x: auto;
-          scrollbar-width: thin;
-          scrollbar-color: var(--border) transparent;
+          overflow: visible;
         }
-        .cd-roster::-webkit-scrollbar { height: 4px; }
-        .cd-roster::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
         .cd-slot {
           position: relative;
           flex-shrink: 0;

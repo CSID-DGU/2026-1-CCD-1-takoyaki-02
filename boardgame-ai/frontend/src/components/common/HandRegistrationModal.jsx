@@ -207,15 +207,15 @@ function StepDot({ label, active, done }) {
           transition: all 200ms ease;
         }
         .step-dot.active .sd-mark {
-          background: var(--accent);
-          border-color: var(--accent);
-          color: #1a1410;
-          box-shadow: 0 0 0 4px color-mix(in oklch, var(--accent) 25%, transparent);
+          background: #22c55e;
+          border-color: #22c55e;
+          color: #052e16;
+          box-shadow: 0 0 0 4px rgba(34, 197, 94, 0.24);
         }
         .step-dot.done .sd-mark {
-          background: var(--accent-deep);
-          border-color: var(--accent-deep);
-          color: #1a1410;
+          background: #16a34a;
+          border-color: #16a34a;
+          color: #052e16;
         }
         .sd-dot { width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
         .sd-label { font-size: 12px; color: var(--fg-mute); font-weight: 500; white-space: nowrap; }
@@ -232,7 +232,7 @@ function HandStep({ kind }) {
     : '이번엔 왼손을 들어 OK 사인을 보여 주세요'
   const titleSub = isV
     ? '테이블 중앙으로 손을 뻗어 카메라가 잘 보이게 해주세요'
-    : '오른손은 잠시 내려도 됩니다'
+    : ''
 
   // 오른손(V) → 손 아이콘 오른쪽 / 왼손(OK) → 손 아이콘 왼쪽 (실제 손 위치와 일치)
   return (
@@ -252,10 +252,10 @@ function HandStep({ kind }) {
         </div>
       </div>
 
-      <div className="hs-text">
+      <div className={`hs-text ${titleSub ? '' : 'hs-no-sub'}`}>
         <div className="hs-eyebrow">{isV ? '1 / 2' : '2 / 2'}</div>
         <h2 className="hs-title">{titleMain}</h2>
-        <p className="hs-sub">{titleSub}</p>
+        {titleSub && <p className="hs-sub">{titleSub}</p>}
         <ul className="hs-tips">
           <li><span className="hs-bullet" /> 손가락을 또렷하게 펴 주세요</li>
           <li><span className="hs-bullet" /> 다른 사람은 잠시 손을 치워 주세요</li>
@@ -339,6 +339,9 @@ function HandStep({ kind }) {
           margin: 8px 0 16px; font-size: 14px;
           color: var(--fg-soft); line-height: 1.55;
         }
+        .hs-no-sub .hs-title {
+          margin-bottom: 10px;
+        }
         .hs-tips {
           list-style: none; padding: 0; margin: 0;
           display: flex; flex-direction: column; gap: 6px;
@@ -360,7 +363,7 @@ function NameStep({ name, setName, defaultName, onRandom, existingNames, onEnter
       <div className="ns-head">
         <div className="ns-eyebrow">3 / 3</div>
         <h2 className="ns-title">플레이어 이름을 정해 주세요</h2>
-        <p className="ns-sub">게임 화면과 알림에 이 이름이 표시됩니다</p>
+        <p className="ns-sub">게임 화면과 알림에 표시될 이름입니다</p>
       </div>
 
       <div className="ns-input-row">
