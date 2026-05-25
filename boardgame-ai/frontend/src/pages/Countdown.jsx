@@ -181,20 +181,16 @@ export default function Countdown({
         }
 
         .cd-roster {
-          display: flex; gap: 8px; flex-wrap: nowrap;
-          justify-content: flex-start;
+          display: flex; gap: 8px; flex-wrap: wrap;
+          justify-content: center;
           padding: 14px 18px;
           background: color-mix(in oklch, var(--bg-deep) 55%, transparent);
           border: 1px solid color-mix(in oklch, white 6%, transparent);
           backdrop-filter: blur(20px);
           border-radius: 18px;
           max-width: 100%;
-          overflow-x: auto;
-          scrollbar-width: thin;
-          scrollbar-color: var(--border) transparent;
+          overflow: visible;
         }
-        .cd-roster::-webkit-scrollbar { height: 4px; }
-        .cd-roster::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
         .cd-slot {
           position: relative;
           flex-shrink: 0;
