@@ -5,6 +5,7 @@ import {
 import TableVisualization from './TableVisualization'
 import HandRegistrationModal, { RANDOM_NICKNAMES } from './HandRegistrationModal'
 import { colorForPlayerId } from './seatColors'
+import { orderForTurn, physicalSeatOrder } from './turnOrder'
 
 /** position이 없는 등록 중 플레이어를 위해 균등 분배(임시) */
 function fillMissingPositions(players) {
@@ -14,18 +15,6 @@ function fillMissingPositions(players) {
     ...p,
     position: p.position == null ? i / N : p.position,
   }))
-}
-
-/** firstPlayerId/direction에 맞게 좌석 순서로 정렬 */
-function orderForTurn(players, firstPlayerId, direction) {
-  if (players.length === 0) return []
-  const byPos = [...players].sort((a, b) => (a.position ?? 0) - (b.position ?? 0))
-  const startIdx = Math.max(0, byPos.findIndex((p) => p.id === firstPlayerId))
-  const walked = [...byPos.slice(startIdx), ...byPos.slice(0, startIdx)]
-  if (direction === 'ccw') {
-    return [walked[0], ...walked.slice(1).reverse()]
-  }
-  return walked
 }
 
 export default function SeatRegistration({
@@ -61,6 +50,10 @@ export default function SeatRegistration({
   const ordered = useMemo(
     () => orderForTurn(uiPlayers, firstPlayerId, direction),
     [uiPlayers, firstPlayerId, direction],
+  )
+  const physicalPlayers = useMemo(
+    () => physicalSeatOrder(uiPlayers),
+    [uiPlayers],
   )
 
   const totalPlayers = ordered.length
@@ -197,7 +190,8 @@ export default function SeatRegistration({
           </div>
 
           <TurnControls
-            players={ordered}
+            players={physicalPlayers}
+            orderedPlayers={ordered}
             firstPlayerId={firstPlayerId}
             onChangeFirst={onChangeFirst}
             direction={direction}
@@ -508,10 +502,20 @@ function PlayerRow({ player, index, isActive, onHover, onLeave, onEdit, onRemove
   )
 }
 
-function TurnControls({ players, firstPlayerId, onChangeFirst, direction, onChangeDirection }) {
+function TurnControls({
+  players,
+  orderedPlayers,
+  firstPlayerId,
+  onChangeFirst,
+  direction,
+  onChangeDirection,
+}) {
   const [open, setOpen] = useState(false)
   if (!players.length) return null
-  const first = players[0]
+  const first = orderedPlayers[0] ?? players.find((p) => p.id === firstPlayerId) ?? players[0]
+  const chooseDirection = (nextDirection) => {
+    if (direction !== nextDirection) onChangeDirection(nextDirection)
+  }
 
   return (
     <div className="turn-ctrls">
@@ -549,8 +553,10 @@ function TurnControls({ players, firstPlayerId, onChangeFirst, direction, onChan
         <span className="tc-eyebrow">진행 방향</span>
         <div className="tc-dir-seg" role="radiogroup">
           <button
+            type="button"
             className={`tc-dir-btn ${direction === 'cw' ? 'active' : ''}`}
-            onClick={() => onChangeDirection('cw')}
+            onPointerDown={() => chooseDirection('cw')}
+            onClick={() => chooseDirection('cw')}
             role="radio"
             aria-checked={direction === 'cw'}
           >
@@ -558,8 +564,10 @@ function TurnControls({ players, firstPlayerId, onChangeFirst, direction, onChan
             <span>시계방향</span>
           </button>
           <button
+            type="button"
             className={`tc-dir-btn ${direction === 'ccw' ? 'active' : ''}`}
-            onClick={() => onChangeDirection('ccw')}
+            onPointerDown={() => chooseDirection('ccw')}
+            onClick={() => chooseDirection('ccw')}
             role="radio"
             aria-checked={direction === 'ccw'}
           >
@@ -567,17 +575,25 @@ function TurnControls({ players, firstPlayerId, onChangeFirst, direction, onChan
             <span>반시계방향</span>
           </button>
         </div>
+        <div className="tc-order-preview">
+          {orderedPlayers.map((p, i) => (
+            <span key={p.id} className="tc-order-chip" style={{ '--seat-color': p.color }}>
+              <b>{i + 1}</b>{p.name || '등록 중'}
+            </span>
+          ))}
+        </div>
       </div>
 
       <style>{`
         .turn-ctrls {
           margin-top: 14px;
           display: grid;
-          grid-template-columns: minmax(0, 1fr) auto;
+          grid-template-columns: minmax(0, 1fr) 304px;
           gap: 16px;
           align-items: start;
         }
         .tc-first, .tc-dir { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+        .tc-dir { width: 304px; }
         .tc-eyebrow {
           font-size: 11px; letter-spacing: 0.08em;
           text-transform: uppercase; font-weight: 600;
@@ -672,17 +688,26 @@ function TurnControls({ players, firstPlayerId, onChangeFirst, direction, onChan
           border-radius: 999px;
           padding: 3px; gap: 2px;
           height: 40px; align-items: center;
+          position: relative;
+          z-index: 2;
+          width: 304px;
+          flex-shrink: 0;
         }
         .tc-dir-btn {
           appearance: none; border: 0;
           background: transparent;
           color: var(--fg-mute);
           height: 32px;
-          padding: 0 14px;
+          padding: 0 10px;
+          flex: 1 1 0;
+          justify-content: center;
+          min-width: 0;
           border-radius: 999px;
           font: inherit; font-size: 13px; font-weight: 500;
           display: inline-flex; align-items: center; gap: 6px;
           cursor: pointer;
+          touch-action: manipulation;
+          user-select: none;
           transition: all 140ms ease;
           white-space: nowrap;
         }
@@ -694,6 +719,25 @@ function TurnControls({ players, firstPlayerId, onChangeFirst, direction, onChan
         }
         :root[data-mode="light"][data-accent="white"] .tc-dir-btn.active { color: #fff; }
         .tc-dir-btn svg { flex-shrink: 0; }
+        .tc-order-preview {
+          display: flex; flex-wrap: wrap; gap: 5px;
+          width: 304px;
+          max-height: 49px;
+          overflow: hidden;
+        }
+        .tc-order-chip {
+          display: inline-flex; align-items: center; gap: 4px;
+          height: 22px; padding: 0 8px;
+          border-radius: 999px;
+          background: color-mix(in oklch, var(--seat-color) 16%, transparent);
+          border: 1px solid color-mix(in oklch, var(--seat-color) 35%, transparent);
+          color: var(--fg-soft);
+          font-size: 11px; white-space: nowrap;
+        }
+        .tc-order-chip b {
+          color: var(--seat-color);
+          font-variant-numeric: tabular-nums;
+        }
       `}</style>
     </div>
   )
