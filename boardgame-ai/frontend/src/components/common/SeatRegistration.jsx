@@ -3,7 +3,7 @@ import {
   IconPlus, IconCheck, IconArrowRight, IconEdit, IconTrash, IconUsers,
 } from './Icons'
 import TableVisualization from './TableVisualization'
-import HandRegistrationModal from './HandRegistrationModal'
+import HandRegistrationModal, { RANDOM_NICKNAMES } from './HandRegistrationModal'
 import { colorForPlayerId } from './seatColors'
 
 /** position이 없는 등록 중 플레이어를 위해 균등 분배(임시) */
@@ -65,6 +65,7 @@ export default function SeatRegistration({
 
   const totalPlayers = ordered.length
   const namedPlayers = ordered.filter((p) => p.name)
+  const existingNameKey = namedPlayers.map((p) => p.name).join('|')
   const canStart =
     namedPlayers.length > 0 && namedPlayers.every((p) => p.registered)
 
@@ -97,7 +98,12 @@ export default function SeatRegistration({
   const editingPlayer =
     editingId && uiPlayers.find((p) => p.id === editingId)
 
-  const defaultName = `플레이어${namedPlayers.length + 1}`
+  const defaultName = useMemo(() => {
+    const used = new Set(namedPlayers.map((p) => p.name))
+    const pool = RANDOM_NICKNAMES.filter((nickname) => !used.has(nickname))
+    const candidates = pool.length ? pool : RANDOM_NICKNAMES
+    return candidates[Math.floor(Math.random() * candidates.length)]
+  }, [registeringId, existingNameKey])
 
   return (
     <div className="scr scr-register">
