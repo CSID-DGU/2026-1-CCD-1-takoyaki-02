@@ -266,6 +266,22 @@ function handleBgmDuck({ on, attenuation_db = -12 }) {
   applyBgmGain()
 }
 
+/**
+ * BGM을 즉시 정지하고 위치를 0으로 리셋. 페이지 전환 등 backend round-trip을
+ * 기다릴 수 없는 상황에서 frontend가 직접 호출.
+ */
+function stopBgm() {
+  handleBgmPlay({ audio_url: '' })
+}
+
+/**
+ * BGM을 즉시 재생. backend를 거치지 않고 frontend가 직접 트리거할 때 사용
+ * (로비 진입 시 등). url은 정적 자산 경로(예: '/bgm/lobby_loop.mp3').
+ */
+function playBgm(url, { loop = true, gain_db = -12 } = {}) {
+  handleBgmPlay({ audio_url: url, loop, gain_db })
+}
+
 function unlock() {
   if (player.unlocked) return
   player.unlocked = true
@@ -281,6 +297,11 @@ function unlock() {
     const next = player.pendingNext
     player.pendingNext = null
     playMessage(next)
+  }
+  // unlock 이전에 BGM이 enqueue됐다면(예: seat 페이지 첫 진입 로비 BGM)
+  // src는 세팅됐지만 play()가 막혔던 상태. 여기서 재생을 트리거한다.
+  if (player.bgmAudio && player.bgmAudio.src && player.bgmAudio.paused) {
+    player.bgmAudio.play().catch(() => {})
   }
 }
 
@@ -348,6 +369,8 @@ export const audio = {
   interrupt: fadeOutInterrupt,
   unlock,
   setTtsEnabled,
+  stopBgm,
+  playBgm,
   onNextTtsEnded,
   onNextTtsStarted,
 }

@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { useWebSocket } from './hooks/useWebSocket'
 import { useAudioPlayer, audio as audioApi } from './hooks/useAudioPlayer'
@@ -75,6 +75,23 @@ export default function App() {
       setPage('werewolf')
     }
   }, [phase, page])
+
+  // 좌석 등록 / 로비 화면에서 로비 BGM 재생. 게임 페이지로 나가면 backend가 stopBgm.
+  // - 좌석 ↔ 로비 사이 내부 전환은 끊김 없이 유지 (재트리거 안 함).
+  // - 게임/카운트다운에서 lobby-area로 복귀했을 때만 stopBgm → 0.5s 후 로비 BGM 시작.
+  const prevLobbyAreaRef = useRef(false)
+  useEffect(() => {
+    const isLobbyArea = page === 'lobby' || page === 'seat'
+    const wasLobbyArea = prevLobbyAreaRef.current
+    prevLobbyAreaRef.current = isLobbyArea
+    if (!isLobbyArea) return
+    if (wasLobbyArea) return  // 좌석 ↔ 로비 내부 전환은 그대로 두기
+    audioApi.stopBgm()
+    const timer = setTimeout(() => {
+      audioApi.playBgm('/bgm/lobby_loop.mp3', { loop: true, gain_db: -14 })
+    }, 500)
+    return () => clearTimeout(timer)
+  }, [page])
 
   // 좌석 등록 페이지에서 사용할 콜백
   const goLobby = () => setPage('lobby')

@@ -250,8 +250,11 @@ const s = {
     lineHeight: 1.45,
   },
   scoreWrap: {
-    padding: '36px 42px 36px 0',
+    padding: '20px 42px 20px 0',
     boxSizing: 'border-box',
+    height: '100%',
+    overflowY: 'auto',
+    minHeight: 0,
   },
   scoreHeader: {
     display: 'flex',
@@ -311,9 +314,9 @@ const s = {
     border: '1px solid var(--border)',
     borderRadius: 'var(--radius)',
   },
-  th: { background: 'var(--bg-elev)', textAlign: 'left', padding: '15px 18px', fontWeight: 800, color: 'var(--fg)', fontSize: 19 },
-  tdName: { padding: '13px 18px', borderBottom: '1px solid var(--border-soft)', fontWeight: 700 },
-  tdScore: { padding: '13px 18px', borderBottom: '1px solid var(--border-soft)', textAlign: 'right', fontVariantNumeric: 'tabular-nums' },
+  th: { background: 'var(--bg-elev)', textAlign: 'left', padding: '13px 18px', fontWeight: 800, color: 'var(--fg)', fontSize: 18 },
+  tdName: { padding: '11px 18px', borderBottom: '1px solid var(--border-soft)', fontWeight: 700 },
+  tdScore: { padding: '11px 18px', borderBottom: '1px solid var(--border-soft)', textAlign: 'right', fontVariantNumeric: 'tabular-nums' },
   scoreRow: clickable => ({
     background: clickable ? 'color-mix(in oklch, var(--info) 16%, var(--bg-surface))' : 'var(--bg-surface)',
     cursor: clickable ? 'pointer' : 'default',
@@ -345,6 +348,7 @@ const s = {
     alignItems: 'center',
     justifyContent: 'center',
     backdropFilter: 'blur(2px)',
+    zIndex: 50,
   },
   leaderboard: {
     width: 'calc(100vw - 24px)',
@@ -423,6 +427,8 @@ export default function YachtGame({ players, tutorialMode = false, onExit, onCha
   const [bgmEnabled, setBgmEnabled] = useState(true)
   const [turnPulseKey, setTurnPulseKey] = useState(0)
   const [recentScore, setRecentScore] = useState(null)
+  const [scoreRowPaddingY, setScoreRowPaddingY] = useState(null)
+  const scoreWrapRef = useRef(null)
   const startedRef = useRef(false)
   const introTtsPlayedRef = useRef(false)
   const previousTurnRef = useRef(null)
@@ -430,6 +436,29 @@ export default function YachtGame({ players, tutorialMode = false, onExit, onCha
 
   useEffect(() => {
     audioApi.setTtsEnabled(true)
+  }, [])
+
+  // 점수판 컨테이너 높이에 맞춰 행 padding 동적 계산.
+  // 행 수 15(헤더 1 + 카테고리 13 + 합계 1)로 가용 공간을 분배.
+  useEffect(() => {
+    const el = scoreWrapRef.current
+    if (!el) return
+    const compute = () => {
+      const h = el.clientHeight
+      // 한 행의 텍스트(폰트 18 → 라인 약 24) + 1px border 고려.
+      const ROW_TEXT = 25
+      const ROW_COUNT = 15
+      const totalText = ROW_TEXT * ROW_COUNT
+      const free = h - totalText
+      // 행당 추가 여유 공간 → 위/아래로 절반씩 padding.
+      let pad = Math.floor(free / (ROW_COUNT * 2))
+      pad = Math.max(4, Math.min(20, pad))
+      setScoreRowPaddingY(pad)
+    }
+    compute()
+    const ro = new ResizeObserver(compute)
+    ro.observe(el)
+    return () => ro.disconnect()
   }, [])
 
   useEffect(() => {
@@ -720,12 +749,13 @@ export default function YachtGame({ players, tutorialMode = false, onExit, onCha
           {visibleStatusMessage && <div style={s.rollMessage}>{visibleStatusMessage}</div>}
         </main>
 
-        <aside style={s.scoreWrap}>
+        <aside ref={scoreWrapRef} style={s.scoreWrap}>
           <ScoreTable
             state={state}
             currentOnly
             recentScore={recentScore}
             onScore={(category) => scoreCategory(category, state, send)}
+            rowPaddingY={scoreRowPaddingY}
           />
         </aside>
       </div>
@@ -781,18 +811,27 @@ function ScoreHelp() {
   )
 }
 
-function ScoreTable({ state, currentOnly = false, compact = false, recentScore, onScore }) {
+function ScoreTable({ state, currentOnly = false, compact = false, recentScore, onScore, rowPaddingY }) {
   const [scoreHelpOpen, setScoreHelpOpen] = useState(false)
   const players = currentOnly
     ? state.players.filter(player => player.player_id === state.current_player_id)
     : state.players
   const player = players[0]
+  const thStyle = rowPaddingY != null
+    ? { ...s.th, paddingTop: rowPaddingY + 2, paddingBottom: rowPaddingY + 2 }
+    : s.th
+  const tdNameStyle = rowPaddingY != null
+    ? { ...s.tdName, paddingTop: rowPaddingY, paddingBottom: rowPaddingY }
+    : s.tdName
+  const tdScoreStyle = rowPaddingY != null
+    ? { ...s.tdScore, paddingTop: rowPaddingY, paddingBottom: rowPaddingY }
+    : s.tdScore
 
   return (
     <table style={s.scoreboard}>
       <thead>
         <tr>
-          <th colSpan="2" style={s.th}>
+          <th colSpan="2" style={thStyle}>
             <div style={s.scoreHeader}>
               <span>점수판 · {player?.playername || '-'}</span>
               {!compact && (
@@ -822,8 +861,8 @@ function ScoreTable({ state, currentOnly = false, compact = false, recentScore, 
             const remaining = Math.max(0, 63 - subtotal)
             return (
               <tr key={key} style={s.bonusRow}>
-                <td style={s.tdName}>{label}</td>
-                <td style={s.tdScore}>
+                <td style={tdNameStyle}>{label}</td>
+                <td style={tdScoreStyle}>
                   <div style={s.bonusCell}>
                     <span>{subtotal} / 63</span>
                     {!compact && (
@@ -857,16 +896,16 @@ function ScoreTable({ state, currentOnly = false, compact = false, recentScore, 
               style={s.scoreRow(canScore)}
               onClick={canScore ? () => onScore(key) : undefined}
             >
-              <td style={{ ...s.tdName, color: !hasScore && !available ? 'var(--fg-faint)' : 'var(--fg)' }}>{label}</td>
-              <td style={{ ...s.tdScore, color: hasScore ? 'var(--fg)' : 'var(--fg-mute)' }}>
+              <td style={{ ...tdNameStyle, color: !hasScore && !available ? 'var(--fg-faint)' : 'var(--fg)' }}>{label}</td>
+              <td style={{ ...tdScoreStyle, color: hasScore ? 'var(--fg)' : 'var(--fg-mute)' }}>
                 {displayScore}
               </td>
             </tr>
           )
         })}
         <tr style={s.totalRow}>
-          <td style={s.tdName}>합계</td>
-          <td style={s.tdScore}>{player?.total ?? 0}</td>
+          <td style={tdNameStyle}>합계</td>
+          <td style={tdScoreStyle}>{player?.total ?? 0}</td>
         </tr>
       </tbody>
     </table>

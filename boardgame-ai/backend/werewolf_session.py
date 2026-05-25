@@ -72,6 +72,8 @@ class WerewolfSession:
         # 현재 플레이어 목록 (AgentContext 빌드용)
         self._players_snapshot: list[dict] = []
         self._seat_positions_fn = seat_positions_fn
+        # 현재 재생 중인 BGM 트랙 이름. phase 전환 시 같은 트랙 중복 트리거 방지.
+        self._current_bgm: str | None = None
 
     # ── 공개 인터페이스 ────────────────────────────────────────────────────────
 
@@ -141,12 +143,15 @@ class WerewolfSession:
             await self._start_game(payload)
             return
 
-        if input_type == "RESTART":
+        if input_type in ("RESTART", "reset_game"):
             self._fsm = None
             self._role_reg = None
             self._pending_game_data = None
             self._pending_role_reg = None
             self._role_reveal = None
+            if self._audio_manager is not None and self._current_bgm is not None:
+                await self._audio_manager.stop_bgm()
+            self._current_bgm = None
             if self._pipeline_switcher is not None:
                 self._pipeline_switcher(None)
             return
@@ -593,7 +598,32 @@ class WerewolfSession:
                 if self._role_reveal is None and self._fsm is not None:
                     await self._start_role_reveal()
             else:
+                if (
+                    msg.msg_type == MsgType.STATE_UPDATE.value
+                    and isinstance(msg.payload, dict)
+                ):
+                    await self._maybe_switch_bgm(msg.payload.get("phase"))
                 await self.send(msg)
+
+    async def _maybe_switch_bgm(self, phase: str | None) -> None:
+        """phase 전환 시 적절한 BGM으로 교체. 같은 트랙이면 no-op."""
+        if not phase or self._audio_manager is None:
+            return
+        target: str | None
+        if phase.startswith("night_"):
+            target = "werewolf_night"
+        elif phase in ("day_discussion", "vote", "vote_countdown", "final_role_reveal"):
+            target = "werewolf_day"
+        else:
+            # result, role_registration, card_setup 등 → 무음.
+            target = None
+        if target == self._current_bgm:
+            return
+        self._current_bgm = target
+        if target is None:
+            await self._audio_manager.stop_bgm()
+        else:
+            await self._audio_manager.play_bgm(target, gain_db=-14.0)
 
     async def send(self, message: WSMessage) -> None:
         """audio 메시지면 AudioManager 거쳐 audio_url 채운 후 broadcast."""
