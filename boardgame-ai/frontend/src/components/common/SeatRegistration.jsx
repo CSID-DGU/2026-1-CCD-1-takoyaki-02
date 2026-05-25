@@ -575,13 +575,6 @@ function TurnControls({
             <span>반시계방향</span>
           </button>
         </div>
-        <div className="tc-order-preview">
-          {orderedPlayers.map((p, i) => (
-            <span key={p.id} className="tc-order-chip" style={{ '--seat-color': p.color }}>
-              <b>{i + 1}</b>{p.name || '등록 중'}
-            </span>
-          ))}
-        </div>
       </div>
 
       <style>{`
@@ -719,25 +712,6 @@ function TurnControls({
         }
         :root[data-mode="light"][data-accent="white"] .tc-dir-btn.active { color: #fff; }
         .tc-dir-btn svg { flex-shrink: 0; }
-        .tc-order-preview {
-          display: flex; flex-wrap: wrap; gap: 5px;
-          width: 304px;
-          max-height: 49px;
-          overflow: hidden;
-        }
-        .tc-order-chip {
-          display: inline-flex; align-items: center; gap: 4px;
-          height: 22px; padding: 0 8px;
-          border-radius: 999px;
-          background: color-mix(in oklch, var(--seat-color) 16%, transparent);
-          border: 1px solid color-mix(in oklch, var(--seat-color) 35%, transparent);
-          color: var(--fg-soft);
-          font-size: 11px; white-space: nowrap;
-        }
-        .tc-order-chip b {
-          color: var(--seat-color);
-          font-variant-numeric: tabular-nums;
-        }
       `}</style>
     </div>
   )
