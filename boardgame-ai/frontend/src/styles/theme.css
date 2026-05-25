@@ -268,3 +268,41 @@ h1, h2, h3 { letter-spacing: -0.02em; margin: 0; }
   position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden;
   clip: rect(0,0,0,0); white-space: nowrap; border: 0;
 }
+
+/* 세로 모드 차단: 태블릿이 가로로 놓여야 함 */
+.orient-lock {
+  position: fixed; inset: 0;
+  z-index: 9999;
+  display: none;
+  align-items: center; justify-content: center;
+  background: color-mix(in oklch, var(--bg-deep) 92%, transparent);
+  color: var(--fg);
+  text-align: center;
+  padding: 32px;
+}
+.orient-lock-card {
+  display: flex; flex-direction: column; align-items: center; gap: 18px;
+  max-width: 320px;
+}
+.orient-lock-icon {
+  width: 72px; height: 72px;
+  display: grid; place-items: center;
+  color: var(--accent);
+  animation: orient-rotate 2.4s cubic-bezier(.6,.05,.3,.95) infinite;
+}
+@keyframes orient-rotate {
+  0%, 30%   { transform: rotate(0deg); }
+  55%, 70%  { transform: rotate(-90deg); }
+  95%, 100% { transform: rotate(-90deg); }
+}
+.orient-lock-title {
+  font-size: 20px; font-weight: 700; letter-spacing: -0.02em;
+}
+.orient-lock-sub {
+  font-size: 14px; color: var(--fg-soft); line-height: 1.55;
+}
+@media (orientation: portrait) {
+  .orient-lock { display: flex; }
+  /* 안내 카드는 #root 밖이 아니라 sibling 이므로 root만 블러 — 카드는 선명 */
+  #root { filter: blur(6px); pointer-events: none; user-select: none; }
+}

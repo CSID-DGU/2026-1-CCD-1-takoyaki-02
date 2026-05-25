@@ -121,13 +121,29 @@ export default function SeatRegistration({
         </div>
       </div>
 
+      <div className="reg-page-hd">
+        <h1 className="reg-title">플레이어 등록</h1>
+      </div>
+      <div className="reg-divider-top" />
       <div className="reg-grid">
         <div className="reg-left scroll">
-          <div className="reg-hd">
-            <h1 className="reg-title">플레이어 등록</h1>
+          <div className="reg-section-hd">
+            <h2 className="reg-section-title">등록된 플레이어</h2>
           </div>
 
           <div className="player-list">
+            {ordered.length > 0 && (
+              <div className="prow-head">
+                <div className="ph-order">순서</div>
+                <div className="ph-avatar" aria-hidden />
+                <div className="ph-name">플레이어 이름</div>
+                <div className="ph-actions">
+                  <span>수정</span>
+                  <span>삭제</span>
+                </div>
+              </div>
+            )}
+
             {ordered.map((p, i) => (
               <PlayerRow
                 key={p.id}
@@ -143,21 +159,19 @@ export default function SeatRegistration({
             ))}
 
             {!showHandModal && (
-              <button className="add-player" onClick={startRegistration}>
-                <div className="ap-icon"><IconPlus size={24} /></div>
-                <div className="ap-text">
-                  <div className="ap-title">플레이어 추가</div>
-                  <div className="ap-sub">손 동작으로 자리를 등록합니다</div>
-                </div>
-              </button>
+              <div className="add-player-wrap">
+                <button className="add-player" onClick={startRegistration}>
+                  <IconPlus size={18} />
+                  <span>플레이어 추가</span>
+                </button>
+              </div>
             )}
           </div>
         </div>
 
         <div className="reg-right">
-          <div className="rr-header">
-            <h1 className="rr-title">실제 좌석 배치</h1>
-            <div className="rr-hint">등록한 자리 위치에 그대로 표시됩니다</div>
+          <div className="reg-section-hd">
+            <h2 className="reg-section-title">실제 좌석 배치</h2>
           </div>
 
           <div className="rr-table">
@@ -236,6 +250,30 @@ export default function SeatRegistration({
           position: absolute; inset: 0;
           display: flex; flex-direction: column;
           padding-top: 56px;
+          --reg-rule: color-mix(in oklch, var(--border-soft) 50%, var(--border));
+        }
+        .reg-divider-top {
+          height: 1px;
+          margin: 0 24px;
+          background: var(--reg-rule);
+        }
+        .reg-page-hd {
+          padding: 14px 32px 14px;
+          display: flex; align-items: center;
+        }
+        .reg-title {
+          font-size: 32px; font-weight: 700; letter-spacing: -0.03em;
+        }
+        .reg-section-hd {
+          padding: 0;
+          display: flex; align-items: center;
+          min-height: 28px;
+        }
+        .reg-section-title {
+          font-size: 16px; font-weight: 600; letter-spacing: -0.01em;
+          color: var(--fg-soft);
+          text-transform: uppercase;
+          letter-spacing: 0.05em;
         }
         .scr-register .camera-badge {
           display: flex; align-items: center; gap: 10px;
@@ -252,57 +290,78 @@ export default function SeatRegistration({
           min-height: 0;
         }
         .reg-left {
-          padding: 18px 24px 14px 32px;
+          padding: 14px 24px 14px 32px;
           overflow-y: auto;
-          display: flex; flex-direction: column; gap: 18px;
-          border-right: 1px solid var(--border-soft);
+          display: flex; flex-direction: column; gap: 12px;
+          border-right: 1px solid var(--reg-rule);
         }
-        .reg-hd { display: flex; flex-direction: column; gap: 6px; margin-bottom: 0; }
-        .reg-title { font-size: 26px; font-weight: 700; letter-spacing: -0.025em; }
-        .reg-left .reg-hd { margin-bottom: 0; }
         .player-list { display: flex; flex-direction: column; gap: 8px; }
+
+        /* 컬럼 헤더 — PlayerRow와 동일 grid 트랙으로 정렬 */
+        .prow-head {
+          display: grid;
+          grid-template-columns: 32px 36px 1fr auto;
+          align-items: center;
+          gap: 12px;
+          padding: 4px 14px 8px;
+          font-size: 11px;
+          color: var(--fg-mute);
+          font-weight: 600;
+          letter-spacing: 0.08em;
+          text-transform: uppercase;
+          border-bottom: 1px solid var(--border-soft);
+          margin-bottom: 2px;
+        }
+        .prow-head .ph-order  { text-align: center; }
+        .prow-head .ph-actions {
+          display: grid;
+          grid-template-columns: 36px 36px;
+          gap: 2px;
+          font-size: 11px;
+        }
+        .prow-head .ph-actions span { text-align: center; }
+
+        .add-player-wrap {
+          display: flex; justify-content: center;
+          margin-top: 10px;
+        }
         .add-player {
-          appearance: none; border: 1.5px dashed var(--border);
-          background: transparent; color: var(--fg-soft);
-          padding: 16px 18px;
-          border-radius: var(--radius);
-          display: flex; align-items: center; gap: 14px;
+          appearance: none;
+          border: 1px solid var(--border);
+          background: var(--bg-hover);
+          color: var(--fg);
+          height: 44px;
+          padding: 0 22px;
+          border-radius: 999px;
+          display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+          font: inherit;
+          font-size: 15px; font-weight: 600; letter-spacing: -0.01em;
+          cursor: pointer;
           transition: all 160ms ease;
-          margin-top: 4px;
+          white-space: nowrap;
+          box-shadow: 0 1px 0 rgba(255,255,255,.05) inset, 0 1px 3px rgba(0,0,0,.15);
         }
         .add-player:hover {
-          border-color: var(--accent);
-          background: color-mix(in oklch, var(--accent) 8%, transparent);
-          color: var(--fg);
+          background: color-mix(in oklch, var(--bg-hover) 80%, var(--accent));
+          border-color: color-mix(in oklch, var(--accent) 40%, var(--border));
         }
-        .ap-icon {
-          width: 40px; height: 40px; border-radius: 50%;
-          background: var(--bg-surface);
-          display: grid; place-items: center;
-          color: var(--accent);
-        }
-        .ap-text { text-align: left; }
-        .ap-title { font-weight: 600; font-size: 17px; }
-        .ap-sub { font-size: 14px; color: var(--fg-mute); margin-top: 3px; }
+        .add-player svg { color: var(--accent); }
 
         .reg-right {
-          padding: 18px 32px 14px 24px;
+          padding: 14px 32px 14px 24px;
           display: flex; flex-direction: column;
           min-height: 0;
-          gap: 0;
+          gap: 12px;
         }
-        .rr-header { display: flex; flex-direction: column; gap: 6px; margin-bottom: 18px; }
-        .rr-title { font-size: 26px; font-weight: 700; letter-spacing: -0.025em; }
-        .rr-hint  { font-size: 14px; color: var(--fg-mute); }
         .rr-table {
           flex: 1;
           position: relative;
           background:
             radial-gradient(ellipse at 50% 30%, color-mix(in oklch, var(--accent) 4%, transparent), transparent 60%),
             var(--bg-app);
-          border: 1px solid var(--border-soft);
+          border: 1px solid color-mix(in oklch, var(--border) 45%, var(--fg-faint));
           border-radius: var(--radius-lg);
-          padding: 36px 48px;
+          padding: 20px 32px;
           display: grid;
           place-items: center;
           container-type: inline-size;
@@ -322,7 +381,7 @@ export default function SeatRegistration({
           height: 76px;
           padding: 0 32px;
           display: flex; align-items: center; gap: 16px;
-          border-top: 1px solid var(--border-soft);
+          border-top: 1px solid var(--reg-rule);
           background: linear-gradient(180deg, transparent, color-mix(in oklch, var(--bg-deep) 50%, transparent));
         }
         .foot-info {
@@ -349,17 +408,17 @@ function PlayerRow({ player, index, isActive, onHover, onLeave, onEdit, onRemove
         <span>{(player.name || '?').charAt(0)}</span>
       </div>
       <div className="prow-main">
-        <div className="prow-name">{player.name || '등록 중…'}</div>
+        <div className="prow-name">
+          {player.name || '등록 중…'}
+          {!player.registered && (
+            <button className="prow-rere" onClick={onReregister} title="재등록">↻</button>
+          )}
+        </div>
         {!player.registered && (
           <div className="prow-sub">등록 미완료</div>
         )}
       </div>
       <div className="prow-actions">
-        {!player.registered && (
-          <button className="btn-icn" onClick={onReregister} title="재등록">
-            ↻
-          </button>
-        )}
         <button className="btn-icn" onClick={onEdit} title="수정">
           <IconEdit size={16} />
         </button>
@@ -370,8 +429,11 @@ function PlayerRow({ player, index, isActive, onHover, onLeave, onEdit, onRemove
 
       <style>{`
         .prow {
-          display: flex; align-items: center; gap: 12px;
-          padding: 12px 14px;
+          display: grid;
+          grid-template-columns: 32px 36px 1fr auto;
+          align-items: center;
+          gap: 12px;
+          padding: 10px 14px;
           background: var(--bg-surface);
           border: 1px solid var(--border-soft);
           border-radius: var(--radius);
@@ -383,37 +445,51 @@ function PlayerRow({ player, index, isActive, onHover, onLeave, onEdit, onRemove
           background: color-mix(in oklch, var(--row-color) 6%, var(--bg-surface));
         }
         .prow-order {
-          width: 24px; flex-shrink: 0;
-          font-size: 14px; font-weight: 600;
-          color: var(--fg-mute);
+          font-size: 15px; font-weight: 700;
+          color: var(--row-color);
           font-variant-numeric: tabular-nums;
           text-align: center;
+          letter-spacing: -0.01em;
         }
-        .prow.active .prow-order { color: var(--row-color); }
         .prow-avatar {
-          width: 38px; height: 38px; border-radius: 50%;
+          width: 36px; height: 36px; border-radius: 50%;
           background: linear-gradient(145deg,
             color-mix(in oklch, var(--row-color) 95%, white 5%),
             color-mix(in oklch, var(--row-color) 100%, black 14%));
           color: #1a1410;
           display: grid; place-items: center;
-          font-weight: 700; font-size: 16px;
+          font-weight: 700; font-size: 15px;
           box-shadow: 0 1px 0 rgba(255,255,255,0.2) inset, 0 2px 6px rgba(0,0,0,0.3);
-          flex-shrink: 0;
         }
-        .prow-main { flex: 1; min-width: 0; }
+        .prow-main { min-width: 0; }
         .prow-name {
           font-size: 17px; font-weight: 600; color: var(--fg);
           letter-spacing: -0.01em;
           white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+          display: inline-flex; align-items: center; gap: 8px;
+          max-width: 100%;
         }
-        .prow-sub { font-size: 13px; color: var(--warn); margin-top: 3px; }
-        .prow-actions { display: flex; gap: 4px; }
+        .prow-rere {
+          appearance: none; border: 1px solid var(--border-soft);
+          background: transparent;
+          color: var(--fg-mute);
+          width: 22px; height: 22px; border-radius: 50%;
+          display: grid; place-items: center;
+          cursor: pointer; font-size: 13px; line-height: 1;
+          flex-shrink: 0;
+        }
+        .prow-rere:hover { color: var(--accent); border-color: var(--accent); }
+        .prow-sub { font-size: 12px; color: var(--warn); margin-top: 2px; }
+        .prow-actions {
+          display: grid;
+          grid-template-columns: 36px 36px;
+          gap: 2px;
+        }
         .btn-icn {
           appearance: none; border: 1px solid transparent;
           background: transparent;
           color: var(--fg-mute);
-          width: 32px; height: 32px; border-radius: 8px;
+          width: 36px; height: 36px; border-radius: 8px;
           display: grid; place-items: center;
           cursor: pointer;
           transition: all 120ms ease;
@@ -435,12 +511,12 @@ function TurnControls({ players, firstPlayerId, onChangeFirst, direction, onChan
     <div className="turn-ctrls">
       <div className="tc-first">
         <span className="tc-eyebrow">시작 플레이어</span>
-        <button className="tc-first-pick" onClick={() => setOpen((o) => !o)}>
+        <button className={`tc-first-pick ${open ? 'open' : ''}`} onClick={() => setOpen((o) => !o)}>
           <span className="tc-first-av" style={{ '--seat-color': first.color }}>
             {(first.name || '?').charAt(0)}
           </span>
           <span className="tc-first-name">{first.name || '등록 중'}</span>
-          <span className="tc-chev">▾</span>
+          <span className="tc-chev" aria-hidden>▾</span>
         </button>
         {open && (
           <div className="tc-menu">
@@ -489,49 +565,56 @@ function TurnControls({ players, firstPlayerId, onChangeFirst, direction, onChan
 
       <style>{`
         .turn-ctrls {
-          margin-top: 10px;
+          margin-top: 14px;
           display: grid;
           grid-template-columns: minmax(0, 1fr) auto;
-          gap: 14px;
-          align-items: end;
+          gap: 16px;
+          align-items: start;
         }
+        .tc-first, .tc-dir { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
         .tc-eyebrow {
-          font-size: 13px; letter-spacing: 0.08em;
+          font-size: 11px; letter-spacing: 0.08em;
           text-transform: uppercase; font-weight: 600;
           color: var(--fg-mute);
-          display: block; margin-bottom: 6px;
+          display: block;
         }
-        .tc-first { position: relative; min-width: 0; }
+        .tc-first { position: relative; align-items: flex-start; }
         .tc-first-pick {
           appearance: none;
           background: var(--bg-surface);
-          border: 1px solid var(--border-soft);
+          border: 1px solid var(--border);
           border-radius: 999px;
-          padding: 7px 14px 7px 7px;
+          height: 40px;
+          padding: 0 14px 0 5px;
           color: var(--fg);
-          display: inline-flex; align-items: center; gap: 10px;
+          display: inline-flex; align-items: center; gap: 8px;
           font: inherit;
-          font-size: 15px; font-weight: 500;
+          font-size: 14px; font-weight: 500;
           cursor: pointer;
           transition: all 120ms ease;
-          max-width: 100%;
+          width: auto; max-width: 100%;
         }
-        .tc-first-pick:hover { background: var(--bg-elev); border-color: var(--border); }
+        .tc-first-pick:hover { background: var(--bg-elev); }
         .tc-first-av {
-          width: 30px; height: 30px; border-radius: 50%;
+          width: 28px; height: 28px; border-radius: 50%;
           background: linear-gradient(145deg,
             color-mix(in oklch, var(--seat-color) 95%, white 5%),
             color-mix(in oklch, var(--seat-color) 100%, black 14%));
           color: #1a1410;
           display: grid; place-items: center;
-          font-weight: 700; font-size: 14px;
+          font-weight: 700; font-size: 13px;
           flex-shrink: 0;
         }
         .tc-first-name {
           overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
           min-width: 0;
         }
-        .tc-chev { font-size: 12px; color: var(--fg-mute); margin-left: 2px; }
+        .tc-chev {
+          font-size: 11px; color: var(--fg-mute);
+          margin-left: 2px;
+          transition: transform 180ms ease;
+        }
+        .tc-first-pick.open .tc-chev { transform: rotate(180deg); }
 
         .tc-menu {
           position: absolute;
@@ -579,17 +662,19 @@ function TurnControls({ players, firstPlayerId, onChangeFirst, direction, onChan
         .tc-dir-seg {
           display: inline-flex;
           background: var(--bg-surface);
-          border: 1px solid var(--border-soft);
+          border: 1px solid var(--border);
           border-radius: 999px;
           padding: 3px; gap: 2px;
+          height: 40px; align-items: center;
         }
         .tc-dir-btn {
           appearance: none; border: 0;
           background: transparent;
           color: var(--fg-mute);
-          padding: 8px 16px;
+          height: 32px;
+          padding: 0 14px;
           border-radius: 999px;
-          font: inherit; font-size: 14px; font-weight: 500;
+          font: inherit; font-size: 13px; font-weight: 500;
           display: inline-flex; align-items: center; gap: 6px;
           cursor: pointer;
           transition: all 140ms ease;
