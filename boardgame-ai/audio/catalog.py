@@ -134,6 +134,7 @@ SFX_REGISTRY: dict[str, str] = {
 BGM_REGISTRY: dict[str, str] = {
     "lobby_loop": "/bgm/lobby_loop.mp3",  # 로비/게임 진행 중 배경음 (loop)
     "game_outro": "/bgm/game_outro.mp3",  # 우승자 발표 후 배경음
+    "yacht_walk": "/bgm/Yacht%20Theme_%20Walk%20Through%20The%20Park.mp3",
 }
 
 

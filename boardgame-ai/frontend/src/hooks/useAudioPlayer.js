@@ -222,18 +222,22 @@ function enqueue(msg) {
   playMessage(msg)
 }
 
-function handleBgmPlay({ audio_url, loop = true, gain_db = -6 }) {
-  // 빈 audio_url은 정지 신호.
+function handleBgmPlay({ audio_url, loop = true, gain_db = -6, preserve_position = false }) {
+  // 빈 audio_url은 정지/일시정지 신호.
   if (!audio_url) {
     if (player.bgmAudio) {
       try { player.bgmAudio.pause() } catch (_) {}
-      try { player.bgmAudio.currentTime = 0 } catch (_) {}
-      player.bgmAudio.src = ''
+      if (!preserve_position) {
+        try { player.bgmAudio.currentTime = 0 } catch (_) {}
+        player.bgmAudio.src = ''
+      }
     }
     return
   }
   const el = ensureBgmElement()
-  el.src = audio_url
+  if (el.src !== new URL(audio_url, window.location.href).href) {
+    el.src = audio_url
+  }
   el.loop = !!loop
   player.bgmGainDb = gain_db
   applyBgmGain()

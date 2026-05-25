@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useWebSocket } from '../hooks/useWebSocket'
 import { audio as audioApi, useAudioPlayer } from '../hooks/useAudioPlayer'
+import { IconMusic } from '../components/common/Icons'
 
 const CATEGORY_LABELS = [
   ['ones', 'Aces'],
@@ -84,6 +85,18 @@ const s = {
     fontWeight: 600,
     cursor: 'pointer',
   },
+  iconButton: active => ({
+    width: 40,
+    height: 40,
+    border: active ? '1px solid color-mix(in oklch, var(--yacht) 55%, transparent)' : '1px solid var(--border)',
+    borderRadius: 'var(--radius)',
+    background: active ? 'color-mix(in oklch, var(--yacht) 18%, var(--bg-elev))' : 'var(--bg-elev)',
+    color: active ? 'color-mix(in oklch, var(--yacht) 82%, var(--fg))' : 'var(--fg-mute)',
+    display: 'grid',
+    placeItems: 'center',
+    cursor: 'pointer',
+    padding: 0,
+  }),
   primaryButton: {
     background: 'var(--yacht)',
     borderColor: 'transparent',
@@ -406,6 +419,7 @@ export default function YachtGame({ players, tutorialMode = false, onExit, onCha
   useAudioPlayer(send)
   const [leaderboardOpen, setLeaderboardOpen] = useState(false)
   const [tutorialIntroSeen, setTutorialIntroSeen] = useState(!tutorialMode)
+  const [bgmEnabled, setBgmEnabled] = useState(true)
   const [turnPulseKey, setTurnPulseKey] = useState(0)
   const [recentScore, setRecentScore] = useState(null)
   const startedRef = useRef(false)
@@ -500,6 +514,17 @@ export default function YachtGame({ players, tutorialMode = false, onExit, onCha
     setTutorialIntroSeen(true)
   }
 
+  const toggleBgm = () => {
+    const next = !bgmEnabled
+    setBgmEnabled(next)
+    send('BGM_SET', { enabled: next })
+  }
+
+  const exitGame = () => {
+    send('BGM_STOP')
+    onExit?.()
+  }
+
   if (tutorialMode && !tutorialIntroSeen) {
     return (
       <div style={s.page}>
@@ -512,7 +537,7 @@ export default function YachtGame({ players, tutorialMode = false, onExit, onCha
             <li>실제 주사위를 굴리면 카메라가 결과를 인식합니다.</li>
           </ul>
           <div style={s.endActions}>
-            <button style={s.buttonSmall} onClick={onExit}>게임 선택화면</button>
+            <button style={s.buttonSmall} onClick={exitGame}>게임 선택화면</button>
             <button
               style={{
                 ...s.buttonSmall,
@@ -559,7 +584,7 @@ export default function YachtGame({ players, tutorialMode = false, onExit, onCha
             ))}
             <div style={s.endActions}>
               <button style={s.buttonSmall} onClick={onChangePlayers}>플레이어 변경</button>
-              <button style={s.buttonSmall} onClick={onExit}>게임 변경</button>
+              <button style={s.buttonSmall} onClick={exitGame}>게임 변경</button>
               <button style={s.buttonSmall} onClick={() => send('RESTART')}>게임 재시작</button>
             </div>
           </div>
@@ -579,7 +604,7 @@ export default function YachtGame({ players, tutorialMode = false, onExit, onCha
               이제 정식 게임을 시작할 수 있습니다.
             </div>
             <div style={s.endActions}>
-              <button style={s.buttonSmall} onClick={onExit}>게임 선택화면</button>
+              <button style={s.buttonSmall} onClick={exitGame}>게임 선택화면</button>
               <button style={{ ...s.buttonSmall, ...s.primaryButton }} onClick={startFullGame}>게임 시작하기</button>
             </div>
           </div>
@@ -616,13 +641,22 @@ export default function YachtGame({ players, tutorialMode = false, onExit, onCha
         <span style={s.phaseTitle}>요트다이스</span>
         <span style={s.phaseActions}>
           <button
+            type="button"
+            style={s.iconButton(bgmEnabled)}
+            onClick={toggleBgm}
+            title={bgmEnabled ? '배경음 끄기' : '배경음 켜기'}
+            aria-label={bgmEnabled ? '배경음 끄기' : '배경음 켜기'}
+          >
+            <IconMusic size={19} />
+          </button>
+          <button
             style={{ ...s.buttonSmall, ...(canUndo ? {} : s.buttonDisabled) }}
             onClick={() => send('UNDO_ROUND')}
             disabled={!canUndo}
           >
             되돌리기
           </button>
-          <button style={s.buttonSmall} onClick={onExit}>나가기</button>
+          <button style={s.buttonSmall} onClick={exitGame}>나가기</button>
         </span>
       </div>
       <div style={s.shell}>

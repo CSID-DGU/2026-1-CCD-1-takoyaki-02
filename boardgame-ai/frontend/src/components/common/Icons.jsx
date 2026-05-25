@@ -50,6 +50,13 @@ export const IconPlay = (p) => (
     <path d="M7 5v14l12-7z" fill="currentColor" stroke="none" />
   </Icon>
 )
+export const IconMusic = (p) => (
+  <Icon {...p}>
+    <path d="M9 18V5l10-2v13" />
+    <circle cx="6" cy="18" r="3" />
+    <circle cx="16" cy="16" r="3" />
+  </Icon>
+)
 export const IconClock = (p) => (
   <Icon {...p}>
     <circle cx="12" cy="12" r="9" />

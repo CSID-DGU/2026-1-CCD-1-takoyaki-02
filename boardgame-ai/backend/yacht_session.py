@@ -99,6 +99,19 @@ class YachtSession:
                 await self._audio_manager.enqueue_tts(text=text, state_version=state_version)
             return
 
+        if input_type == "BGM_SET":
+            if self._audio_manager is not None:
+                if bool(payload.get("enabled", True)):
+                    await self._audio_manager.play_bgm("yacht_walk", gain_db=-12.0)
+                else:
+                    await self._audio_manager.pause_bgm()
+            return
+
+        if input_type == "BGM_STOP":
+            if self._audio_manager is not None:
+                await self._audio_manager.stop_bgm()
+            return
+
         # frontend bench hook → backend bench_log로 통합.
         if input_type == "bench_trace":
             from benchmarks.relay import handle_bench_trace
@@ -169,6 +182,10 @@ class YachtSession:
                 messages = self.fsm.handle_input(input_type, payload, player_id)
                 self._apply_tutorial_message_override(messages)
             await self.send_many(messages)
+            if self._audio_manager is not None and (
+                self.tutorial_complete or self.fsm.state.phase == YachtPhase.GAME_END.value
+            ):
+                await self._audio_manager.stop_bgm()
             return
 
         if input_type == YachtInputType.SCORE_CATEGORY_SELECTED.value:
@@ -227,6 +244,8 @@ class YachtSession:
             messages = self.fsm.start()
             self._apply_tutorial_message_override(messages)
         await self.send_many(messages)
+        if self._audio_manager is not None:
+            await self._audio_manager.play_bgm("yacht_walk", gain_db=-12.0)
 
     def _apply_tutorial_message_override(self, messages: list[WSMessage]) -> None:
         if self.fsm is None or not self.tutorial_mode or self.tutorial_complete:
