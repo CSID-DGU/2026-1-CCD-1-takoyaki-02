@@ -207,15 +207,15 @@ function StepDot({ label, active, done }) {
           transition: all 200ms ease;
         }
         .step-dot.active .sd-mark {
-          background: var(--accent);
-          border-color: var(--accent);
-          color: #1a1410;
-          box-shadow: 0 0 0 4px color-mix(in oklch, var(--accent) 25%, transparent);
+          background: #22c55e;
+          border-color: #22c55e;
+          color: #052e16;
+          box-shadow: 0 0 0 4px rgba(34, 197, 94, 0.24);
         }
         .step-dot.done .sd-mark {
-          background: var(--accent-deep);
-          border-color: var(--accent-deep);
-          color: #1a1410;
+          background: #16a34a;
+          border-color: #16a34a;
+          color: #052e16;
         }
         .sd-dot { width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
         .sd-label { font-size: 12px; color: var(--fg-mute); font-weight: 500; white-space: nowrap; }
