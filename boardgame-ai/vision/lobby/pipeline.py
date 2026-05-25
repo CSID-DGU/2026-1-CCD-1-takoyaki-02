@@ -53,6 +53,13 @@ class LobbyVisionPipeline:
         self._active = True  # 로비가 기본 활성 파이프라인
         self._frame_id = 0
         self._fsm_state_version: int = 0
+        self._debug_snapshot: dict[str, Any] = {
+            "frame_id": None,
+            "active": self._active,
+            "hands": [],
+            "events": [],
+            "context": None,
+        }
 
         self._hand_detector = HandDetector(
             max_num_hands=max_num_hands,
@@ -102,6 +109,9 @@ class LobbyVisionPipeline:
     def update_players(self, players: list[Player]) -> None:
         self._players = players
 
+    def debug_snapshot(self) -> dict[str, Any]:
+        return dict(self._debug_snapshot)
+
     # ── 내부 처리 ──────────────────────────────────────────────────────────────
 
     def _process_one(self, frame_bgr: Any, frame_id: int, ts: float) -> None:
@@ -123,6 +133,21 @@ class LobbyVisionPipeline:
         )
 
         events = self._fusion.feed(perception)
+        self._debug_snapshot = {
+            "frame_id": frame_id,
+            "active": self._active,
+            "hands": [
+                {
+                    "handedness": hand.handedness,
+                    "gesture": hand.gesture,
+                    "player_id": hand.player_id,
+                    "wrist_xy": list(hand.wrist_xy),
+                }
+                for hand in hands
+            ],
+            "events": [event.to_dict() for event in events],
+            "context": self._fusion._context.to_dict(),
+        }
         if frame_id >= self._warmup_frames:
             for event in events:
                 self._bridge.send_game_event(event, self._fsm_state_version)

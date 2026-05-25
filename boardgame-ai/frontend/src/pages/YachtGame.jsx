@@ -378,7 +378,11 @@ export default function YachtGame({ players, tutorialMode = false, onExit, onCha
   useAudioPlayer(send)
   const [leaderboardOpen, setLeaderboardOpen] = useState(false)
   const [tutorialIntroSeen, setTutorialIntroSeen] = useState(!tutorialMode)
+  const [turnPulseKey, setTurnPulseKey] = useState(0)
+  const [recentScore, setRecentScore] = useState(null)
   const startedRef = useRef(false)
+  const previousTurnRef = useRef(null)
+  const previousScoresRef = useRef(new Map())
 
   useEffect(() => {
     if (!connected) return
@@ -387,6 +391,45 @@ export default function YachtGame({ players, tutorialMode = false, onExit, onCha
     startedRef.current = true
     send('START_YACHT', { players: normalizePlayers(players), tutorial_mode: tutorialMode })
   }, [connected, players, send, tutorialIntroSeen, tutorialMode])
+
+  useEffect(() => {
+    if (!state?.players?.length) return
+
+    if (previousTurnRef.current && previousTurnRef.current !== state.current_player_id) {
+      setTurnPulseKey(key => key + 1)
+    }
+    previousTurnRef.current = state.current_player_id
+
+    const nextScores = new Map()
+    let addedScore = null
+    for (const player of state.players) {
+      const scores = player.scores || {}
+      const previousScores = previousScoresRef.current.get(player.player_id) || {}
+      nextScores.set(player.player_id, { ...scores })
+
+      for (const [category, score] of Object.entries(scores)) {
+        if (previousScores[category] == null) {
+          addedScore = {
+            playerId: player.player_id,
+            playerName: player.playername,
+            category,
+            score,
+          }
+        }
+      }
+    }
+
+    previousScoresRef.current = nextScores
+    if (addedScore) {
+      setRecentScore(addedScore)
+    }
+  }, [state])
+
+  useEffect(() => {
+    if (!recentScore) return undefined
+    const timeout = window.setTimeout(() => setRecentScore(null), 1100)
+    return () => window.clearTimeout(timeout)
+  }, [recentScore])
 
   const currentPlayer = useMemo(
     () => state?.players?.find(p => p.player_id === state.current_player_id),
@@ -507,6 +550,28 @@ export default function YachtGame({ players, tutorialMode = false, onExit, onCha
 
   return (
     <div style={s.page}>
+      <style>{`
+        @keyframes yachtTurnPulse {
+          0% { transform: scale(0.98); box-shadow: 0 0 0 0 rgba(31, 122, 79, 0.28); }
+          45% { transform: scale(1.03); box-shadow: 0 0 0 8px rgba(31, 122, 79, 0.16); }
+          100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(31, 122, 79, 0); }
+        }
+
+        @keyframes yachtScoreFlash {
+          0% { background: #dff8e6; }
+          55% { background: #c8efd4; }
+          100% { background: #fff; }
+        }
+
+        .yacht-turn-pulse {
+          animation: yachtTurnPulse 420ms ease-out;
+        }
+
+        .yacht-score-flash {
+          animation: yachtScoreFlash 900ms ease-out;
+        }
+
+      `}</style>
       <div style={s.phaseText}>
         {state.phase}
       </div>
@@ -529,7 +594,9 @@ export default function YachtGame({ players, tutorialMode = false, onExit, onCha
           {tutorialText && <div style={s.tutorialBubble}>{tutorialText}</div>}
 
           <div style={s.turnRow}>
-            <div style={s.turnBadge}>{currentPlayer?.playername || '-'} 님 차례</div>
+            <div key={turnPulseKey} className={turnPulseKey ? 'yacht-turn-pulse' : undefined} style={s.turnBadge}>
+              {currentPlayer?.playername || '-'} 님 차례
+            </div>
             <div style={s.roundText}>라운드 {round} / 12</div>
           </div>
 
@@ -563,7 +630,12 @@ export default function YachtGame({ players, tutorialMode = false, onExit, onCha
         </main>
 
         <aside style={s.scoreWrap}>
-          <ScoreTable state={state} currentOnly onScore={(category) => scoreCategory(category, state, send)} />
+          <ScoreTable
+            state={state}
+            currentOnly
+            recentScore={recentScore}
+            onScore={(category) => scoreCategory(category, state, send)}
+          />
         </aside>
       </div>
 
@@ -577,7 +649,11 @@ export default function YachtGame({ players, tutorialMode = false, onExit, onCha
             <div style={{ display: 'grid', gridTemplateColumns: `repeat(${state.players.length}, 1fr)` }}>
               {state.players.map(player => (
                 <div key={player.player_id}>
-                  <ScoreTable state={{ ...state, players: [player], current_player_id: player.player_id }} compact />
+                  <ScoreTable
+                    state={{ ...state, players: [player], current_player_id: player.player_id }}
+                    compact
+                    recentScore={recentScore}
+                  />
                 </div>
               ))}
             </div>
@@ -614,7 +690,7 @@ function ScoreHelp() {
   )
 }
 
-function ScoreTable({ state, currentOnly = false, compact = false, onScore }) {
+function ScoreTable({ state, currentOnly = false, compact = false, recentScore, onScore }) {
   const [scoreHelpOpen, setScoreHelpOpen] = useState(false)
   const players = currentOnly
     ? state.players.filter(player => player.player_id === state.current_player_id)
@@ -679,9 +755,17 @@ function ScoreTable({ state, currentOnly = false, compact = false, onScore }) {
             available &&
             state.dice_values?.length
           const displayScore = hasScore ? score : (compact ? '—' : predictedScore(key, state))
+          const highlightScore =
+            recentScore?.playerId === player?.player_id &&
+            recentScore?.category === key
 
           return (
-            <tr key={key} style={s.scoreRow(canScore)} onClick={canScore ? () => onScore(key) : undefined}>
+            <tr
+              key={key}
+              className={highlightScore ? 'yacht-score-flash' : undefined}
+              style={s.scoreRow(canScore)}
+              onClick={canScore ? () => onScore(key) : undefined}
+            >
               <td style={{ ...s.tdName, color: !hasScore && !available ? '#aaa' : '#111' }}>{label}</td>
               <td style={{ ...s.tdScore, color: hasScore ? '#111' : '#999' }}>
                 {displayScore}

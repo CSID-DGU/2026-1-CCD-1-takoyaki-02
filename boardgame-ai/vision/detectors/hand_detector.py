@@ -6,6 +6,7 @@ wrist = landmark[0], 좌표는 0~1 정규화.
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Any
 
@@ -26,7 +27,11 @@ class HandDetector:
         min_detection_confidence: float = 0.5,
         min_tracking_confidence: float = 0.5,
         min_presence_confidence: float = 0.5,
+        mirror_handedness: bool | None = None,
     ) -> None:
+        if mirror_handedness is None:
+            mirror_handedness = os.environ.get("CAMERA_MIRROR_HANDS", "0") == "1"
+        self._mirror_handedness = mirror_handedness
         base_opts = mp_base.BaseOptions(model_asset_buffer=Path(model_path).read_bytes())
         opts = mp_vision.HandLandmarkerOptions(
             base_options=base_opts,
@@ -55,6 +60,8 @@ class HandDetector:
                 handedness = result.handedness[i][0].category_name  # "Left" | "Right"
             else:
                 handedness = "Right"
+            if self._mirror_handedness:
+                handedness = "Left" if handedness == "Right" else "Right"
 
             landmarks_21: list[tuple[float, float]] = [
                 (float(lm.x), float(lm.y)) for lm in hand_lms
