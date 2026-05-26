@@ -102,9 +102,13 @@ async def lifespan(app: FastAPI):
     orchestrator.set_pipeline_switcher(_on_game_switch)
 
     lobby_queue = camera.subscribe()
+    yacht_queue = camera.subscribe()
+    werewolf_queue = camera.subscribe()
 
     camera.start()
     lobby_runner.start(lobby_queue)
+    yacht_runner.start(yacht_queue)
+    werewolf_runner.start(werewolf_queue)
 
     app.state.orchestrator = orchestrator
     app.state.bridge = bridge
