@@ -462,6 +462,12 @@ export default function YachtGame({ players, tutorialMode = false, onExit, onCha
   }, [])
 
   useEffect(() => {
+    if (!connected) {
+      introTtsPlayedRef.current = false
+    }
+  }, [connected])
+
+  useEffect(() => {
     if (!connected) return
     if (!tutorialMode || tutorialIntroSeen) return
     if (introTtsPlayedRef.current) return
@@ -469,13 +475,29 @@ export default function YachtGame({ players, tutorialMode = false, onExit, onCha
     send('TTS_REQUEST', { text: TUTORIAL_INTRO_TEXT })
   }, [connected, send, tutorialIntroSeen, tutorialMode])
 
+  // 재연결 시 START_YACHT를 다시 보낼 수 있도록 ref를 리셋.
+  // (vite WS 프록시가 IP 접근 환경에서 첫 핸드셰이크를 흘려보내고 재연결하는 케이스 대응)
   useEffect(() => {
-    if (!connected) return
+    if (!connected) {
+      startedRef.current = false
+    }
+  }, [connected])
+
+  // 백엔드가 보낸 hello 메시지 수신을 확인한 뒤에 START_YACHT 송신.
+  // accept 직후 onopen이 뜨더라도 receive loop가 아직 시작되기 전일 수 있으므로,
+  // 백엔드가 보낸 hello가 도착해야 receive 가능 상태임을 보장할 수 있다.
+  const helloSeen = useMemo(
+    () => messages.some(m => m.msg_type === 'hello'),
+    [messages],
+  )
+
+  useEffect(() => {
+    if (!connected || !helloSeen) return
     if (tutorialMode && !tutorialIntroSeen) return
     if (startedRef.current) return
     startedRef.current = true
     send('START_YACHT', { players: normalizePlayers(players), tutorial_mode: tutorialMode })
-  }, [connected, players, send, tutorialIntroSeen, tutorialMode])
+  }, [connected, helloSeen, players, send, tutorialIntroSeen, tutorialMode])
 
   useEffect(() => {
     if (!state?.players?.length) return
