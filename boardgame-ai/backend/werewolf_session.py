@@ -13,8 +13,8 @@ from audio.manager import AudioManager
 from core.constants import MsgType
 from core.envelope import WSMessage
 from core.events import FusionContext, GameEvent
-from games.werewolf.fsm import WerewolfFSM
-from games.werewolf.ontology import WerewolfEventType, WerewolfInputType, WerewolfPhase, WerewolfRole
+from games.werewolf.fsm import ACTIVE_NIGHT_PHASES, ACTIVE_PHASE_TIMEOUT, PASSIVE_PHASE_DURATION, WerewolfFSM
+from games.werewolf.ontology import PASSIVE_NIGHT_PHASES, WerewolfEventType, WerewolfInputType, WerewolfPhase, WerewolfRole
 from games.werewolf.state import WerewolfPlayerState
 
 from agents.context import AgentContext
@@ -329,8 +329,15 @@ class WerewolfSession:
             return
         import time as _time
         timeout = None
+        phase_end_warning = None
         if fusion_ctx.fsm_state == WerewolfPhase.DAY_DISCUSSION:
             timeout = 300.0
+        elif fusion_ctx.fsm_state in PASSIVE_NIGHT_PHASES:
+            timeout = float(PASSIVE_PHASE_DURATION)
+            phase_end_warning = "눈을 다시 감아주세요."
+        elif fusion_ctx.fsm_state in ACTIVE_NIGHT_PHASES:
+            timeout = float(ACTIVE_PHASE_TIMEOUT)
+            phase_end_warning = "눈을 다시 감아주세요."
         agent_ctx = AgentContext(
             game_type="werewolf",
             fsm_state=fusion_ctx.fsm_state,
@@ -340,6 +347,7 @@ class WerewolfSession:
             expected_events=list(fusion_ctx.expected_events),
             turn_start_time=_time.time(),
             turn_timeout=timeout,
+            phase_end_warning=phase_end_warning,
         )
         await self._agent.on_state_change(agent_ctx, state_version=self._state_version)
 

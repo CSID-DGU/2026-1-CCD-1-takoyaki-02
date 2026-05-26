@@ -17,6 +17,7 @@ class AgentContext:
     expected_events: list[str] = field(default_factory=list)
     turn_start_time: float = field(default_factory=time.time)
     turn_timeout: float | None = None       # 초 단위. None이면 타이머 없음
+    phase_end_warning: str | None = None    # 페이즈 종료 T-4초에 발화할 경고 (TempoAgent용)
     game_specific: dict[str, Any] = field(default_factory=dict)
 
     def player_name(self, player_id: str | None) -> str | None:
