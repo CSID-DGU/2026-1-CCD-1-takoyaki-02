@@ -72,6 +72,8 @@ export default function NightRoleAnnounce({ roleId, onComplete, onExit }) {
   const duration = isPassive ? PASSIVE_DURATION : ACTIVE_DURATION
   const [countdown, setCountdown] = useState(duration)
 
+  // 역할 안내 TTS는 ProgressAgent가 담당 — 프론트에서 TTS_REQUEST 중복 발화 제거
+
   useEffect(() => {
     const dur = PASSIVE_ROLES.has(roleId) ? PASSIVE_DURATION : ACTIVE_DURATION
     setCountdown(dur)

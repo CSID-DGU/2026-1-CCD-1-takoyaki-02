@@ -1,45 +1,28 @@
 import { useEffect, useState } from 'react'
-import { audio } from '../../hooks/useAudioPlayer'
 
-export default function NightEnd({ onComplete, send, started, isPracticeMode }) {
+export default function NightEnd({ onComplete, send, isPracticeMode }) {
   const [showDiscussion, setShowDiscussion] = useState(false)
 
   useEffect(() => {
-    if (!started) return
-
-    let timer1 = null, timer2 = null, timer3 = null
-    let unsubStart = null, unsub1 = null, unsub2 = null
-
-    // 2초 후 첫 번째 TTS
-    timer1 = setTimeout(() => {
+    // PhaseTransition(dawn)이 2500ms이므로 4000ms부터 TTS 시작
+    const t1 = setTimeout(() => {
       const ttsText = isPracticeMode ? '아침이 밝았습니다.' : '아침이 밝았습니다. 모두 눈을 뜨세요.'
       send?.('TTS_REQUEST', { text: ttsText })
-      // 이전 TTS의 interrupt 신호가 ttsEndCallbacks를 조기 발화시키는 것을 막기 위해,
-      // 첫 번째 TTS가 실제로 재생 시작된 후에만 종료 콜백을 등록한다.
-      unsubStart = audio.onNextTtsStarted(() => {
-        unsub1 = audio.onNextTtsEnded(() => {
-          // 2초 후 두 번째 TTS
-          timer2 = setTimeout(() => {
-            setShowDiscussion(true)
-            send?.('TTS_REQUEST', { text: '자, 지금부터 토론을 시작합니다.' })
-            unsub2 = audio.onNextTtsEnded(() => {
-              // 3초 후 자동 넘기기
-              timer3 = setTimeout(onComplete, 3000)
-            })
-          }, 2000)
-        })
-      })
-    }, 2000)
+    }, 4000)
+
+    const t2 = setTimeout(() => {
+      setShowDiscussion(true)
+      send?.('TTS_REQUEST', { text: '자, 지금부터 토론을 시작합니다.' })
+    }, 8000)
+
+    const t3 = setTimeout(onComplete, 13000)
 
     return () => {
-      clearTimeout(timer1)
-      clearTimeout(timer2)
-      clearTimeout(timer3)
-      unsubStart?.()
-      unsub1?.()
-      unsub2?.()
+      clearTimeout(t1)
+      clearTimeout(t2)
+      clearTimeout(t3)
     }
-  }, [started])
+  }, [])
 
   return (
     <>

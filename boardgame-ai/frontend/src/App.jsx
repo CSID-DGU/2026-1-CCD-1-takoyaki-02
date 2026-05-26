@@ -1,9 +1,13 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import { useWebSocket } from './hooks/useWebSocket'
 import { useAudioPlayer, audio as audioApi } from './hooks/useAudioPlayer'
 import { useBenchBridge } from './hooks/useBenchBridge'
 import SeatRegistration from './components/common/SeatRegistration'
+import { colorForIndex } from './components/common/seatColors'
+import { orderForTurn, physicalSeatOrder } from './components/common/turnOrder'
 import Lobby from './pages/Lobby'
+import Countdown from './pages/Countdown'
 import WerewolfGame from './pages/WerewolfGame'
 import YachtGame from './pages/YachtGame'
 
@@ -17,16 +21,23 @@ const WEREWOLF_PHASES = new Set([
 
 export default function App() {
   const [page, setPage] = useState('seat')
-  const [yachtTutorialMode, setYachtTutorialMode] = useState(false)
   const [gameKey, setGameKey] = useState(0)
   const [isPracticeMode, setIsPracticeMode] = useState(false)
+  const [yachtTutorialMode, setYachtTutorialMode] = useState(false)
+
+  // 게임 시작 시점에 픽스되는 정렬된 플레이어 목록.
+  // 카운트다운 → 게임 페이지로 넘어가는 동안 이 값 사용.
+  const [orderedPlayersAtStart, setOrderedPlayersAtStart] = useState(null)
+  const [pendingGame, setPendingGame] = useState(null)  // { gameId, mode, gameType }
+
+  // 시작 플레이어 / 진행 방향 (lobby 입장 전 상태로 유지됨)
+  const [firstPlayerId, setFirstPlayerId] = useState(null)
+  const [direction, setDirection] = useState('cw')
+
   const { state, connected, send } = useWebSocket('/ws/tablet', {
     onAudioMessage: audioApi.enqueue,
   })
-  // App 레벨 싱글톤 audio. send를 넘겨 audio_ack가 backend로 흐르도록.
   useAudioPlayer(send)
-  // window._bench.log(...)를 정의하고 250ms 배치로 backend에 전송.
-  // backend가 BENCH_TRACE=1 아니면 backend 쪽에서 무시되므로 항상 켜둬도 OK.
   useBenchBridge(send)
 
   const phase = state?.phase ?? 'player_setup'
@@ -34,9 +45,24 @@ export default function App() {
   const registeringId = state?.registering_player_id ?? null
   const seatStep = state?.seat_step ?? 'idle'
 
-  // 사운드 트리거 처리
+  // 등록된 플레이어가 바뀌면 firstPlayerId가 유효한지 확인하고, 없으면 첫 번째 등록 플레이어로
+  const registeredPlayers = useMemo(
+    () => players.filter((p) => p.playername),
+    [players],
+  )
   useEffect(() => {
-    // sound_seq가 바뀔 때마다 재생 (오른손/왼손 각각 트리거됨).
+    if (registeredPlayers.length === 0) {
+      if (firstPlayerId !== null) setFirstPlayerId(null)
+      return
+    }
+    if (!registeredPlayers.find((p) => p.player_id === firstPlayerId)) {
+      const byPos = physicalSeatOrder(registeredPlayers, 'player_id')
+      setFirstPlayerId(byPos[0].player_id)
+    }
+  }, [registeredPlayers, firstPlayerId])
+
+  // 사운드 trigger (좌석 등록 효과음)
+  useEffect(() => {
     if (state?.sound === 'registered') {
       const audio = new Audio('/sfx/hand_register.mp3')
       audio.play().catch(() => {})
@@ -50,56 +76,165 @@ export default function App() {
     }
   }, [phase, page])
 
+  // 좌석 등록 / 로비 화면에서 로비 BGM 재생. 게임 페이지로 나가면 backend가 stopBgm.
+  // - 좌석 ↔ 로비 사이 내부 전환은 끊김 없이 유지 (재트리거 안 함).
+  // - 게임/카운트다운에서 lobby-area로 복귀했을 때만 stopBgm → 0.5s 후 로비 BGM 시작.
+  const prevLobbyAreaRef = useRef(false)
+  useEffect(() => {
+    const isLobbyArea = page === 'lobby' || page === 'seat'
+    const wasLobbyArea = prevLobbyAreaRef.current
+    prevLobbyAreaRef.current = isLobbyArea
+    if (!isLobbyArea) return
+    if (wasLobbyArea) return  // 좌석 ↔ 로비 내부 전환은 그대로 두기
+    audioApi.stopBgm()
+    const timer = setTimeout(() => {
+      audioApi.playBgm('/bgm/lobby_loop.mp3', { loop: true, gain_db: -14 })
+    }, 500)
+    return () => clearTimeout(timer)
+  }, [page])
+
+  // 좌석 등록 페이지에서 사용할 콜백
+  const goLobby = () => setPage('lobby')
+
+  // Lobby에서 게임 카드 선택 → 카운트다운 진입
+  const handleSelectGame = (gameId, mode) => {
+    // 진행 순서 픽스
+    const ordered = orderForTurn(registeredPlayers, firstPlayerId, direction, 'player_id')
+    if (ordered.length === 0) return
+
+    // UI용 플레이어 목록 (Countdown 화면 + 게임 페이지로 전달)
+    const ui = ordered.map((p, i) => ({
+      id: p.player_id,
+      player_id: p.player_id,
+      playername: p.playername,
+      name: p.playername,
+      position: p.position,
+      color: colorForIndex(i),
+      registered: p.registered,
+    }))
+    setOrderedPlayersAtStart(ui)
+
+    // mode → 백엔드 game_type 매핑
+    // 늑대인간 "튜토리얼 모드" = 연습 모드(frontend-only 플래그). game_type은 'werewolf' 그대로.
+    let gameType = gameId
+    if (gameId === 'yacht' && mode === 'tutorial') gameType = 'yacht_tutorial'
+    setPendingGame({ gameId, mode, gameType })
+    setIsPracticeMode(gameId === 'werewolf' && mode === 'tutorial')
+    setYachtTutorialMode(gameId === 'yacht' && mode === 'tutorial')
+
+    setPage('countdown')
+  }
+
+  // Countdown 0초 → 백엔드에 select_game 보내고 게임 페이지로 이동
+  const handleCountdownReady = () => {
+    if (!pendingGame) return
+    send('select_game', { game_type: pendingGame.gameType })
+    const target = pendingGame.gameId === 'yacht' ? 'yacht' : 'werewolf'
+    setPage(target)
+    setPendingGame(null)
+  }
+
+  // Countdown 취소 → lobby로 복귀 (백엔드 미통신, frontend state만 롤백)
+  const handleCountdownCancel = () => {
+    setPendingGame(null)
+    setOrderedPlayersAtStart(null)
+    setYachtTutorialMode(false)
+    setIsPracticeMode(false)
+    setPage('lobby')
+  }
+
+  let pageEl = null
   if (page === 'seat') {
-    return (
+    pageEl = (
       <SeatRegistration
         players={players}
         registeringId={registeringId}
         seatStep={seatStep}
         connected={connected}
+        firstPlayerId={firstPlayerId}
+        direction={direction}
+        onChangeFirst={setFirstPlayerId}
+        onChangeDirection={setDirection}
         send={send}
-        onStart={() => setPage('lobby')}
+        onStart={goLobby}
       />
     )
-  }
-  if (page === 'lobby') {
-    return (
+  } else if (page === 'lobby') {
+    pageEl = (
       <Lobby
         players={players}
+        connected={connected}
+        onBack={() => setPage('seat')}
+        onSelectGame={handleSelectGame}
+      />
+    )
+  } else if (page === 'countdown' && pendingGame && orderedPlayersAtStart) {
+    pageEl = (
+      <Countdown
+        players={orderedPlayersAtStart}
+        gameId={pendingGame.gameType}
+        mode={pendingGame.mode}
+        onCancel={handleCountdownCancel}
+        onReady={handleCountdownReady}
+      />
+    )
+  } else if (page === 'yacht') {
+    const playersForGame = orderedPlayersAtStart ?? registeredPlayers
+    pageEl = (
+      <YachtGame
+        players={playersForGame}
+        tutorialMode={yachtTutorialMode}
+        onExit={() => { setOrderedPlayersAtStart(null); setPage('lobby') }}
+        onChangePlayers={() => { setOrderedPlayersAtStart(null); setPage('seat') }}
+      />
+    )
+  } else if (page === 'werewolf') {
+    const playersForGame = orderedPlayersAtStart ?? registeredPlayers
+    pageEl = (
+      <WerewolfGame
+        key={gameKey}
+        players={playersForGame}
+        wsState={state}
         send={send}
-        onSelectYacht={() => {
-          setYachtTutorialMode(false)
-          setPage('yacht')
-        }}
-        onSelectYachtTutorial={() => {
-          setYachtTutorialMode(true)
-          setPage('yacht')
-        }}
-        onSelectWerewolf={() => { setIsPracticeMode(false); setPage('werewolf') }}
-        onSelectWerewolfPractice={() => { setIsPracticeMode(true); setPage('werewolf') }}
-        onExit={() => setPage('seat')}
+        isPracticeMode={isPracticeMode}
+        onChangePlayers={() => { setOrderedPlayersAtStart(null); setIsPracticeMode(false); setPage('seat') }}
+        onChangeGame={() => { setOrderedPlayersAtStart(null); setIsPracticeMode(false); setPage('lobby') }}
+        onRestart={() => setGameKey((k) => k + 1)}
       />
     )
   }
-  if (page === 'yacht') return (
-    <YachtGame
-      players={players}
-      tutorialMode={yachtTutorialMode}
-      onExit={() => setPage('lobby')}
-      onChangePlayers={() => setPage('seat')}
-    />
+
+  return (
+    <>
+      {pageEl}
+      <OrientationLock />
+    </>
   )
-  if (page === 'werewolf') return (
-    <WerewolfGame
-      key={gameKey}
-      players={players}
-      wsState={state}
-      send={send}
-      isPracticeMode={isPracticeMode}
-      onChangePlayers={() => { setIsPracticeMode(false); setPage('seat') }}
-      onChangeGame={() => { setIsPracticeMode(false); setPage('lobby') }}
-      onRestart={() => setGameKey(k => k + 1)}
-    />
+}
+
+function OrientationLock() {
+  const host = typeof document !== 'undefined'
+    ? document.getElementById('orient-lock-root')
+    : null
+  if (!host) return null
+  return createPortal(
+    <div className="orient-lock" role="alert" aria-live="polite">
+      <div className="orient-lock-card">
+        <div className="orient-lock-icon" aria-hidden>
+          <svg width="64" height="64" viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="6" y="2.5" width="12" height="19" rx="2" />
+            <path d="M11 18.5h2" />
+          </svg>
+        </div>
+        <div>
+          <div className="orient-lock-title">가로로 돌려주세요</div>
+          <div className="orient-lock-sub">
+            이 앱은 태블릿을 가로 방향에 두고 사용하도록 설계되었습니다.
+          </div>
+        </div>
+      </div>
+    </div>,
+    host,
   )
-  return null
 }

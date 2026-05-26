@@ -16,8 +16,10 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from dotenv import load_dotenv
+import cv2
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import Response
 from fastapi.staticfiles import StaticFiles
 
 from audio.catalog import BGM_DIR, SFX_DIR, TTS_CACHE_DIR
@@ -80,7 +82,7 @@ async def lifespan(app: FastAPI):
     bridge.on_game_event(orchestrator.handle_game_event)
 
     camera_index = int(os.environ.get("CAMERA_INDEX", "0"))
-    camera = CameraManager(source=camera_index, resolution=(1920, 1080), fps=30)
+    camera = CameraManager(source=camera_index, resolution=None, fps=0)
     # 비전 → 활성 YachtSession.fsm 라우터. LocalBridge에 자동 핸들러 등록됨.
     yacht_runner = YachtRunner(config=config, bridge=bridge, loop=loop)
     werewolf_runner = WerewolfRunner(bridge=bridge)
@@ -99,13 +101,9 @@ async def lifespan(app: FastAPI):
     orchestrator.set_players_listener(_on_players_changed)
     orchestrator.set_pipeline_switcher(_on_game_switch)
 
-    yacht_queue = camera.subscribe()
-    werewolf_queue = camera.subscribe()
     lobby_queue = camera.subscribe()
 
     camera.start()
-    yacht_runner.start(yacht_queue)
-    werewolf_runner.start(werewolf_queue)
     lobby_runner.start(lobby_queue)
 
     app.state.orchestrator = orchestrator
@@ -155,6 +153,22 @@ app.mount("/bgm", StaticFiles(directory=str(BGM_DIR)), name="bgm")
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.get("/debug/vision/lobby")
+def debug_lobby_vision() -> dict:
+    return app.state.lobby_runner.debug_snapshot()
+
+
+@app.get("/debug/vision/frame.jpg")
+def debug_vision_frame() -> Response:
+    frame = app.state.camera.latest_frame()
+    if frame is None:
+        return Response(status_code=404, content=b"no frame")
+    ok, encoded = cv2.imencode(".jpg", frame)
+    if not ok:
+        return Response(status_code=500, content=b"encode failed")
+    return Response(content=encoded.tobytes(), media_type="image/jpeg")
 
 
 # ── 오디오 디버그 엔드포인트 ────────────────────────────────────────────────────
@@ -282,6 +296,11 @@ async def werewolf_socket(websocket: WebSocket) -> None:
         pipeline_switcher=app.state.pipeline_switcher,
         audio_manager=app.state.audio_manager,
         agent_orchestrator=agent_orchestrator,
+        seat_positions_fn=lambda: {
+            p.player_id: p.seat_zone.body_xy
+            for p in app.state.orchestrator._pm.state.players
+            if p.seat_zone is not None
+        },
     )
     app.state.orchestrator.set_werewolf_event_handler(session.get_vision_event_handler())
     # WS 연결 즉시 웨어울프 파이프라인 활성화 (역할 선택 화면에서도 카메라 준비)

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 
 const ROLES = [
   { id: 'doppelganger', name: '도플갱어', image: '/roles/doppelganger.png', team: '마을 팀', color: '#7C3AED' },
@@ -21,12 +21,25 @@ const ROLES = [
 
 const TEAMS = ['전체', '마을 팀', '늑대 팀', '중립 팀']
 
-export default function RoleRegistration({ players = [], onStart, onExit }) {
+const KOREAN_NUMBERS = [
+  '하나', '둘', '셋', '넷', '다섯', '여섯', '일곱', '여덟', '아홉', '열',
+  '열하나', '열둘', '열셋', '열넷', '열다섯', '열여섯', '열일곱', '열여덟', '열아홉', '스물',
+]
+const toKoreanNum = (n) => KOREAN_NUMBERS[n - 1] ?? String(n)
+
+export default function RoleRegistration({ players = [], onStart, onExit, send, connected }) {
   const [selected, setSelected] = useState([])
   const [activeTeam, setActiveTeam] = useState('전체')
 
   const needed = players.length + 3
   const done = selected.length === needed
+
+  useEffect(() => {
+    if (!connected) return
+    send?.('TTS_REQUEST', {
+      text: `이번 게임에 사용할 카드 ${toKoreanNum(needed)}장을 선택해주세요. 선택한 카드만 테이블에 올려두고 나머지 카드는 정리해주세요.`,
+    })
+  }, [connected])
 
   const selectedRoles = selected
     .map((id) => ROLES.find((role) => role.id === id))

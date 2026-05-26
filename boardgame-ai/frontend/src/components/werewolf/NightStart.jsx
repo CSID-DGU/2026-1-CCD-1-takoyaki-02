@@ -3,18 +3,60 @@ import { audio } from '../../hooks/useAudioPlayer'
 
 export default function NightStart({ onComplete, send, onExit, isPracticeMode }) {
   useEffect(() => {
-    // 연습모드는 백엔드 에이전트가 모르는 텍스트이므로 프론트에서 직접 요청.
-    // 일반 모드는 ProgressAgent가 "night_start" 스크립트로 발화.
+    // 연습모드만 프론트에서 발화 — 비연습모드는 ProgressAgent가 담당
     if (isPracticeMode) {
       send?.('TTS_REQUEST', { text: '연습모드입니다. 눈을 감지 않고 진행합니다. 차례가 되면 해당 역할 플레이어가 행동을 수행해주세요.' })
     }
+
+    // 늑대 울음 환경음 — 원본 7초, 최대 5초에서 컷.
+    // TTS가 거의 동시에 시작되더라도 최소 3초는 보장한다(밤 분위기 형성).
+    // 3초 이후 TTS가 시작되면 페이드아웃해 마스킹 방지.
+    // 볼륨 0.35: TTS와 겹쳐도 마스킹 최소화하며 분위기 환경음으로 깔리는 수준.
+    const wolfAudio = new Audio('/sfx/wolf_sound.mp3')
+    wolfAudio.volume = 0.35
+    wolfAudio.play().catch(() => {})
+    let wolfFadeInterval = null
+    const WOLF_MIN_MS = 3000
+    const wolfStartTime = performance.now()
+    const stopWolf = () => {
+      if (wolfFadeInterval !== null) return
+      const startVol = wolfAudio.volume
+      const startTime = performance.now()
+      const FADE_MS = 300
+      wolfFadeInterval = setInterval(() => {
+        const ratio = Math.min(1, (performance.now() - startTime) / FADE_MS)
+        wolfAudio.volume = Math.max(0, startVol * (1 - ratio))
+        if (ratio >= 1) {
+          clearInterval(wolfFadeInterval)
+          wolfFadeInterval = null
+          try { wolfAudio.pause() } catch (_) {}
+          try { wolfAudio.currentTime = 0 } catch (_) {}
+        }
+      }, 16)
+    }
+    const wolfCutoff = setTimeout(stopWolf, 5000)
+    let earlyTtsTimer = null
+    const unsubscribeWolfTtsStart = audio.onNextTtsStarted(() => {
+      const elapsed = performance.now() - wolfStartTime
+      if (elapsed >= WOLF_MIN_MS) {
+        stopWolf()
+      } else {
+        earlyTtsTimer = setTimeout(stopWolf, WOLF_MIN_MS - elapsed)
+      }
+    })
+
     let timer = null
     const unsubscribe = audio.onNextTtsEnded(() => {
       timer = setTimeout(onComplete, isPracticeMode ? 4000 : 8000)
     })
     return () => {
       unsubscribe()
+      unsubscribeWolfTtsStart()
       if (timer !== null) clearTimeout(timer)
+      clearTimeout(wolfCutoff)
+      if (earlyTtsTimer !== null) clearTimeout(earlyTtsTimer)
+      if (wolfFadeInterval !== null) clearInterval(wolfFadeInterval)
+      try { wolfAudio.pause() } catch (_) {}
     }
   }, [])
 

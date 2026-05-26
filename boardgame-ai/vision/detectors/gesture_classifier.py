@@ -80,10 +80,11 @@ class GestureClassifier:
         # ── v_sign: 검지+중지 펴짐, 약지+새끼 굽힘 ────────────────────
         index_ext = _finger_extended(lms, _INDEX_TIP, _INDEX_PIP, _INDEX_MCP)
         middle_ext = _finger_extended(lms, _MIDDLE_TIP, _MIDDLE_PIP, _MIDDLE_MCP)
-        # pip 기준으로 판정 — mcp보다 더 엄격해서 오버헤드에서도 안정적
-        ring_curl = _finger_curled(lms, _RING_TIP, _RING_PIP)
-        pinky_curl = _finger_curled(lms, _PINKY_TIP, _PINKY_PIP)
-        if index_ext and middle_ext and ring_curl and pinky_curl:
+        # Front cameras often see half-curled ring/pinky fingers as not strictly
+        # closer to the wrist than the PIP. Treat "not extended" as curled enough.
+        ring_not_ext = not _finger_extended(lms, _RING_TIP, _RING_PIP, _RING_MCP)
+        pinky_not_ext = not _finger_extended(lms, _PINKY_TIP, _PINKY_PIP, _PINKY_MCP)
+        if index_ext and middle_ext and ring_not_ext and pinky_not_ext:
             return "v_sign"
 
         # ── ok_sign: 엄지-검지 터치, 나머지 세 손가락 펴짐 ────────────

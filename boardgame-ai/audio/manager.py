@@ -488,6 +488,14 @@ class AudioManager:
         )
         await self._send(msg)
 
+    async def pause_bgm(self, fade_ms: int = 500) -> None:
+        """BGM 일시정지. frontend는 현재 재생 위치를 보존한다."""
+        msg = WSMessage.make_bgm_play(
+            name="", audio_url="", loop=True, gain_db=-60.0, fade_ms=fade_ms,
+        )
+        msg.payload["preserve_position"] = True
+        await self._send(msg)
+
     async def enqueue_llm_line(
         self,
         agent: str,

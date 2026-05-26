@@ -154,8 +154,12 @@ class YachtFSM(BaseFSM):
             unreadable = [i for i, value in enumerate(dice_values) if value is None]
             return self._record_unreadable_roll(dice_values, unreadable)
 
-        self.state.dice_values = [int(v) for v in dice_values]
-        self.state.keep_mask = self._normalize_keep_mask(event.data.get("keep_mask"))
+        sorted_values, sorted_keep_mask = self._sort_dice_with_keep(
+            [int(v) for v in dice_values],
+            self._normalize_keep_mask(event.data.get("keep_mask")),
+        )
+        self.state.dice_values = sorted_values
+        self.state.keep_mask = sorted_keep_mask
         self.state.roll_count += 1
         self.state.unreadable_roll = None
         self.state.phase = (
@@ -304,6 +308,17 @@ class YachtFSM(BaseFSM):
         if not isinstance(keep_mask, list) or len(keep_mask) != 5:
             return [False] * 5
         return [bool(v) for v in keep_mask]
+
+    def _sort_dice_with_keep(
+        self,
+        dice_values: list[int],
+        keep_mask: list[bool],
+    ) -> tuple[list[int], list[bool]]:
+        pairs = sorted(
+            zip(dice_values, keep_mask, strict=True),
+            key=lambda pair: pair[0],
+        )
+        return [value for value, _ in pairs], [kept for _, kept in pairs]
 
     def _state_context_messages(self) -> list[WSMessage]:
         return [

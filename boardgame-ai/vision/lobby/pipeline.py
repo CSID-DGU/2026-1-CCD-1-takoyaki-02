@@ -18,6 +18,7 @@ from bridge.interface import Bridge
 from core.events import FusionContext
 from core.models import Player
 from vision.attribution.seat_matcher import (
+    MARGIN_THRESHOLD,
     match_player_by_arm,
     players_with_both_hands_tracked,
 )
@@ -27,7 +28,7 @@ from vision.detectors.hand_detector import HandDetector
 from vision.fusion.engine import FusionEngine
 from vision.geometry.arm_vector import compute_arm_angle
 from vision.schemas import FramePerception, HandDet
-from vision.tracking.hand_tracker import HandTracker
+from vision.tracking.hand_tracker import MAX_MATCH_ATTEMPTS, HandTracker
 
 
 class LobbyVisionPipeline:
@@ -52,6 +53,13 @@ class LobbyVisionPipeline:
         self._active = True  # 로비가 기본 활성 파이프라인
         self._frame_id = 0
         self._fsm_state_version: int = 0
+        self._debug_snapshot: dict[str, Any] = {
+            "frame_id": None,
+            "active": self._active,
+            "hands": [],
+            "events": [],
+            "context": None,
+        }
 
         self._hand_detector = HandDetector(
             max_num_hands=max_num_hands,
@@ -101,6 +109,9 @@ class LobbyVisionPipeline:
     def update_players(self, players: list[Player]) -> None:
         self._players = players
 
+    def debug_snapshot(self) -> dict[str, Any]:
+        return dict(self._debug_snapshot)
+
     # ── 내부 처리 ──────────────────────────────────────────────────────────────
 
     def _process_one(self, frame_bgr: Any, frame_id: int, ts: float) -> None:
@@ -122,6 +133,21 @@ class LobbyVisionPipeline:
         )
 
         events = self._fusion.feed(perception)
+        self._debug_snapshot = {
+            "frame_id": frame_id,
+            "active": self._active,
+            "hands": [
+                {
+                    "handedness": hand.handedness,
+                    "gesture": hand.gesture,
+                    "player_id": hand.player_id,
+                    "wrist_xy": list(hand.wrist_xy),
+                }
+                for hand in hands
+            ],
+            "events": [event.to_dict() for event in events],
+            "context": self._fusion._context.to_dict(),
+        }
         if frame_id >= self._warmup_frames:
             for event in events:
                 self._bridge.send_game_event(event, self._fsm_state_version)
@@ -147,15 +173,19 @@ class LobbyVisionPipeline:
             stable_handedness = track.confirmed_handedness or raw.handedness
 
             if track.pending_match and track.frames_since_entry >= 3 and self._players:
-                pid, _score = match_player_by_arm(
+                pid, _score, margin = match_player_by_arm(
                     handedness=stable_handedness,
                     entry_wrist_xy=track.entry_wrist_xy,
                     entry_arm_angle=track.entry_arm_angle,
                     players=self._players,
                     excluded_player_ids=excluded,
                 )
+                # margin 충분 → 즉시 확정. 부족하면 Hold(여러 프레임 voting 누적),
+                # MAX_MATCH_ATTEMPTS 도달 시 best로 강제 확정(타임아웃).
                 track.player_id_buf.append(pid)
-                track.pending_match = False
+                track.match_attempts += 1
+                if margin >= MARGIN_THRESHOLD or track.match_attempts >= MAX_MATCH_ATTEMPTS:
+                    track.pending_match = False
 
             player_id = track.confirmed_player_id
             prev_gesture = self._prev_gestures.get(track.track_id)

@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 
-export default function VoteCountdown({ players = [], votes = {}, onComplete, send, onExit }) {
+export default function VoteCountdown({ players = [], votes = {}, send, onExit }) {
   // votes: { player_id: target_player_id } — 지목 완료된 플레이어 매핑
   const [selectedVoter, setSelectedVoter] = useState(null)
 
@@ -8,13 +8,7 @@ export default function VoteCountdown({ players = [], votes = {}, onComplete, se
   const total = players.length
   const allDone = total > 0 && doneCount >= total
 
-  useEffect(() => {
-    send?.('TTS_REQUEST', { text: '지목할 플레이어의 카드를 손가락으로 가리키세요.' })
-  }, [])
-
-  useEffect(() => {
-    if (allDone) onComplete?.()
-  }, [allDone])
+  // 투표 안내 TTS는 ProgressAgent가 담당 — 프론트에서 중복 제거
 
   const handleCardClick = (playerId) => {
     if (!send) return
