@@ -66,7 +66,7 @@ function toKoreanTTS(text) {
   return text.replace(/([123])(명|장|개)/g, (_, n, counter) => `${KOREAN_NUMS[Number(n)]} ${counter}`)
 }
 
-export default function NightRoleAnnounce({ roleId, onComplete, send, onExit }) {
+export default function NightRoleAnnounce({ roleId, onComplete, onExit }) {
   const role = ROLE_NIGHT_DATA[roleId]
   const isPassive = PASSIVE_ROLES.has(roleId)
   const duration = isPassive ? PASSIVE_DURATION : ACTIVE_DURATION
