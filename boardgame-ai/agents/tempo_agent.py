@@ -45,7 +45,7 @@ class TempoAgent:
         if ctx.turn_timeout is None or ctx.turn_timeout <= 0:
             return
         self._task = asyncio.create_task(
-            self._run(ctx.turn_start_time, ctx.turn_timeout)
+            self._run(ctx.turn_start_time, ctx.turn_timeout, ctx.phase_end_warning)
         )
 
     def stop(self) -> None:
@@ -56,11 +56,12 @@ class TempoAgent:
             self._task.cancel()
         self._task = None
 
-    async def _run(self, start_time: float, timeout: float) -> None:
+    async def _run(self, start_time: float, timeout: float, end_warning: str | None = None) -> None:
         if self._tts_cb is None:
             return
-        for ratio, text in _MILESTONES:
-            fire_at = start_time + timeout * ratio
+        if end_warning and timeout > 4:
+            # 페이즈 종료 4초 전 경고 (야간 페이즈용). 비율 마일스톤 대신 사용.
+            fire_at = start_time + timeout - 4
             wait = fire_at - time.time()
             if wait > 0:
                 try:
@@ -68,6 +69,19 @@ class TempoAgent:
                 except asyncio.CancelledError:
                     return
             try:
-                await self._tts_cb(text, AudioPriority.HIGH)
+                await self._tts_cb(end_warning, AudioPriority.HIGH)
             except Exception:
                 logger.exception("[TempoAgent] TTS 발화 실패")
+        else:
+            for ratio, text in _MILESTONES:
+                fire_at = start_time + timeout * ratio
+                wait = fire_at - time.time()
+                if wait > 0:
+                    try:
+                        await asyncio.sleep(wait)
+                    except asyncio.CancelledError:
+                        return
+                try:
+                    await self._tts_cb(text, AudioPriority.HIGH)
+                except Exception:
+                    logger.exception("[TempoAgent] TTS 발화 실패")
