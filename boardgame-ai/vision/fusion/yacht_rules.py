@@ -43,6 +43,16 @@ class YachtRules:
         # tray 외부로 이 비율 이상 벗어나야 실제 이탈로 본다.
         self._escape_padding = escape_padding
 
+    def reset(self) -> None:
+        """phase 전환 / 게임 재시작 시 누적 상태 초기화.
+
+        _seen_inside / _reported_escaped는 프로그램 생명주기 동안 누적되므로
+        한 게임 종료 후 다음 라운드에서 이전 dice track_id가 남아 DICE_ESCAPED가
+        누락되거나 오발화될 위험이 있다. FSM phase 전환 시 호출해 해소.
+        """
+        self._seen_inside.clear()
+        self._reported_escaped.clear()
+
     def build_candidates(
         self,
         ctx: FusionContext,

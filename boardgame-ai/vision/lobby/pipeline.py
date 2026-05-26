@@ -165,25 +165,47 @@ class LobbyVisionPipeline:
             detections.append((h.wrist_xy, angle))
 
         tracks = self._hand_tracker.update(detections)
-        excluded = players_with_both_hands_tracked(self._hand_tracker.active_tracks())
+        active = self._hand_tracker.active_tracks()
 
         stabilized: list[HandDet] = []
         for raw, track in zip(raw_hands, tracks, strict=True):
             track.handedness_buf.append(raw.handedness)
-            stable_handedness = track.confirmed_handedness or raw.handedness
+            confirmed_hd = track.confirmed_handedness
+            stable_handedness = confirmed_hd or raw.handedness
 
-            if track.pending_match and track.frames_since_entry >= 3 and self._players:
+            # handedness 다수결이 뒤집히면 player_id 재매칭 트리거.
+            if (
+                confirmed_hd is not None
+                and track.last_match_handedness is not None
+                and confirmed_hd != track.last_match_handedness
+            ):
+                track.pending_match = True
+                track.match_attempts = 0
+
+            should_match = (
+                self._players
+                and track.frames_since_entry >= 3
+                and confirmed_hd is not None
+                and (track.pending_match or track.last_match_handedness != confirmed_hd)
+            )
+            if should_match:
+                self_pid = track.confirmed_player_id
+                excluded = players_with_both_hands_tracked(
+                    [t for t in active if t.track_id != track.track_id]
+                )
+                if self_pid is not None:
+                    excluded.discard(self_pid)
+
                 pid, _score, margin = match_player_by_arm(
-                    handedness=stable_handedness,
+                    handedness=confirmed_hd,
                     entry_wrist_xy=track.entry_wrist_xy,
                     entry_arm_angle=track.entry_arm_angle,
                     players=self._players,
                     excluded_player_ids=excluded,
                 )
-                # margin 충분 → 즉시 확정. 부족하면 Hold(여러 프레임 voting 누적),
-                # MAX_MATCH_ATTEMPTS 도달 시 best로 강제 확정(타임아웃).
                 track.player_id_buf.append(pid)
                 track.match_attempts += 1
+                track.last_match_handedness = confirmed_hd
                 if margin >= MARGIN_THRESHOLD or track.match_attempts >= MAX_MATCH_ATTEMPTS:
                     track.pending_match = False
 
