@@ -174,7 +174,6 @@ export default function WerewolfGame({ players, onChangePlayers, onChangeGame, o
         <NightRoleAnnounce
           roleId={NIGHT_PHASE_ROLES[ph]}
           onComplete={() => send('start_now', {})}
-          send={send}
           onExit={handleExit}
         />
       )
