@@ -36,6 +36,10 @@ class VisionConfig:
 
     warmup_frames: int = 60
     tray_mask_padding: float = 0.1
+    # DICE_ESCAPED 판정용 tray bbox 외측 패딩 (tray 짧은 변 대비 비율).
+    # tray 경계에 살짝 걸친 dice(킵존 가장자리 등)를 escape로 오인하지 않도록
+    # tray 외부로 이 비율 이상 나가야 실제 이탈로 본다.
+    tray_escape_padding: float = 0.15
 
     debug_overlay: bool = False
     jsonl_log_path: Path | None = None

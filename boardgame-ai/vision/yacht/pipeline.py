@@ -94,6 +94,9 @@ class VisionPipeline:
         self._event_banner_ttl: int = 0
         self._fsm_state_version: int = 0
         self._has_context: bool = False
+        # FSM이 알려준 현재 턴 플레이어. RollAttributor에 전달해 다른 플레이어가
+        # 트레이 근처에서 손을 움직이거나 dice를 만져도 점유/actor 판정에 영향 X.
+        self._active_player: str | None = None
 
         self._bridge.on_fusion_context(self._on_fusion_context, game_type="yacht")
 
@@ -178,7 +181,9 @@ class VisionPipeline:
             hands=hands,
         )
 
-        roll_actor = self._roll_attributor.update(perception)
+        roll_actor = self._roll_attributor.update(
+            perception, active_player=self._active_player
+        )
         if roll_actor is not None:
             perception.roll_actor_id = roll_actor
         if self._roll_attributor.just_finalized:
@@ -228,6 +233,7 @@ class VisionPipeline:
         self._has_context = True
         self._fusion.update_context(ctx)
         self._fsm_state_version = state_version
+        self._active_player = ctx.active_player
 
     def _stabilize_hands(self, raw_hands: list[HandDet]) -> list[HandDet]:
         detections: list[tuple[tuple[float, float], float]] = []
