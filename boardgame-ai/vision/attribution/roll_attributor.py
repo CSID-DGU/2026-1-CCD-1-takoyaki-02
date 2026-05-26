@@ -116,16 +116,25 @@ class RollAttributor:
 
     # ── public ───────────────────────────────────────────────────────────────
 
-    def update(self, perception: YachtFramePerception) -> str | None:
-        """매 프레임 호출. ROLL_CONFIRMED 발화 시 actor 반환, 아니면 None."""
+    def update(
+        self,
+        perception: YachtFramePerception,
+        active_player: str | None = None,
+    ) -> str | None:
+        """매 프레임 호출. ROLL_CONFIRMED 발화 시 actor 반환, 아니면 None.
+
+        active_player가 주어지면 점유/nearest 판정에서 그 플레이어의 손만 본다.
+        옆사람이 dice를 만지거나 손을 트레이 근처에 두어도 영향받지 않는다.
+        """
         self._just_finalized = False  # 매 프레임 리셋 — 발화 분기에서만 True
 
-        # nearest player_id 누적 (tray 또는 roll_tray 근처)
-        nearest = self._nearest_player_to_tray(perception)
+        # nearest player_id 누적 (tray 또는 roll_tray 근처).
+        # active_player가 있으면 그 플레이어의 손만 후보. 옆사람 nearest 누적 차단.
+        nearest = self._nearest_player_to_tray(perception, active_player=active_player)
         self._fallback_buf.append(nearest)
 
         # 디바운스 카운터 갱신
-        if self._is_any_hand_in_tray(perception):
+        if self._is_any_hand_in_tray(perception, active_player=active_player):
             self._in_streak += 1
             self._out_streak = 0
         else:
@@ -133,9 +142,9 @@ class RollAttributor:
             self._in_streak = 0
 
         if self._state == RollState.WAITING:
-            return self._step_waiting(perception)
+            return self._step_waiting(perception, active_player)
         # HAND_IN_TRAY
-        return self._step_hand_in_tray(perception)
+        return self._step_hand_in_tray(perception, active_player)
 
     @property
     def state(self) -> RollState:
@@ -148,7 +157,11 @@ class RollAttributor:
 
     # ── 상태별 step ───────────────────────────────────────────────────────────
 
-    def _step_waiting(self, perception: YachtFramePerception) -> str | None:
+    def _step_waiting(
+        self,
+        perception: YachtFramePerception,
+        active_player: str | None = None,
+    ) -> str | None:
         if perception.tray is None:
             return None
         # 손이 안 잡힌 동안에는 마지막 stable snapshot 갱신.
@@ -166,10 +179,14 @@ class RollAttributor:
                 self._last_stable_snapshot = _take_snapshot(target)
         # 진입 디바운스 — 연속 N프레임 안에 있어야 진짜 진입으로 인정
         if self._in_streak >= self._enter_debounce:
-            self._enter_hand_in_tray(perception)
+            self._enter_hand_in_tray(perception, active_player)
         return None
 
-    def _step_hand_in_tray(self, perception: YachtFramePerception) -> str | None:
+    def _step_hand_in_tray(
+        self,
+        perception: YachtFramePerception,
+        active_player: str | None = None,
+    ) -> str | None:
         # 점유 중 candidate_actor를 매 프레임 덮어쓰지 않는다.
         # 앞사람이 tray 옆에 손만 두고 있으면 그쪽이 매 프레임 nearest로 잡혀
         # 진짜 굴리는 사람의 진입 시점 actor를 덮어버리는 오인을 방지.
@@ -177,7 +194,9 @@ class RollAttributor:
         # nearest를 별도 버퍼에 누적해 확정 시 최빈값으로 사용한다.
         if self._is_roll_tray_in_tray(perception):
             self._roll_tray_in_tray_streak += 1
-            nearest_roll = self._nearest_player_to_tray(perception)
+            nearest_roll = self._nearest_player_to_tray(
+                perception, active_player=active_player
+            )
             self._roll_actor_buf.append(nearest_roll)
 
         # 진출 디바운스 — 연속 N프레임 밖이어야 진짜 빠진 걸로 인정
@@ -251,7 +270,11 @@ class RollAttributor:
         self._reset_to_waiting()
         return None
 
-    def _enter_hand_in_tray(self, perception: YachtFramePerception) -> None:
+    def _enter_hand_in_tray(
+        self,
+        perception: YachtFramePerception,
+        active_player: str | None = None,
+    ) -> None:
         self._state = RollState.HAND_IN_TRAY
         # 이번 점유 동안만의 roll_tray 기준 nearest를 다시 모으기 시작.
         self._roll_actor_buf.clear()
@@ -263,7 +286,9 @@ class RollAttributor:
             target = self._dice_outside_keep(perception)
             self._snapshot = _take_snapshot(target)
         # 점유 시점 nearest를 candidate로 우선 채택
-        nearest = self._nearest_player_to_tray(perception)
+        nearest = self._nearest_player_to_tray(
+            perception, active_player=active_player
+        )
         if nearest is not None:
             self._candidate_actor = nearest
         n_kept = self._n_kept(perception)
@@ -285,11 +310,18 @@ class RollAttributor:
 
     # ── 헬퍼 ─────────────────────────────────────────────────────────────────
 
-    def _is_any_hand_in_tray(self, perception: YachtFramePerception) -> bool:
+    def _is_any_hand_in_tray(
+        self,
+        perception: YachtFramePerception,
+        active_player: str | None = None,
+    ) -> bool:
         """어떤 손의 wrist 또는 손가락 끝(5개) 중 하나라도 tray 패딩 영역 안에 있는가.
 
         21 landmark 전부 검사하면 손이 멀리 있어도 한 점이 안에 떨어져 false positive.
         wrist + 5개 fingertip만 본다.
+
+        active_player가 주어지면 그 플레이어의 손만 카운트한다. 옆사람이 굴리는 사이
+        손을 트레이 근처에 두어도 점유 상태가 끝나지 않게 만들어 굴림 finalize를 보장.
         """
         tray = perception.tray
         if tray is None or not perception.hands:
@@ -299,6 +331,8 @@ class RollAttributor:
         # MediaPipe fingertip 인덱스: thumb=4, index=8, middle=12, ring=16, pinky=20
         fingertip_indices = (4, 8, 12, 16, 20)
         for hand in perception.hands:
+            if active_player is not None and hand.player_id != active_player:
+                continue
             wx, wy = hand.wrist_xy
             if x1 <= wx <= x2 and y1 <= wy <= y2:
                 return True
@@ -341,12 +375,19 @@ class RollAttributor:
     def _n_kept(self, perception: YachtFramePerception) -> int:
         return 0
 
-    def _nearest_player_to_tray(self, perception: YachtFramePerception) -> str | None:
+    def _nearest_player_to_tray(
+        self,
+        perception: YachtFramePerception,
+        active_player: str | None = None,
+    ) -> str | None:
         """roll_tray 또는 tray 중심에 가장 가까운 player_id 보유 손.
 
         roll_tray(굴림통)는 굴리는 사람만 들고 움직이므로 그게 잡힌 프레임에선
         그쪽을 기준으로 잡아야 앞사람이 tray 옆에 손만 두고 있어도 오인하지 않는다.
         roll_tray가 없을 때만 tray 중심으로 폴백.
+
+        active_player가 주어지면 그 플레이어의 손만 후보. 옆사람이 굴림통/트레이
+        근처에 손을 둬도 nearest 후보에 들어가지 않아 actor 오인을 막는다.
         """
         ref = perception.roll_tray or perception.tray
         if ref is None:
@@ -356,6 +397,8 @@ class RollAttributor:
         best_dist = float("inf")
         for hand in perception.hands:
             if hand.player_id is None:
+                continue
+            if active_player is not None and hand.player_id != active_player:
                 continue
             wx, wy = hand.wrist_xy
             d = ((wx - cx) ** 2 + (wy - cy) ** 2) ** 0.5
