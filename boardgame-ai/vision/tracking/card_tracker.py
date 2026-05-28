@@ -152,6 +152,13 @@ class CardTracker:
         self._card_states.clear()
         self._prev_face_up.clear()
 
+    def reset_stable_frames(self) -> None:
+        """역할 등록 플레이어 전환 시 호출. 이미 인식된 카드도 재확인을 요구하도록
+        stable_frames를 0으로 리셋한다. just_flipped_up도 함께 초기화."""
+        for card in self._card_states.values():
+            card.stable_frames = 0
+            card.just_flipped_up = False
+
 
 # ── 내부 헬퍼 ─────────────────────────────────────────────────────────────────
 

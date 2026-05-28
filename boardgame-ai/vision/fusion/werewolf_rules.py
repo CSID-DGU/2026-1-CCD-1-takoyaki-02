@@ -49,6 +49,10 @@ _GRAB_DIST_THRESHOLD = 0.08   # 손목-카드 중심 최대 거리 (grab/release
 _MIN_POINT_LENGTH = 0.03      # 손목→검지끝 최소 거리 (포인팅 제스처 판별)
 _RAY_MAX_T = 1.5              # ray cast 최대 거리 (정규화)
 
+# 역할 등록 단계 전용 파라미터
+_ROLE_REG_MIN_BBOX_SHORT = 0.06  # 카드 bbox 단변 최소값 (정규화). 멀리 있는 작은 카드 제외.
+_ROLE_REG_HAND_DIST = 0.12       # 손목-카드 중심 최대 거리. 손으로 집어든 카드만 인식.
+
 
 class WerewolfRules:
     """늑대인간 비전 이벤트 후보 생성기.
@@ -71,6 +75,8 @@ class WerewolfRules:
         self._swap_first_touch: dict[str, tuple[int, str]] = {}
         # VOTE_POINT: voter_id → 이미 투표한 target_id (1인 1표)
         self._votes_cast: dict[str, str] = {}
+        # 역할 등록 단계: 직전 active_player 추적 (플레이어 전환 감지용)
+        self._last_reg_player: str = ""
 
     def build_candidates(
         self,
@@ -93,12 +99,19 @@ class WerewolfRules:
             self._reported_swaps.clear()
             self._swap_first_touch.clear()
             self._votes_cast.clear()
+            self._last_reg_player = ""
 
         tracked = self._card_tracker.get_tracked_cards()
         candidates: list[tuple[str, dict, float]] = []
 
         if phase == _PHASE_ROLE_REGISTRATION:
-            c = self._check_role_detected(ctx, tracked)
+            # 플레이어가 전환되면 카드 stable_frames를 리셋해 재인식을 강제한다.
+            # 직전 플레이어의 카드가 아직 테이블에 있을 경우 즉시 발화하는 연쇄 인식 방지.
+            current_reg_player = ctx.active_player or ""
+            if current_reg_player and current_reg_player != self._last_reg_player:
+                self._last_reg_player = current_reg_player
+                self._card_tracker.reset_stable_frames()
+            c = self._check_role_detected(ctx, perception, tracked)
             if c:
                 candidates.append(c)
 
@@ -125,9 +138,15 @@ class WerewolfRules:
     def _check_role_detected(
         self,
         ctx: FusionContext,
+        perception: FramePerception,
         tracked: list[TrackedCard],
     ) -> tuple[str, dict, float] | None:
-        """역할 등록 단계: face_up 카드가 10프레임 이상 안정적으로 보이면 ROLE_DETECTED 발화.
+        """역할 등록 단계: 다음 조건을 모두 만족하는 카드가 있으면 ROLE_DETECTED 발화.
+
+          1. face_up 이고 역할 클래스명이 확인된 카드
+          2. bbox 단변이 _ROLE_REG_MIN_BBOX_SHORT 이상 (테이블에 놓인 작은 카드 제외)
+          3. 손목이 카드 중심으로부터 _ROLE_REG_HAND_DIST 이내 (손으로 집어든 카드만)
+          4. stable_frames >= 15 (frame_skip=2 기준 ≈ 1.5초 안정 인식)
 
         active_player(현재 등록 중인 플레이어)당 1회만 발화. 역할명은 소문자로 정규화.
         """
@@ -139,7 +158,11 @@ class WerewolfRules:
                 continue
             if card.cls_name is None or card.cls_name == _BACK_CLASS:
                 continue
-            if card.stable_frames < 5:
+            if min(card.bbox.w, card.bbox.h) < _ROLE_REG_MIN_BBOX_SHORT:
+                continue
+            if not _any_hand_near_card(perception.hands, card.bbox, _ROLE_REG_HAND_DIST):
+                continue
+            if card.stable_frames < 15:
                 continue
             self._reported_roles.add(actor_id)
             return (
@@ -315,6 +338,22 @@ class WerewolfRules:
 
 
 # ── 헬퍼 함수 ─────────────────────────────────────────────────────────────────
+
+def _any_hand_near_card(
+    hands: list[HandDet],
+    bbox: object,
+    threshold: float,
+) -> bool:
+    """어떤 손의 손목이라도 카드 중심(cx, cy) 으로부터 threshold 이내에 있으면 True.
+
+    역할 등록 시 테이블에 놓인 카드(손 없음)와 손으로 집어든 카드를 구분한다.
+    """
+    for hand in hands:
+        wx, wy = hand.wrist_xy
+        if math.hypot(bbox.cx - wx, bbox.cy - wy) < threshold:
+            return True
+    return False
+
 
 def _find_nearest_card(
     wrist_xy: tuple[float, float],
