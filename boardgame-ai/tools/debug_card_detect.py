@@ -1,7 +1,7 @@
 """늑대인간 카드 실시간 감지 디버그 뷰어.
 
 사용법:
-    python tools/debug_card_detect.py [--camera 0] [--weights weights/werewolf_cards.pt]
+    python tools/debug_card_detect.py [--camera 0] [--weights weights/werewolf_v6.pt]
 
 조작:
     s  현재 프레임 스크린샷 저장 (debug_screenshots/ 폴더)
@@ -80,7 +80,7 @@ def main() -> None:
     parser.add_argument("--camera", type=int, default=0, help="카메라 인덱스 (기본 0)")
     parser.add_argument(
         "--weights",
-        default="weights/werewolf_cards.pt",
+        default="weights/werewolf_v6.pt",
         help="YOLO 모델 경로",
     )
     parser.add_argument("--conf", type=float, default=0.3, help="신뢰도 임계값 (기본 0.3)")
@@ -89,7 +89,7 @@ def main() -> None:
     detector = WerewolfCardDetector(model_path=args.weights, conf=args.conf)
     if not detector.is_loaded:
         print(f"[경고] 모델 로드 실패: {args.weights}")
-        print("       weights/ 폴더에 werewolf_cards.pt 파일이 있는지 확인하세요.")
+        print("       weights/ 폴더에 werewolf_v6.pt 파일이 있는지 확인하세요.")
         print("       모델 없이 계속 실행합니다 (감지 없음).")
 
     cap = cv2.VideoCapture(args.camera)
