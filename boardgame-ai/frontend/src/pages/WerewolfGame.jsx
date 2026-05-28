@@ -4,6 +4,7 @@ import { audio as audioApi, useAudioPlayer } from '../hooks/useAudioPlayer'
 import RoleRegistration from '../components/werewolf/RoleRegistration'
 import RoleRegShowCard from '../components/werewolf/RoleRegShowCard'
 import RoleRegConfirm from '../components/werewolf/RoleRegConfirm'
+import RoleRegTransition from '../components/werewolf/RoleRegTransition'
 import CardSetupGuide from '../components/werewolf/CardSetupGuide'
 import NightStart from '../components/werewolf/NightStart'
 import NightEnd from '../components/werewolf/NightEnd'
@@ -66,6 +67,8 @@ export default function WerewolfGame({ players, onChangePlayers, onChangeGame, o
   // 역할 감지 상태: 백엔드 role_reg.detected_role 변화 추적
   const [detectedRoleId, setDetectedRoleId] = useState(null)
   const [roleRegTimedOut, setRoleRegTimedOut] = useState(false)
+  const [showRoleTransition, setShowRoleTransition] = useState(false)
+  const [roleTransitionPlayer, setRoleTransitionPlayer] = useState(null)
   const prevDetectedRef = useRef(null)
   const prevPlayerRef = useRef(null)
 
@@ -317,6 +320,20 @@ export default function WerewolfGame({ players, onChangePlayers, onChangeGame, o
   if (phase === 'role_registration') {
     const currentPlayer = players.find(p => p.player_id === roleReg?.player_id)
 
+    // 플레이어 전환 대기 화면
+    if (showRoleTransition && roleTransitionPlayer) {
+      return (
+        <RoleRegTransition
+          player={roleTransitionPlayer}
+          send={send}
+          onComplete={() => {
+            setShowRoleTransition(false)
+            setRoleTransitionPlayer(null)
+          }}
+        />
+      )
+    }
+
     // 역할 감지됨 또는 타임아웃 → 확인 화면
     if ((detectedRoleId || roleRegTimedOut) && currentPlayer) {
       return (
@@ -327,6 +344,12 @@ export default function WerewolfGame({ players, onChangePlayers, onChangeGame, o
           wsState={wsState}
           isPracticeMode={isPracticeMode}
           onConfirm={(selectedRole) => {
+            const nextIndex = (roleReg?.player_index ?? 0) + 1
+            const hasNextPlayer = nextIndex < players.length
+            if (hasNextPlayer) {
+              setRoleTransitionPlayer(currentPlayer)
+              setShowRoleTransition(true)
+            }
             send('CONFIRM_ROLE', { role: selectedRole?.id ?? detectedRoleId }, currentPlayer.player_id)
           }}
         />
