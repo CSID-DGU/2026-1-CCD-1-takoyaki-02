@@ -104,16 +104,25 @@ class DiceManager:
             else:
                 hist.stable_frames = 0
 
-            # stable 확정 구간에서만 pip_count 갱신
+            # stable 확정 구간에서만 pip_count 갱신.
+            # 채택 조건 (모두 만족):
+            #   1) 1위 표수 ≥ 3 (단발 오인식 차단)
+            #   2) 1위 표수 ≥ 버퍼의 1/3 (희박한 분포 차단)
+            #   3) 1위가 2위보다 ≥2표 우세 (비등 분포면 보류 — 같은 dice에서
+            #      두 값이 비등하게 나오면 인식이 흔들리는 중이므로 갱신 보류)
+            # 원래 과반(>n/2) 조건은 None이 자주 섞이는 케이스에서 last_pip이
+            # 영영 갱신 안 되던 문제가 있어, 절대 표수 + 마진 기준으로 대체.
             if hist.stable_frames >= self._stabilization_frames:
                 pip = dot_counter.count(frame_bgr, det.bbox)
                 if pip is not None:
                     hist.pip_buffer.append(pip)
-                    # 과반 이상 동일 값이어야 last_pip 갱신 (소수 오인식 무시)
-                    candidate = _majority_vote(hist.pip_buffer)
-                    if candidate is not None:
-                        buf_list = list(hist.pip_buffer)
-                        if buf_list.count(candidate) > len(buf_list) // 2:
+                    top = Counter(hist.pip_buffer).most_common(2)
+                    if top:
+                        candidate, votes = top[0]
+                        runner_up_votes = top[1][1] if len(top) > 1 else 0
+                        min_votes = max(3, len(hist.pip_buffer) // 3)
+                        margin_ok = (votes - runner_up_votes) >= 2
+                        if votes >= min_votes and margin_ok:
                             hist.last_pip = candidate
             else:
                 # 흔들리는 프레임 → 직전 stable 값 유지
@@ -153,10 +162,3 @@ def _compute_motion_score(history: deque[tuple[float, float]]) -> float:
     mean = sum(dists) / len(dists)
     variance = sum((d - mean) ** 2 for d in dists) / len(dists)
     return variance**0.5
-
-
-def _majority_vote(buf: deque[int]) -> int | None:
-    if not buf:
-        return None
-    most_common = Counter(buf).most_common(1)
-    return most_common[0][0] if most_common else None

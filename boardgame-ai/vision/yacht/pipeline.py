@@ -87,13 +87,16 @@ class VisionPipeline:
             roll_lift_threshold=config.roll_lift_threshold,
             motion_threshold=float(DEFAULT_PARAMS["motion_threshold_norm"]),
         )
-        self._fusion = FusionEngine()
+        self._fusion = FusionEngine(yacht_escape_padding=config.tray_escape_padding)
         self._jsonl_logger = JsonlLogger(config.jsonl_log_path)
 
         self._last_event_data: dict | None = None
         self._event_banner_ttl: int = 0
         self._fsm_state_version: int = 0
         self._has_context: bool = False
+        # FSM이 알려준 현재 턴 플레이어. RollAttributor에 전달해 다른 플레이어가
+        # 트레이 근처에서 손을 움직이거나 dice를 만져도 점유/actor 판정에 영향 X.
+        self._active_player: str | None = None
 
         self._bridge.on_fusion_context(self._on_fusion_context, game_type="yacht")
 
@@ -178,7 +181,9 @@ class VisionPipeline:
             hands=hands,
         )
 
-        roll_actor = self._roll_attributor.update(perception)
+        roll_actor = self._roll_attributor.update(
+            perception, active_player=self._active_player
+        )
         if roll_actor is not None:
             perception.roll_actor_id = roll_actor
         if self._roll_attributor.just_finalized:
@@ -228,6 +233,7 @@ class VisionPipeline:
         self._has_context = True
         self._fusion.update_context(ctx)
         self._fsm_state_version = state_version
+        self._active_player = ctx.active_player
 
     def _stabilize_hands(self, raw_hands: list[HandDet]) -> list[HandDet]:
         detections: list[tuple[tuple[float, float], float]] = []
@@ -236,25 +242,55 @@ class VisionPipeline:
             detections.append((h.wrist_xy, angle))
 
         tracks = self._hand_tracker.update(detections)
-        excluded = players_with_both_hands_tracked(self._hand_tracker.active_tracks())
+        active = self._hand_tracker.active_tracks()
 
         stabilized: list[HandDet] = []
         for raw, track in zip(raw_hands, tracks, strict=True):
             track.handedness_buf.append(raw.handedness)
-            stable_handedness = track.confirmed_handedness or raw.handedness
+            confirmed_hd = track.confirmed_handedness
+            stable_handedness = confirmed_hd or raw.handedness
 
-            if track.pending_match and track.frames_since_entry >= 3 and self._players:
+            # handedness 다수결이 안정화된 후 바뀌었다면 player_id 재매칭 트리거.
+            # MediaPipe 초기 오인식으로 잘못된 우/좌가 잡혀 player_id가 굳었을 때
+            # 자정할 수 있도록 한다.
+            if (
+                confirmed_hd is not None
+                and track.last_match_handedness is not None
+                and confirmed_hd != track.last_match_handedness
+            ):
+                track.pending_match = True
+                track.match_attempts = 0
+
+            # 매칭 시도: pending이거나, confirmed handedness가 안정됐는데 아직
+            # 한 번도 매칭 안 한 트랙. seat_zone 등록자 있는 경우만.
+            should_match = (
+                self._players
+                and track.frames_since_entry >= 3
+                and confirmed_hd is not None
+                and (track.pending_match or track.last_match_handedness != confirmed_hd)
+            )
+            if should_match:
+                # 같은 player_id의 양손이 모두 다른 트랙에 잡혀 있으면 후보 제외.
+                # 단, 자기 자신이 그 player_id로 confirm된 적이 있다면 자기를 빼서
+                # 제외 집합에서 self-exclusion이 일어나지 않게 한다.
+                self_pid = track.confirmed_player_id
+                excluded = players_with_both_hands_tracked(
+                    [t for t in active if t.track_id != track.track_id]
+                )
+                if self_pid is not None:
+                    excluded.discard(self_pid)
+
                 pid, _score, margin = match_player_by_arm(
-                    handedness=stable_handedness,
+                    handedness=confirmed_hd,
                     entry_wrist_xy=track.entry_wrist_xy,
                     entry_arm_angle=track.entry_arm_angle,
                     players=self._players,
                     excluded_player_ids=excluded,
                 )
-                # margin 충분 → 즉시 확정. 부족하면 Hold(여러 프레임 voting 누적),
-                # MAX_MATCH_ATTEMPTS 도달 시 best로 강제 확정(타임아웃).
                 track.player_id_buf.append(pid)
                 track.match_attempts += 1
+                track.last_match_handedness = confirmed_hd
+                # margin 충분 → 확정. 부족하면 Hold, MAX_MATCH_ATTEMPTS 타임아웃 시 강제 확정.
                 if margin >= MARGIN_THRESHOLD or track.match_attempts >= MAX_MATCH_ATTEMPTS:
                     track.pending_match = False
 

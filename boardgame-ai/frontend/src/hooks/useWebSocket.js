@@ -31,11 +31,15 @@ export function useWebSocket(path, options = {}) {
 
     function connect() {
       if (destroyed) return
-      const url = `ws://${location.host}${path}`
+      const scheme = location.protocol === 'https:' ? 'wss:' : 'ws:'
+      const url = `${scheme}//${location.host}${path}`
       const socket = new WebSocket(url)
       ws.current = socket
 
       socket.onopen = () => {
+        // 새 연결마다 메시지 버퍼 초기화 — 이전 연결의 hello 잔재가 다음 세션을
+        // 잘못 트리거하는 것을 막는다 (재연결 시 START_YACHT 재발사 보장).
+        setMessages([])
         setConnected(true)
         // Benchmark hook (window._bench가 true일 때만 의미).
         if (window._bench) {

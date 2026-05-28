@@ -32,12 +32,26 @@ PHASE_AWAITING_SCORE = "AWAITING_SCORE"
 class YachtRules:
     """요트다이스 비전 이벤트 후보 생성기."""
 
-    def __init__(self) -> None:
+    def __init__(self, escape_padding: float = 0.15) -> None:
         # tray 안에 있던 적이 있는 dice track_id 집합.
         # DICE_ESCAPED는 "안 → 밖" 전이일 때만 발화 — 처음부터 밖이면 가짜 detection 가능성.
         self._seen_inside: set[int] = set()
         # 이미 escaped 발화한 track_id — 다시 안으로 들어왔다 나가야 재발화 (반복 발화 차단).
         self._reported_escaped: set[int] = set()
+        # tray bbox 외측 패딩 (tray 짧은 변 대비 비율).
+        # 킵존 가장자리에 둔 dice가 tray 경계에 살짝 걸쳐 escape로 오인되는 것을 막는다.
+        # tray 외부로 이 비율 이상 벗어나야 실제 이탈로 본다.
+        self._escape_padding = escape_padding
+
+    def reset(self) -> None:
+        """phase 전환 / 게임 재시작 시 누적 상태 초기화.
+
+        _seen_inside / _reported_escaped는 프로그램 생명주기 동안 누적되므로
+        한 게임 종료 후 다음 라운드에서 이전 dice track_id가 남아 DICE_ESCAPED가
+        누락되거나 오발화될 위험이 있다. FSM phase 전환 시 호출해 해소.
+        """
+        self._seen_inside.clear()
+        self._reported_escaped.clear()
 
     def build_candidates(
         self,
@@ -130,14 +144,29 @@ class YachtRules:
         if actor_id is None and ctx is not None:
             actor_id = ctx.active_player
 
-        # 안에 있는 dice의 track_id를 _seen_inside에 누적.
-        # 다시 안으로 들어온 track_id는 reported 집합에서 제거해 재발화 가능하게 만든다.
+        # 안/밖 판정에 hysteresis 적용 — 같은 좌표가 안/밖을 왔다갔다해도
+        # 경계 dice(킵존 가장자리 등)가 escape로 오인되지 않는다.
+        #  - 안 판정: tray bbox 그대로
+        #  - 밖 판정: tray bbox + escape_padding (이만큼 벗어나야 진짜 escape)
+        # 그 사이 회색 영역에 있는 dice는 직전 _seen_inside 상태를 유지.
+        pad_x = (tray.x2 - tray.x1) * self._escape_padding
+        pad_y = (tray.y2 - tray.y1) * self._escape_padding
+        outer_x1, outer_y1 = tray.x1 - pad_x, tray.y1 - pad_y
+        outer_x2, outer_y2 = tray.x2 + pad_x, tray.y2 + pad_y
+
         escaped_track_ids: list[int] = []
         for d in perception.dice:
-            if _bbox_contains(tray, d.center):
+            cx, cy = d.center
+            inside_tight = _bbox_contains(tray, d.center)
+            outside_loose = not (outer_x1 <= cx <= outer_x2 and outer_y1 <= cy <= outer_y2)
+            if inside_tight:
                 self._seen_inside.add(d.track_id)
                 self._reported_escaped.discard(d.track_id)
-            elif d.track_id in self._seen_inside and d.track_id not in self._reported_escaped:
+            elif (
+                outside_loose
+                and d.track_id in self._seen_inside
+                and d.track_id not in self._reported_escaped
+            ):
                 escaped_track_ids.append(d.track_id)
 
         if not escaped_track_ids:

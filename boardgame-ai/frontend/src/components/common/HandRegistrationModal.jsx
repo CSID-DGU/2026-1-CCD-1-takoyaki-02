@@ -1,7 +1,12 @@
 import { useState, useEffect } from 'react'
 import {
-  IconCheck, IconClose, IconHandV, IconHandOK, IconShuffle,
+  IconCheck, IconClose, IconShuffle,
 } from './Icons'
+
+const HAND_VIDEO_SRC = {
+  v:  '/media/right_hand_info.mp4',
+  ok: '/media/left_hand_info.mp4',
+}
 
 export const RANDOM_NICKNAMES = [
   '푸른 오징어', '용맹한 다람쥐', '수상한 너구리', '잠 못드는 두루미',
@@ -228,8 +233,8 @@ function StepDot({ label, active, done }) {
 function HandStep({ kind }) {
   const isV = kind === 'v'
   const titleMain = isV
-    ? '오른손을 들어 V 사인을 보여 주세요'
-    : '이번엔 왼손을 들어 OK 사인을 보여 주세요'
+    ? '오른손을 뻗어 V 사인을 보여 주세요'
+    : '이번엔 왼손을 뻗어 OK 사인을 보여 주세요'
   const titleSub = isV
     ? '테이블 중앙으로 손을 뻗어 카메라가 잘 보이게 해주세요'
     : ''
@@ -243,9 +248,16 @@ function HandStep({ kind }) {
           <div className="hs-corner tr" />
           <div className="hs-corner bl" />
           <div className="hs-corner br" />
-          <div className={`hs-hand ${isV ? '' : 'hs-flip'}`} style={{ color: '#f3d6b8' }}>
-            {isV ? <IconHandV size={140} /> : <IconHandOK size={140} />}
-          </div>
+          <video
+            key={kind}
+            className="hs-hand-video"
+            src={HAND_VIDEO_SRC[kind]}
+            autoPlay
+            muted
+            loop
+            playsInline
+            preload="auto"
+          />
         </div>
         <div className="hs-bar-label">
           <span className="status-dot ok pulse" /> 인식 중…
@@ -307,15 +319,12 @@ function HandStep({ kind }) {
         .hs-corner.tr { top: 10px; right: 10px; border-left: 0; border-bottom: 0; }
         .hs-corner.bl { bottom: 10px; left: 10px; border-right: 0; border-top: 0; }
         .hs-corner.br { bottom: 10px; right: 10px; border-left: 0; border-top: 0; }
-        .hs-hand {
+        .hs-hand-video {
           position: absolute; inset: 0;
-          display: grid; place-items: center;
-          animation: hs-bob 2.4s ease-in-out infinite;
-        }
-        .hs-hand.hs-flip svg { transform: scaleX(-1); }
-        @keyframes hs-bob {
-          0%, 100% { transform: translateY(0); }
-          50%      { transform: translateY(-4px); }
+          width: 100%; height: 100%;
+          object-fit: contain;
+          background: transparent;
+          pointer-events: none;
         }
         .hs-bar-label {
           font-size: 13px;

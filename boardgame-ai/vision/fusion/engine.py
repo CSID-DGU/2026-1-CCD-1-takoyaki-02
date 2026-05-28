@@ -25,7 +25,7 @@ from vision.schemas import FramePerception, HandDet
 
 
 class FusionEngine:
-    def __init__(self) -> None:
+    def __init__(self, yacht_escape_padding: float = 0.15) -> None:
         self._context: FusionContext = FusionContext(
             fsm_state=CommonPhase.PLAYER_SETUP,
             game_type=None,
@@ -33,7 +33,7 @@ class FusionEngine:
             allowed_actors=[],
             expected_events=[],
         )
-        self._yacht_rules = YachtRules()
+        self._yacht_rules = YachtRules(escape_padding=yacht_escape_padding)
         # WerewolfVisionPipeline 이 register_werewolf_rules() 로 주입
         self._werewolf_rules: object | None = None
         # event_type → 연속 안정화 프레임 카운터
@@ -62,6 +62,9 @@ class FusionEngine:
                 self._seat_right_confirmed.clear()
                 self._seat_right_event_emitted.clear()
                 self._gesture_confirmed_emitted.clear()
+                # yacht_rules 누적 상태(_seen_inside / _reported_escaped)도 함께 리셋.
+                # 미리셋 시 이전 라운드 dice track_id가 남아 DICE_ESCAPED 오발화/누락 위험.
+                self._yacht_rules.reset()
             self._context = context
 
     def register_werewolf_rules(self, rules: object) -> None:

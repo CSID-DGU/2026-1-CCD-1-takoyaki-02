@@ -4,7 +4,7 @@ model_path 에 지정한 .pt 파일이 존재하면 YOLO 모델을 로드하고,
 없으면 graceful fallback — detect() 가 항상 빈 리스트를 반환한다.
 
 YOLO 학습 완료 후:
-  1. best.pt 를 weights/werewolf_v6.pt 등으로 복사
+  1. best.pt 를 weights/werewolf_v6.pt 로 복사
   2. 코드 변경 없음 — WerewolfCardDetector 가 자동으로 모델 로드
 
 YOLO 학습 클래스 (13종):

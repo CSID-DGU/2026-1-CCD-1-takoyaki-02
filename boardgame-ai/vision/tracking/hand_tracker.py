@@ -53,21 +53,48 @@ class HandTrack:
     frames_since_entry: int = 0  # 트랙 생성 이후 매칭된 프레임 수
     pending_match: bool = True  # Hold 모드: 매칭 시도 반복 중. 확정 시 False.
     match_attempts: int = 0  # Hold 중 누적 매칭 시도 수 (타임아웃 카운터)
+    # 마지막 player_id 매칭에 사용된 handedness — handedness 다수결이 뒤집히면
+    # 재매칭이 필요하므로 비교 키로 사용. None이면 아직 한 번도 매칭 시도 안 함.
+    last_match_handedness: str | None = None
 
     @property
     def confirmed_handedness(self) -> str | None:
-        if not self.handedness_buf:
+        """다수결 + 최소 표수 + 우세 마진 검증.
+
+        초반 1~2프레임만으로 confirmed가 결정되면 MediaPipe의 초기 오인식이
+        그대로 굳어 잘못된 player_id 매칭을 유발한다. 최소 3표 + 2위 대비
+        2표 이상 우세여야 confirmed 반환. 미달이면 None (= 매칭 보류 신호).
+        """
+        if len(self.handedness_buf) < 3:
             return None
-        return Counter(self.handedness_buf).most_common(1)[0][0]
+        top = Counter(self.handedness_buf).most_common(2)
+        if not top:
+            return None
+        candidate, votes = top[0]
+        runner_up = top[1][1] if len(top) > 1 else 0
+        if votes < 3 or (votes - runner_up) < 2:
+            return None
+        return candidate
 
     @property
     def confirmed_player_id(self) -> str | None:
+        """player_id 다수결. None 표는 무시하고 실제 매칭된 값들의 최빈값.
+
+        Hold 모드 + 강제 confirm 이후에도 player_id_buf를 계속 누적해
+        시간 다수결로 초기 오매칭을 자정한다.
+        """
         if not self.player_id_buf:
             return None
         counts = Counter(p for p in self.player_id_buf if p is not None)
         if not counts:
             return None
-        return counts.most_common(1)[0][0]
+        top = counts.most_common(2)
+        candidate, votes = top[0]
+        runner_up = top[1][1] if len(top) > 1 else 0
+        # 단발 표는 임시 매칭일 수 있으므로 2표 이상 또는 1위/2위 명확할 때만 confirm.
+        if votes < 2 or (votes - runner_up) < 1:
+            return None
+        return candidate
 
 
 class HandTracker:

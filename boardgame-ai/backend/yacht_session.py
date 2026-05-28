@@ -70,7 +70,19 @@ class YachtSession:
         if self._agent is not None:
             await self._agent.on_game_event(event)
         with self._fsm_lock:
+            # 비전이 발화한 ROLL_CONFIRMED도 수동 ROLL_DICE 입력과 동일하게
+            # undo 히스토리에 push해야 사용자가 비전 인식이 틀린 경우 되돌릴 수 있다.
+            previous_state = (
+                deepcopy(self.fsm.state)
+                if event.event_type == YachtEventType.ROLL_CONFIRMED.value
+                else None
+            )
             messages = self.fsm.handle_event(event)
+            if (
+                previous_state is not None
+                and self._roll_was_recorded(previous_state)
+            ):
+                self.undo_stack.append(previous_state)
             self._apply_tutorial_message_override(messages)
         await self.send_many(messages)
 
