@@ -27,7 +27,8 @@ const SENTENCES_NORMAL = [
 const SENTENCES_PRACTICE = [
   { text: '이번 게임에 사용할 역할 카드입니다.',                               showCards: true },
   { text: '모든 카드를 역할이 보이지 않게 뒤집어주세요.',                       holdMs: 10000 },
-  { text: '각자 카드를 한 장씩 가져가주세요. 연습모드에서는 역할을 숨기지 않고 진행하겠습니다.', holdMs: 10000 },
+  { text: '각자 카드를 한 장씩 가져가주세요.',                                 holdMs: 10000 },
+  { text: '연습모드이므로 역할을 숨기지 않고 진행합니다.',                       holdMs: 10000 },
   { text: '본인의 카드는 각자 자기 앞에 엎어서 놓아주세요.',                   holdMs: 10000 },
   { text: '나머지 카드는 역할이 보이지 않게 뒤집어 중앙에 놓아주세요.',         holdMs: 10000 },
   { text: '역할 등록을 위해 모두 눈을 잠시 감아주세요.' },
@@ -45,6 +46,7 @@ export default function CardSetupGuide({ roles = [], onComplete, send, wsState, 
   const [visible, setVisible]       = useState(false)
   const [confirming, setConfirming] = useState(false)
   const prevGestureRef = useRef(wsState?.gesture_confirmed ?? null)
+  const skipRef        = useRef(null)
 
   useEffect(() => {
     if (step >= SENTENCES.length) {
@@ -75,10 +77,21 @@ export default function CardSetupGuide({ roles = [], onComplete, send, wsState, 
     // 페이드 완료 후 다음 문장
     const next    = setTimeout(() => setStep(s => s + 1), typingMs + holdMs + FADE_MS)
 
+    // 건너뛰기 버튼이 호출할 콜백: 현재 타이머 취소 후 즉시 다음 문장으로
+    skipRef.current = () => {
+      clearInterval(typeTimer)
+      clearTimeout(fadeOut)
+      clearTimeout(next)
+      setTyped(sentence.text)
+      setVisible(false)
+      setTimeout(() => setStep(s => s + 1), FADE_MS)
+    }
+
     return () => {
       clearInterval(typeTimer)
       clearTimeout(fadeOut)
       clearTimeout(next)
+      skipRef.current = null
     }
   }, [step])
 
@@ -126,6 +139,11 @@ export default function CardSetupGuide({ roles = [], onComplete, send, wsState, 
 
       <div style={s.page} onClick={confirming ? onComplete : undefined}>
         <button onClick={(e) => { e.stopPropagation(); onExit?.() }} style={exitBtn}>나가기</button>
+        {!confirming && (
+          <button style={skipBtn} onClick={(e) => { e.stopPropagation(); skipRef.current?.() }}>
+            건너뛰기 ▶
+          </button>
+        )}
         <div style={s.sky} />
         <div style={s.moon} />
 
@@ -187,6 +205,7 @@ export default function CardSetupGuide({ roles = [], onComplete, send, wsState, 
             {typed}
             {!confirming && sentence && <span style={s.cursor}>|</span>}
           </p>
+
 
           {confirming && typed.length >= CONFIRM_TEXT.length && (
             <p style={s.hint}>화면을 터치하거나 OK 싸인을 해주세요</p>
@@ -270,14 +289,15 @@ const s = {
 
   sentence: {
     margin: 0,
-    fontSize: 32,
+    fontSize: 38,
     fontWeight: 600,
     color: '#F8F1DD',
     textAlign: 'center',
     letterSpacing: 1,
     textShadow: '0 0 32px rgba(220,185,120,0.4)',
     lineHeight: 1.6,
-    minHeight: 52,
+    minHeight: 60,
+    whiteSpace: 'nowrap',
   },
 
   cursor: {
@@ -346,4 +366,17 @@ const exitBtn = {
   color: 'rgba(248,241,221,0.7)',
   fontSize: 14, fontWeight: 600, cursor: 'pointer',
   backdropFilter: 'blur(8px)',
+}
+
+const skipBtn = {
+  position: 'absolute', bottom: 36, right: 36, zIndex: 10,
+  padding: '10px 28px',
+  border: '1px solid rgba(220,185,120,0.35)',
+  borderRadius: 24,
+  background: 'rgba(220,185,120,0.12)',
+  color: 'rgba(248,241,221,0.75)',
+  fontSize: 15, fontWeight: 600, cursor: 'pointer',
+  letterSpacing: 1,
+  backdropFilter: 'blur(6px)',
+  transition: 'background 0.2s, color 0.2s',
 }
