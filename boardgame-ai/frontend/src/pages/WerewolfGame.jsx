@@ -323,6 +323,7 @@ export default function WerewolfGame({ players, onChangePlayers, onChangeGame, o
         <RoleRegConfirm
           player={currentPlayer}
           detectedRoleId={detectedRoleId}
+          allRoles={wwState?.role_reg?.all_roles ?? wwState?.all_roles ?? []}
           wsState={wsState}
           isPracticeMode={isPracticeMode}
           onConfirm={(selectedRole) => {

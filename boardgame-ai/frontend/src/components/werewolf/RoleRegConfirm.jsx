@@ -181,7 +181,9 @@ const ROLES = [
   },
 ]
 
-export default function RoleRegConfirm({ player, detectedRoleId, onConfirm, wsState, isPracticeMode }) {
+export default function RoleRegConfirm({ player, detectedRoleId, allRoles = [], onConfirm, wsState, isPracticeMode }) {
+  const isInGame = (roleId) =>
+    allRoles.length === 0 || allRoles.includes(roleId.replace(/_\d+$/, ''))
   const detected = detectedRoleId ? (ROLES.find(r => r.id === detectedRoleId) ?? ROLES[1]) : null
   const [selected, setSelected] = useState(detected)
   const [countdown, setCountdown] = useState(CONFIRM_TIMEOUT)
@@ -340,31 +342,47 @@ export default function RoleRegConfirm({ player, detectedRoleId, onConfirm, wsSt
       }}>
         {ROLES.map(role => {
           const isSelected = selected?.id === role.id
+          const inGame = isInGame(role.id)
           return (
             <div
               key={role.id}
-              onClick={() => setSelected(role)}
+              onClick={() => inGame && setSelected(role)}
               title={role.name}
               style={{
+                position: 'relative',
                 borderRadius: 8,
                 background: role.gradient,
                 border: isSelected ? '2px solid #f5a623' : '2px solid rgba(255,255,255,0.08)',
                 display: 'flex',
                 flexDirection: 'column',
                 overflow: 'hidden',
-                cursor: 'pointer',
+                cursor: inGame ? 'pointer' : 'default',
                 boxShadow: isSelected ? '0 0 10px rgba(245,166,35,0.4)' : 'none',
                 transition: 'border-color 0.12s, box-shadow 0.12s',
+                opacity: inGame ? 1 : 0.38,
               }}
             >
-              <div style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
+              <div style={{ flex: 1, minHeight: 0, overflow: 'hidden', filter: inGame ? 'none' : 'blur(2px) grayscale(60%)' }}>
                 <img src={role.image} alt={role.name} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
               </div>
               <div style={{ padding: '3px 2px', textAlign: 'center', background: 'rgba(0,0,0,0.3)', flexShrink: 0 }}>
-                <span style={{ fontSize: 11, color: isSelected ? '#f5d78e' : '#ccc', fontWeight: 600 }}>
+                <span style={{ fontSize: 11, color: isSelected ? '#f5d78e' : (inGame ? '#ccc' : 'rgba(255,255,255,0.35)'), fontWeight: 600 }}>
                   {role.name}
                 </span>
               </div>
+              {!inGame && (
+                <div style={{
+                  position: 'absolute', inset: 0,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  background: 'rgba(0,0,0,0.18)',
+                }}>
+                  <span style={{
+                    fontSize: 12, fontWeight: 700, color: 'rgba(255,255,255,0.6)',
+                    background: 'rgba(0,0,0,0.6)', borderRadius: 4,
+                    padding: '3px 7px', letterSpacing: 0.5,
+                  }}>미사용</span>
+                </div>
+              )}
             </div>
           )
         })}
