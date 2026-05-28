@@ -370,11 +370,9 @@ class WerewolfSession:
         if fusion_ctx.fsm_state == WerewolfPhase.DAY_DISCUSSION:
             timeout = 300.0
         elif fusion_ctx.fsm_state in PASSIVE_NIGHT_PHASES:
-            timeout = float(PASSIVE_PHASE_DURATION)
-            phase_end_warning = "눈을 다시 감아주세요."
+            pass  # TempoAgent 미사용 — 야간 페이즈에서 시간 안내 발화 없음
         elif fusion_ctx.fsm_state in ACTIVE_NIGHT_PHASES:
-            timeout = float(ACTIVE_PHASE_TIMEOUT)
-            phase_end_warning = "눈을 다시 감아주세요."
+            pass  # TempoAgent 미사용 — 야간 페이즈에서 시간 안내 발화 없음
         agent_ctx = AgentContext(
             game_type="werewolf",
             fsm_state=fusion_ctx.fsm_state,
