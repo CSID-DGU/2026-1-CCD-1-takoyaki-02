@@ -17,7 +17,6 @@ from vision.schemas import BBox, FramePerception, HandDet
 from vision.tracking.card_tracker import CardTracker
 from vision.werewolf.schemas import TrackedCard
 
-
 # ── 픽스처 헬퍼 ────────────────────────────────────────────────────────────────
 
 
