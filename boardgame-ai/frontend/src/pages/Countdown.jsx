@@ -57,8 +57,8 @@ export default function Countdown({
   const isWerewolf = gameId === 'werewolf' || gameId === 'werewolf_practice'
   const eyebrow = (
     mode === 'tutorial'
-      ? (isWerewolf ? '연습 모드' : '튜토리얼 모드')
-    : mode === 'practice' ? '연습 모드'
+      ? '튜토리얼 모드'
+    : mode === 'practice' ? '튜토리얼 모드'
     : '게임 시작 준비'
   )
 

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 
 export default function VoteCountdown({ players = [], votes = {}, send, onExit }) {
   // votes: { player_id: target_player_id } — 지목 완료된 플레이어 매핑
@@ -8,7 +8,9 @@ export default function VoteCountdown({ players = [], votes = {}, send, onExit }
   const total = players.length
   const allDone = total > 0 && doneCount >= total
 
-  // 투표 안내 TTS는 ProgressAgent가 담당 — 프론트에서 중복 제거
+  useEffect(() => {
+    send?.('TTS_REQUEST', { text: '투표를 시작합니다. 제거할 플레이어의 카드를 지목하세요.' })
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleCardClick = (playerId) => {
     if (!send) return

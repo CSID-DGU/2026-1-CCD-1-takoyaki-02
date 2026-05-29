@@ -68,6 +68,7 @@ class WerewolfSession:
         if audio_manager is not None:
             audio_manager.attach_broadcast(self._send_raw_bound, session_id=audio_manager.get_session_id())
         self._pending_role_reg: dict | None = None
+        self._practice_mode: bool = False
         self._role_reveal: dict | None = None
         # 현재 플레이어 목록 (AgentContext 빌드용)
         self._players_snapshot: list[dict] = []
@@ -192,6 +193,7 @@ class WerewolfSession:
         # 역할 등록 전 카드 세팅 안내를 먼저 표시. CARD_SETUP_DONE 수신 후 실제 등록 시작.
         # 파이프라인 전환은 CARD_SETUP_DONE 이후로 미룸 — card_setup 화면에서
         # OK 제스처를 로비 파이프라인이 감지할 수 있어야 하기 때문.
+        self._practice_mode = bool(payload.get("practice_mode", False))
         self._pending_role_reg = {
             "selected_roles": normalized_roles,
             "player_order": player_order,
@@ -295,6 +297,7 @@ class WerewolfSession:
             broadcast=self._broadcast_msg,
             seat_positions=seat_positions,
             enqueue_tts_fn=_tts,
+            practice_mode=self._practice_mode,
         )
         await self.send_many(self._fsm.start())
 
@@ -344,7 +347,7 @@ class WerewolfSession:
         self._state_version += 1
         ctx = FusionContext(
             fsm_state="role_registration",
-            game_type="werewolf",
+            game_type="werewolf_practice" if self._practice_mode else "werewolf",
             active_player=player_id,
             allowed_actors=[player_id],
             expected_events=[WerewolfEventType.ROLE_DETECTED],
@@ -374,7 +377,7 @@ class WerewolfSession:
         elif fusion_ctx.fsm_state in ACTIVE_NIGHT_PHASES:
             pass  # TempoAgent 미사용 — 야간 페이즈에서 시간 안내 발화 없음
         agent_ctx = AgentContext(
-            game_type="werewolf",
+            game_type="werewolf_practice" if self._practice_mode else "werewolf",
             fsm_state=fusion_ctx.fsm_state,
             active_player=fusion_ctx.active_player,
             players=self._players_snapshot,
@@ -448,7 +451,7 @@ class WerewolfSession:
         self._state_version += 1
         ctx = FusionContext(
             fsm_state="final_role_reveal",
-            game_type="werewolf",
+            game_type="werewolf_practice" if self._practice_mode else "werewolf",
             active_player=player_id,
             allowed_actors=[player_id],
             expected_events=[WerewolfEventType.ROLE_DETECTED],

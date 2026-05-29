@@ -5,6 +5,7 @@ import RoleRegistration from '../components/werewolf/RoleRegistration'
 import RoleRegShowCard from '../components/werewolf/RoleRegShowCard'
 import RoleRegConfirm from '../components/werewolf/RoleRegConfirm'
 import RoleRegTransition from '../components/werewolf/RoleRegTransition'
+import RoleRegRoleExplain from '../components/werewolf/RoleRegRoleExplain'
 import CardSetupGuide from '../components/werewolf/CardSetupGuide'
 import NightStart from '../components/werewolf/NightStart'
 import NightEnd from '../components/werewolf/NightEnd'
@@ -69,6 +70,8 @@ export default function WerewolfGame({ players, onChangePlayers, onChangeGame, o
   const [roleRegTimedOut, setRoleRegTimedOut] = useState(false)
   const [showRoleTransition, setShowRoleTransition] = useState(false)
   const [roleTransitionPlayer, setRoleTransitionPlayer] = useState(null)
+  // 튜토리얼: 역할 설명 페이지 상태 { role, confirmRoleId, confirmPlayerId, transitionPlayer }
+  const [roleExplainState, setRoleExplainState] = useState(null)
   const prevDetectedRef = useRef(null)
   const prevPlayerRef = useRef(null)
 
@@ -184,6 +187,7 @@ export default function WerewolfGame({ players, onChangePlayers, onChangeGame, o
           roleId={NIGHT_PHASE_ROLES[ph]}
           onComplete={() => send('start_now', {})}
           onExit={handleExit}
+          isPracticeMode={isPracticeMode}
         />
       )
     }
@@ -320,6 +324,25 @@ export default function WerewolfGame({ players, onChangePlayers, onChangeGame, o
   if (phase === 'role_registration') {
     const currentPlayer = players.find(p => p.player_id === roleReg?.player_id)
 
+    // 튜토리얼: 역할 설명 화면
+    if (roleExplainState) {
+      return (
+        <RoleRegRoleExplain
+          role={roleExplainState.role}
+          send={send}
+          onComplete={() => {
+            const { confirmRoleId, confirmPlayerId, transitionPlayer } = roleExplainState
+            setRoleExplainState(null)
+            if (transitionPlayer) {
+              setRoleTransitionPlayer(transitionPlayer)
+              setShowRoleTransition(true)
+            }
+            send('CONFIRM_ROLE', { role: confirmRoleId }, confirmPlayerId)
+          }}
+        />
+      )
+    }
+
     // 플레이어 전환 대기 화면
     if (showRoleTransition && roleTransitionPlayer) {
       return (
@@ -346,11 +369,20 @@ export default function WerewolfGame({ players, onChangePlayers, onChangeGame, o
           onConfirm={(selectedRole) => {
             const nextIndex = (roleReg?.player_index ?? 0) + 1
             const hasNextPlayer = nextIndex < players.length
-            if (hasNextPlayer) {
-              setRoleTransitionPlayer(currentPlayer)
-              setShowRoleTransition(true)
+            if (isPracticeMode && selectedRole) {
+              setRoleExplainState({
+                role: selectedRole,
+                confirmRoleId: selectedRole.id,
+                confirmPlayerId: currentPlayer.player_id,
+                transitionPlayer: null,
+              })
+            } else {
+              if (hasNextPlayer) {
+                setRoleTransitionPlayer(currentPlayer)
+                setShowRoleTransition(true)
+              }
+              send('CONFIRM_ROLE', { role: selectedRole?.id ?? detectedRoleId }, currentPlayer.player_id)
             }
-            send('CONFIRM_ROLE', { role: selectedRole?.id ?? detectedRoleId }, currentPlayer.player_id)
           }}
         />
       )
@@ -386,6 +418,7 @@ export default function WerewolfGame({ players, onChangePlayers, onChangeGame, o
         send('START_ROLE_REGISTRATION', {
           selected_roles: roles.map(normalizeRoleId),
           player_order: playerOrder,
+          practice_mode: isPracticeMode ?? false,
         })
       }}
     />

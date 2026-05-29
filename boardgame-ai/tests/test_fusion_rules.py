@@ -17,7 +17,6 @@ from vision.schemas import BBox, FramePerception, HandDet
 from vision.tracking.card_tracker import CardTracker
 from vision.werewolf.schemas import TrackedCard
 
-
 # ── 픽스처 헬퍼 ────────────────────────────────────────────────────────────────
 
 
@@ -65,9 +64,7 @@ def _hand_at(cx: float = 0.45, cy: float = 0.45) -> HandDet:
 
 
 def _frame(hands: list[HandDet] | None = None) -> FramePerception:
-    return FramePerception(
-        frame_id=0, ts=0.0, image_hw=(1080, 1920), hands=hands or []
-    )
+    return FramePerception(frame_id=0, ts=0.0, image_hw=(1080, 1920), hands=hands or [])
 
 
 class _MockTracker:
