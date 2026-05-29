@@ -26,12 +26,13 @@ const SHOW_DICE_MANUAL_INPUT = import.meta.env.VITE_SHOW_DICE_MANUAL_INPUT !== '
 const TUTORIAL_INTRO_TEXT =
   '요트다이스는 플레이어가 순서대로 주사위 5개를 굴리고, 나온 눈 조합을 가장 유리한 점수 칸에 기록해 총점을 겨루는 게임입니다. 한 턴에는 최대 세 번까지 굴릴 수 있고, 마음에 드는 주사위는 킵한 뒤 나머지만 다시 굴릴 수 있습니다.'
 const TUTORIAL_GUIDE_STEPS = [
-  '원하는 주사위를 킵할 수 있습니다. 킵한 주사위는 다음 굴림에서 유지됩니다.',
-  '한 번 킵한 주사위를 다시 누르면 킵이 풀리고, 다음 굴림에서 다시 굴릴 수 있습니다.',
+  '주사위 중 마음에 드는 눈이 있다면 그 주사위를 보드 위 주사위 공간으로 옮겨서 킵해주세요. 끝났다면 태블릿의 다음 버튼을 눌러주세요.',
+  '킵했던 주사위도 언제든 굴림 영역으로 옮겨 다시 굴릴 수 있습니다.',
   '주사위는 세 번까지 굴릴 수 있습니다. 다시 굴리거나 그 전에 점수 칸을 선택해 턴을 끝낼 수도 있습니다.',
-  '점수판 오른쪽 위 ? 버튼에서 족보 설명을 볼 수 있습니다.',
-  '점수판에서 원하는 점수 칸을 선택하면 이번 턴의 점수가 기록됩니다.',
+  '점수판 오른쪽 위 물음표 버튼에서 족보 설명을 볼 수 있습니다.',
+  '점수판에서 원하는 점수 칸을 선택하면 이번 턴의 점수가 기록됩니다. 주사위를 더 굴리거나, 원하시는 족보를 선택해주세요.',
 ]
+const sentTutorialTtsKeys = new Set()
 
 const s = {
   page: {
@@ -293,46 +294,113 @@ const s = {
     position: 'relative',
   },
   helpButton: {
-    width: 24,
-    height: 24,
+    width: 32,
+    height: 32,
     borderRadius: '50%',
     border: '1px solid var(--border)',
     background: 'var(--bg-elev)',
     color: 'var(--fg-soft)',
-    fontSize: 14,
+    fontSize: 18,
     fontWeight: 800,
-    cursor: 'help',
+    cursor: 'pointer',
     boxShadow: 'var(--shadow-sm)',
     padding: 0,
     flexShrink: 0,
   },
-  scoreHelpPopover: {
-    position: 'absolute',
-    top: 32,
-    right: 0,
-    width: 480,
-    zIndex: 20,
-    padding: '18px 20px',
+  scoreHelpModal: {
+    width: 'min(1120px, calc(100vw - 24px))',
+    maxHeight: 'calc(100vh - 24px)',
+    background: 'var(--bg-surface)',
+    border: '1px solid var(--border-soft)',
+    borderRadius: 'var(--radius-xl)',
+    overflow: 'hidden',
+    boxShadow: 'var(--shadow-lg)',
+  },
+  scoreHelpBody: {
+    padding: 24,
+    overflowY: 'auto',
+    maxHeight: 'calc(100vh - 92px)',
+    color: 'var(--fg-soft)',
+  },
+  scoreHelpGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+    gap: 14,
+  },
+  scoreHelpCard: {
     border: '1px solid var(--border)',
     borderRadius: 'var(--radius)',
     background: 'var(--bg-elev)',
-    boxShadow: 'var(--shadow-lg)',
-    color: 'var(--fg-soft)',
+    padding: 16,
+    minHeight: 156,
+    boxSizing: 'border-box',
   },
-  helpList: {
-    display: 'grid',
+  scoreHelpCardTitle: {
+    display: 'flex',
+    alignItems: 'baseline',
+    justifyContent: 'space-between',
     gap: 10,
-    margin: 0,
-    padding: 0,
-    listStyle: 'none',
+    marginBottom: 8,
+  },
+  scoreHelpName: {
+    color: 'var(--yacht)',
+    fontSize: 20,
+    fontWeight: 850,
+  },
+  scoreHelpScore: {
+    color: 'var(--fg-soft)',
+    fontSize: 15,
+    fontWeight: 800,
+  },
+  scoreHelpDesc: {
     fontSize: 16,
     lineHeight: 1.45,
+    color: 'var(--fg-soft)',
+    fontWeight: 650,
+    marginBottom: 14,
   },
-  helpItemName: {
-    display: 'inline-block',
-    minWidth: 126,
-    fontWeight: 800,
-    color: 'var(--yacht)',
+  scoreHelpExample: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  helpDiceRow: {
+    display: 'flex',
+    gap: 7,
+    flexShrink: 0,
+  },
+  helpDie: {
+    width: 36,
+    height: 36,
+    border: '1px solid var(--border)',
+    borderRadius: 7,
+    background: 'var(--bg-surface)',
+    color: 'var(--fg)',
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    fontSize: 18,
+    fontWeight: 850,
+    boxShadow: 'var(--shadow-sm)',
+  },
+  helpDieActive: {
+    border: '1px solid var(--yacht)',
+    background: 'var(--yacht)',
+    color: '#17110c',
+    boxShadow: '0 7px 16px color-mix(in oklch, var(--yacht) 26%, transparent)',
+  },
+  helpDieAlt: {
+    border: '1px solid #31c46b',
+    background: '#31c46b',
+    color: '#07130b',
+    boxShadow: '0 7px 16px rgba(49, 196, 107, 0.25)',
+  },
+  scoreHelpExampleText: {
+    color: 'var(--fg-mute)',
+    fontSize: 14,
+    fontWeight: 700,
+    lineHeight: 1.35,
   },
   scoreboard: {
     borderCollapse: 'separate',
@@ -683,9 +751,12 @@ export default function YachtGame({ players, tutorialMode = false, onExit, onCha
 
   useEffect(() => {
     if (!connected || !tutorialText) return
+    if (state?.phase === 'AWAITING_ROLL') return
     const key = `${state?.current_player_id || ''}:${state?.phase || ''}:${state?.roll_count || 0}:${tutorialGuideStep}:${tutorialText}`
     if (lastTutorialTtsKeyRef.current === key) return
+    if (sentTutorialTtsKeys.has(key)) return
     lastTutorialTtsKeyRef.current = key
+    sentTutorialTtsKeys.add(key)
     send('TTS_REQUEST', { text: tutorialText })
   }, [connected, send, state?.current_player_id, state?.phase, state?.roll_count, tutorialGuideStep, tutorialText])
 
@@ -847,12 +918,27 @@ export default function YachtGame({ players, tutorialMode = false, onExit, onCha
           100% { background: var(--bg-surface); }
         }
 
+        @keyframes yachtScoreSuggest {
+          0%, 100% {
+            background: color-mix(in oklch, var(--info) 14%, var(--bg-surface));
+            box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--info) 20%, transparent);
+          }
+          50% {
+            background: color-mix(in oklch, #31c46b 16%, var(--bg-surface));
+            box-shadow: inset 0 0 0 1px rgba(49, 196, 107, 0.28);
+          }
+        }
+
         .yacht-turn-pulse {
           animation: yachtTurnPulse 420ms ease-out;
         }
 
         .yacht-score-flash {
           animation: yachtScoreFlash 900ms ease-out;
+        }
+
+        .yacht-score-suggest {
+          animation: yachtScoreSuggest 1.8s ease-in-out infinite;
         }
 
       `}</style>
@@ -1010,28 +1096,116 @@ export default function YachtGame({ players, tutorialMode = false, onExit, onCha
   )
 }
 
-function ScoreHelp() {
+function ScoreHelp({ onClose }) {
   const rows = [
-    ['Aces-Sixes', '해당 눈의 주사위만 모두 더합니다'],
-    ['상단 보너스', 'Aces부터 Sixes 합계가 63점 이상이면 35점'],
-    ['Full House', '같은 눈 3개와 같은 눈 2개 조합이면 총합'],
-    ['4 of a Kind', '같은 눈 4개 이상이면 총합'],
-    ['S. Straight', '연속된 숫자 4개 이상이면 15점'],
-    ['L. Straight', '1-5 또는 2-6이면 30점'],
-    ['Yacht', '같은 눈 5개면 50점'],
-    ['Choice', '아무 조합이나 주사위 총합'],
+    {
+      name: 'Aces-Sixes',
+      score: '눈별 합계',
+      desc: '선택한 눈과 같은 주사위만 모두 더합니다. Aces는 1만, Sixes는 6만 더합니다.',
+      dice: [1, 1, 3, 4, 6],
+      active: [0, 1],
+      example: '1 + 1 = 2점',
+    },
+    {
+      name: '상단 보너스',
+      score: '+35점',
+      desc: 'Aces부터 Sixes까지 기록한 점수 합계가 63점 이상이면 보너스 35점을 받습니다.',
+      dice: [],
+      active: [],
+      example: '',
+    },
+    {
+      name: 'Full House',
+      score: '총합',
+      desc: '같은 눈 3개와 다른 같은 눈 2개가 함께 있으면 성공입니다. 주사위 5개의 합계를 점수로 기록합니다.',
+      dice: [2, 2, 5, 5, 5],
+      active: [0, 1],
+      alt: [2, 3, 4],
+      example: '2 + 2 + 5 + 5 + 5 = 19점',
+    },
+    {
+      name: '4 of a Kind',
+      score: '총합',
+      desc: '같은 눈이 4개 이상 있으면 성공입니다. 나머지 주사위까지 포함한 5개 합계를 점수로 기록합니다.',
+      dice: [3, 3, 3, 3, 6],
+      active: [0, 1, 2, 3],
+      alt: [4],
+      example: '3 + 3 + 3 + 3 + 6 = 18점',
+    },
+    {
+      name: 'S. Straight',
+      score: '15점',
+      desc: '연속된 숫자 4개 이상이 있으면 성공입니다. 1-2-3-4, 2-3-4-5, 3-4-5-6 중 하나면 됩니다.',
+      dice: [1, 2, 3, 4, 6],
+      active: [0, 1, 2, 3],
+      example: '',
+    },
+    {
+      name: 'L. Straight',
+      score: '30점',
+      desc: '주사위 5개가 모두 연속이면 성공입니다. 1-2-3-4-5 또는 2-3-4-5-6만 해당합니다.',
+      dice: [2, 3, 4, 5, 6],
+      active: [0, 1, 2, 3, 4],
+      example: '',
+    },
+    {
+      name: 'Yacht',
+      score: '50점',
+      desc: '주사위 5개가 모두 같은 눈이면 성공입니다. 가장 높은 고정 점수 족보입니다.',
+      dice: [4, 4, 4, 4, 4],
+      active: [0, 1, 2, 3, 4],
+      example: '',
+    },
+    {
+      name: 'Choice',
+      score: '총합',
+      desc: '아무 조건 없이 주사위 5개의 합계를 그대로 기록합니다. 애매한 조합을 처리할 때 유용합니다.',
+      dice: [1, 3, 4, 5, 6],
+      active: [0, 1, 2, 3, 4],
+      example: '1 + 3 + 4 + 5 + 6 = 19점',
+    },
   ]
 
   return (
-    <div style={s.scoreHelpPopover}>
-      <ul style={s.helpList}>
-        {rows.map(([name, desc]) => (
-          <li key={name}>
-            <span style={s.helpItemName}>{name}</span>
-            {desc}
-          </li>
-        ))}
-      </ul>
+    <div style={s.modalShade}>
+      <div style={s.scoreHelpModal}>
+        <div style={s.leaderboardHeader}>
+          족보 설명
+          <button style={s.close} onClick={onClose}>x</button>
+        </div>
+        <div style={s.scoreHelpBody}>
+          <div style={s.scoreHelpGrid}>
+            {rows.map(row => (
+              <div key={row.name} style={s.scoreHelpCard}>
+                <div style={s.scoreHelpCardTitle}>
+                  <span style={s.scoreHelpName}>{row.name}</span>
+                  <span style={s.scoreHelpScore}>{row.score}</span>
+                </div>
+                <div style={s.scoreHelpDesc}>{row.desc}</div>
+                {row.dice.length > 0 && (
+                  <div style={s.scoreHelpExample}>
+                    <div style={s.helpDiceRow}>
+                      {row.dice.map((value, index) => (
+                        <span
+                          key={`${row.name}-${index}`}
+                          style={{
+                            ...s.helpDie,
+                            ...(row.active.includes(index) ? s.helpDieActive : {}),
+                            ...(row.alt?.includes(index) ? s.helpDieAlt : {}),
+                          }}
+                        >
+                          {value}
+                        </span>
+                      ))}
+                    </div>
+                    {row.example && <div style={s.scoreHelpExampleText}>{row.example}</div>}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
     </div>
   )
 }
@@ -1051,8 +1225,19 @@ function ScoreTable({ state, currentOnly = false, compact = false, recentScore, 
   const tdScoreStyle = rowPaddingY != null
     ? { ...s.tdScore, paddingTop: rowPaddingY, paddingBottom: rowPaddingY }
     : s.tdScore
+  const suggestedCategories = new Set(
+    !compact && state.phase !== 'AWAITING_ROLL' && state.dice_values?.length
+      ? DISPLAY_CATEGORIES
+        .filter(key => state.available_categories?.includes(key))
+        .map(key => [key, Number(previewScore(key, state.dice_values))])
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 3)
+        .map(([key]) => key)
+      : [],
+  )
 
   return (
+    <>
     <table style={s.scoreboard}>
       <thead>
         <tr>
@@ -1064,14 +1249,10 @@ function ScoreTable({ state, currentOnly = false, compact = false, recentScore, 
                   <button
                     style={s.helpButton}
                     aria-label="족보 설명"
-                    onMouseEnter={() => setScoreHelpOpen(true)}
-                    onMouseLeave={() => setScoreHelpOpen(false)}
-                    onFocus={() => setScoreHelpOpen(true)}
-                    onBlur={() => setScoreHelpOpen(false)}
+                    onClick={() => setScoreHelpOpen(true)}
                   >
                     ?
                   </button>
-                  {scoreHelpOpen && <ScoreHelp />}
                 </>
               )}
             </div>
@@ -1113,11 +1294,15 @@ function ScoreTable({ state, currentOnly = false, compact = false, recentScore, 
           const highlightScore =
             recentScore?.playerId === player?.player_id &&
             recentScore?.category === key
+          const suggested = canScore && suggestedCategories.has(key)
 
           return (
             <tr
               key={key}
-              className={highlightScore ? 'yacht-score-flash' : undefined}
+              className={[
+                highlightScore ? 'yacht-score-flash' : '',
+                suggested ? 'yacht-score-suggest' : '',
+              ].filter(Boolean).join(' ') || undefined}
               style={s.scoreRow(canScore)}
               onClick={canScore ? () => onScore(key) : undefined}
             >
@@ -1134,6 +1319,8 @@ function ScoreTable({ state, currentOnly = false, compact = false, recentScore, 
         </tr>
       </tbody>
     </table>
+    {scoreHelpOpen && <ScoreHelp onClose={() => setScoreHelpOpen(false)} />}
+    </>
   )
 }
 
@@ -1172,7 +1359,7 @@ function getTutorialGuide(state, currentPlayer, guideStep) {
   }
   if (state.phase === 'AWAITING_SCORE') {
     return {
-      text: '이제 점수 칸을 선택할 차례입니다. 예상 점수를 보고 원하는 칸에 기록하세요. 족보가 헷갈리면 점수판 오른쪽 위 ? 버튼을 확인하세요.',
+      text: '이제 점수 칸을 선택할 차례입니다. 예상 점수를 보고 원하는 칸에 기록하세요. 족보가 헷갈리면 점수판 오른쪽 위 물음표 버튼을 확인하세요.',
       hasNext: false,
     }
   }
