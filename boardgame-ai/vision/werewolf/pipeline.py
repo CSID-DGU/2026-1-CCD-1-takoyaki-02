@@ -63,6 +63,7 @@ class WerewolfVisionPipeline:
         self._running = False
         self._active = False  # start_werewolf_game() 호출 시 True로 전환
         self._frame_id = 0
+        self._last_log_ts: float = 0.0
 
         # 카드 파이프라인 (늑대인간 전용)
         self._card_detector = WerewolfCardDetector(
@@ -170,7 +171,8 @@ class WerewolfVisionPipeline:
             hands=hands,
         )
 
-        if frame_id % 30 == 0 and self._has_context:
+        if self._has_context and ts - self._last_log_ts >= 1.0:
+            self._last_log_ts = ts
             hand_info = [(h.handedness, h.player_id, h.gesture) for h in hands]
             cards = self._card_tracker.get_tracked_cards()
             card_info = [(c.player_id, c.cls_name, c.face_up) for c in cards]
