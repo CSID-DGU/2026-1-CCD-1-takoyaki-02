@@ -78,8 +78,8 @@ function WerewolfBg() {
 
 export default function RoleRegTransition({ player, send, onComplete }) {
   useEffect(() => {
-    send?.('TTS_REQUEST', { text: `${player.playername}님 다시 눈을 감아주세요.` })
-    const t = setTimeout(onComplete, 7000)
+    send?.('TTS_REQUEST', { text: `${player.playername}님 카드를 본인 앞에 엎어두고 다시 눈을 감아주세요.` })
+    const t = setTimeout(onComplete, 15000)
     return () => clearTimeout(t)
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -123,7 +123,7 @@ export default function RoleRegTransition({ player, send, onComplete }) {
           color: 'rgba(248,241,221,0.78)',
           letterSpacing: 0.5,
         }}>
-          다시 눈을 감아주세요.
+          카드를 본인 앞에 엎어두고<br />다시 눈을 감아주세요.
         </div>
       </div>
     </div>

@@ -68,10 +68,11 @@ class WerewolfEventType(StrEnum):
         ROLE_DETECTED: {"role": str}  — 역할 등록 단계 카메라 인식
     """
 
-    CARD_PEEK = "werewolf_card_peek"        # 카드 들여다보기 감지
-    CARD_SWAP = "werewolf_card_swap"        # 카드 교환 제스처 감지
-    VOTE_POINT = "werewolf_vote_point"      # 투표 포인팅 감지
+    CARD_PEEK = "werewolf_card_peek"          # 카드 들여다보기 감지
+    CARD_SWAP = "werewolf_card_swap"          # 카드 교환 제스처 감지
+    VOTE_POINT = "werewolf_vote_point"        # 투표 포인팅 감지
     ROLE_DETECTED = "werewolf_role_detected"  # 역할 등록 단계 카드 인식
+    CARD_PLACED_DOWN = "werewolf_card_placed_down"  # 역할 등록 전환 중 카드 후면+안정 감지
 
 
 class WerewolfInputType(StrEnum):

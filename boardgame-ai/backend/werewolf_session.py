@@ -70,6 +70,9 @@ class WerewolfSession:
         self._pending_role_reg: dict | None = None
         self._practice_mode: bool = False
         self._role_reveal: dict | None = None
+        # 역할 등록 전환: 카드 내려놓기 대기 중인 다음 플레이어 / 폴백 타이머
+        self._pending_next_reg_player: str | None = None
+        self._reg_transition_task: asyncio.Task | None = None
         # 현재 플레이어 목록 (AgentContext 빌드용)
         self._players_snapshot: list[dict] = []
         self._seat_positions_fn = seat_positions_fn
@@ -238,11 +241,7 @@ class WerewolfSession:
 
         if next_index < len(player_order):
             next_player = player_order[next_index]
-            self._role_reg["player_index"] = next_index
-            self._role_reg["player_id"] = next_player
-            self._role_reg["detected_role"] = None
-            await self._push_role_reg_context(next_player)
-            await self._broadcast_role_reg()
+            await self._start_reg_transition(next_player)
         else:
             confirmed = dict(self._role_reg["confirmed_roles"])
             all_roles_snapshot = list(self._role_reg["all_roles"])
@@ -261,6 +260,64 @@ class WerewolfSession:
                 "center_cards": center_cards,
                 "all_roles": all_roles_snapshot,
             })
+
+    async def _start_reg_transition(self, next_player: str) -> None:
+        """역할 확인 후 카드 내려놓기 감지 대기 상태로 진입.
+
+        비전이 CARD_PLACED_DOWN 을 감지하면 3초 후 다음 플레이어로 진행.
+        15초 폴백 타이머로 비전 미감지 상황도 대응.
+        """
+        self._pending_next_reg_player = next_player
+        if self._reg_transition_task and not self._reg_transition_task.done():
+            self._reg_transition_task.cancel()
+        # 폴백: 7초 안에 카드를 못 감지하면 강제 진행
+        self._reg_transition_task = asyncio.create_task(
+            self._advance_to_next_reg_player(delay=7.0)
+        )
+        # 비전이 role_reg_transition 페이즈에서 카드 내려놓기를 감지하도록 FusionContext 전송
+        self._state_version += 1
+        self._send_fusion_context(
+            FusionContext(
+                fsm_state="role_reg_transition",
+                game_type="werewolf_practice" if self._practice_mode else "werewolf",
+                active_player=None,
+                allowed_actors=[],
+                expected_events=[WerewolfEventType.CARD_PLACED_DOWN],
+                reject_events=[WerewolfEventType.ROLE_DETECTED],
+                valid_targets=None,
+                zones={},
+                anchors={},
+                params={},
+            ),
+            self._state_version,
+        )
+
+    async def _advance_to_next_reg_player(self, delay: float) -> None:
+        """delay초 후 다음 플레이어 역할 등록으로 진행."""
+        try:
+            await asyncio.sleep(delay)
+            next_player = self._pending_next_reg_player
+            if next_player is None or self._role_reg is None:
+                return
+            self._pending_next_reg_player = None
+            self._reg_transition_task = None
+            self._role_reg["player_index"] = self._role_reg["player_order"].index(next_player)
+            self._role_reg["player_id"] = next_player
+            self._role_reg["detected_role"] = None
+            await self._push_role_reg_context(next_player)
+            await self._broadcast_role_reg()
+        except asyncio.CancelledError:
+            pass
+
+    async def _handle_card_placed_down(self) -> None:
+        """CARD_PLACED_DOWN 수신 시 호출. 폴백 타이머를 취소하고 3초 후 다음 플레이어로 진행."""
+        if self._pending_next_reg_player is None:
+            return
+        if self._reg_transition_task and not self._reg_transition_task.done():
+            self._reg_transition_task.cancel()
+        self._reg_transition_task = asyncio.create_task(
+            self._advance_to_next_reg_player(delay=2.0)
+        )
 
     async def _start_game(self, payload: dict) -> None:
         # Benchmark hook.
@@ -307,6 +364,15 @@ class WerewolfSession:
             await self._handle_role_detected(event)
             return
 
+        if etype == WerewolfEventType.CARD_PLACED_DOWN:
+            await self._handle_card_placed_down()
+            return
+
+        if etype == CommonEventType.GESTURE_CONFIRMED:
+            if self._pending_role_reg is not None:
+                await self._finish_card_setup()
+            return
+
         if self._fsm is None:
             return
 
@@ -323,6 +389,20 @@ class WerewolfSession:
             return
         if self._role_reg is not None:
             if self._role_reg["detected_role"] is not None:
+                return
+            # 다른 플레이어의 카드가 감지된 경우 등록하지 않고 경고만 발화
+            card_player_id = (event.data or {}).get("card_player_id")
+            active_player_id = self._role_reg.get("player_id")
+            if card_player_id and active_player_id and card_player_id != active_player_id:
+                if self._agent is not None:
+                    import time as _t
+                    await self._agent.on_game_event(GameEvent(
+                        event_type=event.event_type,
+                        actor_id=card_player_id,
+                        confidence=event.confidence,
+                        frame_id=event.frame_id,
+                        data={},
+                    ))
                 return
             self._role_reg["detected_role"] = role
             await self._broadcast_role_reg()
