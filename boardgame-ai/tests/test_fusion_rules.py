@@ -9,8 +9,6 @@
   - CardTracker.reset_stable_frames 단위 동작
 """
 
-from __future__ import annotations
-
 from core.events import FusionContext
 from vision.fusion.werewolf_rules import ROLE_DETECTED, WerewolfRules
 from vision.schemas import BBox, FramePerception, HandDet
