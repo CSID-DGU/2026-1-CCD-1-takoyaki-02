@@ -172,6 +172,50 @@ class YachtSession:
             await self.send_many(messages)
             return
 
+        if input_type == "MANUAL_DICE_INPUT":
+            dice_values = payload.get("dice_values")
+            if not self._is_valid_manual_dice(dice_values):
+                await self.send(
+                    WSMessage.make_error(
+                        "INVALID_DICE_VALUES",
+                        "주사위 값은 1부터 6까지 5개를 입력해야 합니다.",
+                        self.fsm.state.state_version,
+                    )
+                )
+                return
+
+            with self._fsm_lock:
+                previous_state = deepcopy(self.fsm.state)
+                if self.fsm.state.phase in (
+                    YachtPhase.AWAITING_KEEP.value,
+                    YachtPhase.AWAITING_SCORE.value,
+                ):
+                    sorted_values, sorted_keep_mask = self.fsm._sort_dice_with_keep(
+                        [int(v) for v in dice_values],
+                        self.fsm.state.keep_mask,
+                    )
+                    self.fsm.state.dice_values = sorted_values
+                    self.fsm.state.keep_mask = sorted_keep_mask
+                    self.fsm.state.unreadable_roll = None
+                    self.fsm.state.last_message = self.fsm._roll_message()
+                    self.fsm.state.state_version += 1
+                    messages = self.fsm._state_context_messages()
+                    self.undo_stack.append(previous_state)
+                else:
+                    event = GameEvent(
+                        event_type=YachtEventType.ROLL_CONFIRMED.value,
+                        actor_id=self.fsm.state.current_player.player_id,
+                        confidence=1.0,
+                        frame_id=-1,
+                        data={"dice_values": dice_values, "keep_mask": self.fsm.state.keep_mask},
+                    )
+                    messages = self.fsm.handle_event(event)
+                    if self._roll_was_recorded(previous_state):
+                        self.undo_stack.append(previous_state)
+                self._apply_tutorial_message_override(messages)
+            await self.send_many(messages)
+            return
+
         if input_type == "DICE_ESCAPED":
             event = GameEvent(
                 event_type=YachtEventType.DICE_ESCAPED.value,
@@ -326,6 +370,15 @@ class YachtSession:
             else random.randint(1, 6)
             for index in range(5)
         ]
+
+    @staticmethod
+    def _is_valid_manual_dice(dice_values: Any) -> bool:
+        if not isinstance(dice_values, list) or len(dice_values) != 5:
+            return False
+        try:
+            return all(1 <= int(value) <= 6 for value in dice_values)
+        except (TypeError, ValueError):
+            return False
 
     async def send_many(self, messages: list[WSMessage]) -> None:
         for message in messages:

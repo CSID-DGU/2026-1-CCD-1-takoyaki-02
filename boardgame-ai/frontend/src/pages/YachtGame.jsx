@@ -22,6 +22,7 @@ const CATEGORY_LABELS = [
 const UPPER = ['ones', 'twos', 'threes', 'fours', 'fives', 'sixes']
 const DISPLAY_CATEGORIES = CATEGORY_LABELS.filter(([key]) => key !== 'bonus').map(([key]) => key)
 const SHOW_MANUAL_ROLL = import.meta.env.VITE_SHOW_MANUAL_ROLL === 'true'
+const SHOW_DICE_MANUAL_INPUT = import.meta.env.VITE_SHOW_DICE_MANUAL_INPUT !== 'false'
 const TUTORIAL_INTRO_TEXT =
   '요트다이스는 플레이어가 순서대로 주사위 5개를 굴리고, 나온 눈 조합을 가장 유리한 점수 칸에 기록해 총점을 겨루는 게임입니다. 한 턴에는 최대 세 번까지 굴릴 수 있고, 마음에 드는 주사위는 킵한 뒤 나머지만 다시 굴릴 수 있습니다.'
 
@@ -381,6 +382,58 @@ const s = {
     background: 'transparent',
     cursor: 'pointer',
   },
+  manualModal: {
+    width: 'min(520px, calc(100vw - 32px))',
+    background: 'var(--bg-surface)',
+    border: '1px solid var(--border-soft)',
+    borderRadius: 'var(--radius-xl)',
+    boxShadow: 'var(--shadow-lg)',
+    padding: 28,
+    boxSizing: 'border-box',
+  },
+  manualTitle: {
+    fontSize: 24,
+    fontWeight: 850,
+    marginBottom: 10,
+    color: 'var(--fg)',
+  },
+  manualText: {
+    color: 'var(--fg-soft)',
+    fontSize: 15,
+    fontWeight: 650,
+    lineHeight: 1.45,
+    marginBottom: 20,
+  },
+  manualDiceRow: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(5, minmax(0, 1fr))',
+    gap: 10,
+    marginBottom: 16,
+  },
+  manualSelect: {
+    width: '100%',
+    height: 58,
+    border: '1px solid var(--border)',
+    borderRadius: 'var(--radius)',
+    background: 'var(--bg-elev)',
+    color: 'var(--fg)',
+    fontSize: 24,
+    fontWeight: 800,
+    textAlign: 'center',
+    cursor: 'pointer',
+  },
+  manualError: {
+    minHeight: 22,
+    color: 'var(--danger)',
+    fontSize: 14,
+    fontWeight: 750,
+    marginBottom: 14,
+  },
+  manualActions: {
+    display: 'flex',
+    justifyContent: 'flex-end',
+    gap: 10,
+  },
   endShell: {
     width: '100vw',
     minHeight: 'calc(100vh - 56px)',
@@ -423,6 +476,9 @@ export default function YachtGame({ players, tutorialMode = false, onExit, onCha
   // /ws/yacht 채널로도 audio_ack가 흐르도록 등록 (FSM 멘트는 이 채널로 옴).
   useAudioPlayer(send)
   const [leaderboardOpen, setLeaderboardOpen] = useState(false)
+  const [manualDiceOpen, setManualDiceOpen] = useState(false)
+  const [manualDiceValues, setManualDiceValues] = useState(['', '', '', '', ''])
+  const [manualDiceError, setManualDiceError] = useState('')
   const [tutorialIntroSeen, setTutorialIntroSeen] = useState(!tutorialMode)
   const [ttsEnabled, setTtsEnabled] = useState(true)
   const [bgmEnabled, setBgmEnabled] = useState(true)
@@ -558,6 +614,12 @@ export default function YachtGame({ players, tutorialMode = false, onExit, onCha
     SHOW_MANUAL_ROLL &&
     ['AWAITING_ROLL', 'AWAITING_KEEP'].includes(state?.phase) &&
     Number(state?.remaining_rolls || 0) > 0
+  const canManualDiceInput =
+    SHOW_DICE_MANUAL_INPUT &&
+    (
+      (state?.phase === 'AWAITING_ROLL' && Number(state?.remaining_rolls || 0) > 0) ||
+      ['AWAITING_KEEP', 'AWAITING_SCORE'].includes(state?.phase)
+    )
   const tutorialText = isTutorial ? getTutorialText(state, currentPlayer) : null
   const visibleStatusMessage =
     isTutorial && ['AWAITING_ROLL', 'AWAITING_KEEP'].includes(state?.phase)
@@ -582,6 +644,31 @@ export default function YachtGame({ players, tutorialMode = false, onExit, onCha
     const next = !ttsEnabled
     setTtsEnabled(next)
     audioApi.setTtsEnabled(next)
+  }
+
+  const openManualDiceInput = () => {
+    const values =
+      state?.dice_values?.length === 5
+        ? state.dice_values.map(value => String(value || 1))
+        : ['1', '1', '1', '1', '1']
+    setManualDiceValues(values)
+    setManualDiceError('')
+    setManualDiceOpen(true)
+  }
+
+  const updateManualDie = (index, value) => {
+    setManualDiceValues(prev => prev.map((item, i) => (i === index ? value : item)))
+    setManualDiceError('')
+  }
+
+  const submitManualDiceInput = () => {
+    const diceValues = manualDiceValues.map(value => Number(value))
+    if (diceValues.length !== 5 || diceValues.some(value => !Number.isInteger(value) || value < 1 || value > 6)) {
+      setManualDiceError('1부터 6까지의 값을 5개 모두 선택해주세요.')
+      return
+    }
+    send('MANUAL_DICE_INPUT', { dice_values: diceValues })
+    setManualDiceOpen(false)
   }
 
   const exitGame = () => {
@@ -765,6 +852,9 @@ export default function YachtGame({ players, tutorialMode = false, onExit, onCha
 
           <div style={s.actionRow}>
             <button style={s.buttonSmall} onClick={() => setLeaderboardOpen(true)}>리더보드 보기</button>
+            {canManualDiceInput && (
+              <button style={s.buttonSmall} onClick={openManualDiceInput}>인식이 잘못되었나요?</button>
+            )}
             {canManualRoll && (
               <button style={{ ...s.buttonSmall, ...s.primaryButton }} onClick={() => send('ROLL_DICE')}>굴리기</button>
             )}
@@ -801,6 +891,37 @@ export default function YachtGame({ players, tutorialMode = false, onExit, onCha
                   />
                 </div>
               ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {manualDiceOpen && (
+        <div style={s.modalShade}>
+          <div style={s.manualModal}>
+            <div style={s.manualTitle}>인식값 수정</div>
+            <div style={s.manualText}>
+              실제 주사위 눈과 다르게 표시됐다면 올바른 값을 선택해주세요.
+            </div>
+            <div style={s.manualDiceRow}>
+              {manualDiceValues.map((value, index) => (
+                <select
+                  key={index}
+                  style={s.manualSelect}
+                  value={value}
+                  onChange={event => updateManualDie(index, event.target.value)}
+                  aria-label={`주사위 ${index + 1}`}
+                >
+                  {[1, 2, 3, 4, 5, 6].map(face => (
+                    <option key={face} value={face}>{face}</option>
+                  ))}
+                </select>
+              ))}
+            </div>
+            <div style={s.manualError}>{manualDiceError}</div>
+            <div style={s.manualActions}>
+              <button style={s.buttonSmall} onClick={() => setManualDiceOpen(false)}>취소</button>
+              <button style={{ ...s.buttonSmall, ...s.primaryButton }} onClick={submitManualDiceInput}>적용</button>
             </div>
           </div>
         </div>
