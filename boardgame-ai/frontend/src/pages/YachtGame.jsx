@@ -25,6 +25,13 @@ const SHOW_MANUAL_ROLL = import.meta.env.VITE_SHOW_MANUAL_ROLL === 'true'
 const SHOW_DICE_MANUAL_INPUT = import.meta.env.VITE_SHOW_DICE_MANUAL_INPUT !== 'false'
 const TUTORIAL_INTRO_TEXT =
   '요트다이스는 플레이어가 순서대로 주사위 5개를 굴리고, 나온 눈 조합을 가장 유리한 점수 칸에 기록해 총점을 겨루는 게임입니다. 한 턴에는 최대 세 번까지 굴릴 수 있고, 마음에 드는 주사위는 킵한 뒤 나머지만 다시 굴릴 수 있습니다.'
+const TUTORIAL_GUIDE_STEPS = [
+  '원하는 주사위를 킵할 수 있습니다. 킵한 주사위는 다음 굴림에서 유지됩니다.',
+  '한 번 킵한 주사위를 다시 누르면 킵이 풀리고, 다음 굴림에서 다시 굴릴 수 있습니다.',
+  '주사위는 세 번까지 굴릴 수 있습니다. 다시 굴리거나 그 전에 점수 칸을 선택해 턴을 끝낼 수도 있습니다.',
+  '점수판 오른쪽 위 ? 버튼에서 족보 설명을 볼 수 있습니다.',
+  '점수판에서 원하는 점수 칸을 선택하면 이번 턴의 점수가 기록됩니다.',
+]
 
 const s = {
   page: {
@@ -206,6 +213,26 @@ const s = {
     fontWeight: 750,
     lineHeight: 1.42,
     boxShadow: 'var(--shadow-sm)',
+  },
+  tutorialBubbleText: {
+    marginBottom: 14,
+  },
+  tutorialNextButton: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    border: '1px solid color-mix(in oklch, var(--yacht) 45%, transparent)',
+    borderRadius: 'var(--radius)',
+    background: 'var(--yacht)',
+    color: '#17110c',
+    padding: '8px 14px',
+    fontSize: 15,
+    fontWeight: 850,
+    cursor: 'pointer',
+  },
+  tutorialBubbleFooter: {
+    display: 'flex',
+    justifyContent: 'flex-end',
   },
   introShell: {
     width: 'min(900px, calc(100vw - 48px))',
@@ -479,6 +506,7 @@ export default function YachtGame({ players, tutorialMode = false, onExit, onCha
   const [manualDiceOpen, setManualDiceOpen] = useState(false)
   const [manualDiceValues, setManualDiceValues] = useState(['', '', '', '', ''])
   const [manualDiceError, setManualDiceError] = useState('')
+  const [tutorialGuideStep, setTutorialGuideStep] = useState(0)
   const [tutorialIntroSeen, setTutorialIntroSeen] = useState(!tutorialMode)
   const [ttsEnabled, setTtsEnabled] = useState(true)
   const [bgmEnabled, setBgmEnabled] = useState(true)
@@ -491,6 +519,8 @@ export default function YachtGame({ players, tutorialMode = false, onExit, onCha
   const previousTurnRef = useRef(null)
   const previousRollRef = useRef(null)
   const previousScoresRef = useRef(new Map())
+  const previousTutorialResetKeyRef = useRef('')
+  const lastTutorialTtsKeyRef = useRef('')
 
   useEffect(() => {
     audioApi.setTtsEnabled(true)
@@ -540,6 +570,14 @@ export default function YachtGame({ players, tutorialMode = false, onExit, onCha
       startedRef.current = false
     }
   }, [connected])
+
+  useEffect(() => {
+    if (!state?.tutorial_mode) return
+    const resetKey = `${state.current_player_id || ''}:${state.phase || ''}`
+    if (previousTutorialResetKeyRef.current === resetKey) return
+    previousTutorialResetKeyRef.current = resetKey
+    setTutorialGuideStep(0)
+  }, [state?.current_player_id, state?.phase, state?.tutorial_mode])
 
   // 백엔드가 보낸 hello 메시지 수신을 확인한 뒤에 START_YACHT 송신.
   // accept 직후 onopen이 뜨더라도 receive loop가 아직 시작되기 전일 수 있으므로,
@@ -636,11 +674,20 @@ export default function YachtGame({ players, tutorialMode = false, onExit, onCha
       (state?.phase === 'AWAITING_ROLL' && Number(state?.remaining_rolls || 0) > 0) ||
       ['AWAITING_KEEP', 'AWAITING_SCORE'].includes(state?.phase)
     )
-  const tutorialText = isTutorial ? getTutorialText(state, currentPlayer) : null
+  const tutorialGuide = isTutorial ? getTutorialGuide(state, currentPlayer, tutorialGuideStep) : null
+  const tutorialText = tutorialGuide?.text || null
   const visibleStatusMessage =
     isTutorial && ['AWAITING_ROLL', 'AWAITING_KEEP'].includes(state?.phase)
       ? null
       : statusMessage
+
+  useEffect(() => {
+    if (!connected || !tutorialText) return
+    const key = `${state?.current_player_id || ''}:${state?.phase || ''}:${state?.roll_count || 0}:${tutorialGuideStep}:${tutorialText}`
+    if (lastTutorialTtsKeyRef.current === key) return
+    lastTutorialTtsKeyRef.current = key
+    send('TTS_REQUEST', { text: tutorialText })
+  }, [connected, send, state?.current_player_id, state?.phase, state?.roll_count, tutorialGuideStep, tutorialText])
 
   const startFullGame = () => {
     send('START_YACHT', { players: normalizePlayers(players), tutorial_mode: false })
@@ -648,6 +695,10 @@ export default function YachtGame({ players, tutorialMode = false, onExit, onCha
 
   const startTutorial = () => {
     setTutorialIntroSeen(true)
+  }
+
+  const nextTutorialGuide = () => {
+    setTutorialGuideStep(step => Math.min(step + 1, TUTORIAL_GUIDE_STEPS.length - 1))
   }
 
   const toggleBgm = () => {
@@ -838,7 +889,20 @@ export default function YachtGame({ players, tutorialMode = false, onExit, onCha
       </div>
       <div style={s.shell}>
         <main style={s.main}>
-          {tutorialText && <div style={s.tutorialBubble}>{tutorialText}</div>}
+          {tutorialText && (
+            <div style={s.tutorialBubble}>
+              <div style={tutorialGuide?.hasNext ? s.tutorialBubbleText : undefined}>
+                {tutorialText}
+              </div>
+              {tutorialGuide?.hasNext && (
+                <div style={s.tutorialBubbleFooter}>
+                  <button type="button" style={s.tutorialNextButton} onClick={nextTutorialGuide}>
+                    다음
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
 
           <div style={s.turnRow}>
             <div key={turnPulseKey} className={turnPulseKey ? 'yacht-turn-pulse' : undefined} style={s.turnBadge}>
@@ -1091,21 +1155,31 @@ function canToggleKeep(state) {
   return Boolean(state.dice_values?.length) && state.phase !== 'AWAITING_SCORE'
 }
 
-function getTutorialText(state, currentPlayer) {
+function getTutorialGuide(state, currentPlayer, guideStep) {
   const name = currentPlayer?.playername || '플레이어'
   if (state.phase === 'AWAITING_ROLL') {
-    return `${name}님 차례입니다. 주사위 5개를 굴리면 카메라가 결과를 인식합니다.`
+    return {
+      text: `${name}님 차례입니다. 주사위 5개를 굴리면 카메라가 결과를 인식합니다. 주사위를 굴려보세요.`,
+      hasNext: false,
+    }
   }
   if (state.phase === 'AWAITING_KEEP') {
-    if (state.roll_count >= 2) {
-      return '원하는 주사위를 킵할 수 있습니다. 킵한 주사위는 다음 굴림에서 유지되며, 한 번 킵한 주사위를 다시 굴릴 수도 있습니다. 주사위는 세 번까지 굴릴 수 있으며, 그 전에 점수 칸을 선택해 턴을 끝낼 수도 있습니다. 점수판 오른쪽 위 ? 버튼에서 족보 설명을 볼 수 있습니다.'
+    const safeStep = Math.max(0, Math.min(guideStep, TUTORIAL_GUIDE_STEPS.length - 1))
+    return {
+      text: TUTORIAL_GUIDE_STEPS[safeStep],
+      hasNext: safeStep < TUTORIAL_GUIDE_STEPS.length - 1,
     }
-    return '원하는 주사위를 킵할 수 있습니다. 킵한 주사위는 다음 굴림에서 유지되며, 한 번 킵한 주사위를 다시 굴릴 수도 있습니다. 주사위는 세 번까지 굴릴 수 있으며, 그 전에 점수 칸을 선택해 턴을 끝낼 수도 있습니다. 점수판 오른쪽 위 ? 버튼에서 족보 설명을 볼 수 있습니다.'
   }
   if (state.phase === 'AWAITING_SCORE') {
-    return '이제 점수 칸을 선택할 차례입니다. 예상 점수를 보고 원하는 칸에 기록하세요. 족보가 헷갈리면 점수판 오른쪽 위 ? 버튼을 확인하세요.'
+    return {
+      text: '이제 점수 칸을 선택할 차례입니다. 예상 점수를 보고 원하는 칸에 기록하세요. 족보가 헷갈리면 점수판 오른쪽 위 ? 버튼을 확인하세요.',
+      hasNext: false,
+    }
   }
-  return '요트다이스의 한 턴 흐름을 따라가고 있습니다.'
+  return {
+    text: '요트다이스의 한 턴 흐름을 따라가고 있습니다.',
+    hasNext: false,
+  }
 }
 
 function toggleKeep(index, state, send) {

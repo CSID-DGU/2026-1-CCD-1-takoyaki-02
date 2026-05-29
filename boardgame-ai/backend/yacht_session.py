@@ -309,7 +309,8 @@ class YachtSession:
         if self.fsm.state.phase == YachtPhase.AWAITING_ROLL.value:
             self.fsm.state.last_message = (
                 f"{self.fsm.state.current_player.playername}님 차례입니다. "
-                "주사위 5개를 굴리면 카메라가 결과를 인식합니다."
+                "주사위 5개를 굴리면 카메라가 결과를 인식합니다. "
+                "주사위를 굴려보세요."
             )
         elif self.fsm.state.phase == YachtPhase.AWAITING_KEEP.value:
             remaining = {2: "두 번", 1: "한 번"}.get(max(0, 3 - self.fsm.state.roll_count), "0번")
