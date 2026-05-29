@@ -135,13 +135,21 @@ class FusionEngine:
                 self._stab_counters[event_type] = 0
                 continue
 
+            # werewolf_vote_point는 동시 지목을 독립적으로 추적하기 위해 voter별 키 사용.
+            # 공유 키를 쓰면 한 프레임에서 투표자 A 처리 후 B가 A의 카운터를 덮어써
+            # A의 안정화 카운트가 초기화되는 버그가 생긴다.
+            if event_type == "werewolf_vote_point" and isinstance(data_key, dict):
+                counter_key = f"{event_type}:{data_key.get('actor_id', '')}"
+            else:
+                counter_key = event_type
+
             # 조건 2: 물리적 변화 (데이터 키가 달라지면 카운터 리셋)
             # dict 타입이면 _key 필드로 비교, 그 외 직접 비교
             stab_key = data_key.get("_key") if isinstance(data_key, dict) else data_key
-            prev = self._stab_candidates.get(event_type)
+            prev = self._stab_candidates.get(counter_key)
             if prev != stab_key:
-                self._stab_counters[event_type] = 0
-                self._stab_candidates[event_type] = stab_key
+                self._stab_counters[counter_key] = 0
+                self._stab_candidates[counter_key] = stab_key
 
             # 조건 3: N프레임 안정화.
             # ROLL_CONFIRMED/ROLL_UNREADABLE/DICE_ESCAPED는 yacht_rules가 자체적으로
@@ -172,8 +180,8 @@ class FusionEngine:
                 required = gesture_stab
             else:
                 required = stab_frames
-            self._stab_counters[event_type] += 1
-            if self._stab_counters[event_type] < required:
+            self._stab_counters[counter_key] += 1
+            if self._stab_counters[counter_key] < required:
                 continue
 
             if conf < conf_threshold:
@@ -197,7 +205,7 @@ class FusionEngine:
                         },
                     )
                 )
-                self._stab_counters[event_type] = 0
+                self._stab_counters[counter_key] = 0
                 continue
 
             fired = GameEvent(
@@ -228,7 +236,7 @@ class FusionEngine:
             if event_type == CommonEventType.GESTURE_CONFIRMED and actor_id:
                 self._gesture_confirmed_emitted.add(actor_id)
             # 발화 후 카운터 리셋 (중복 발화 방지)
-            self._stab_counters[event_type] = 0
+            self._stab_counters[counter_key] = 0
 
         return events
 

@@ -364,6 +364,47 @@ def test_vote_point_skips_self() -> None:
 # ── final_role_reveal 페이즈 ROLE_DETECTED ─────────────────────────────────────
 
 
+def test_vote_point_retarget_fires_on_target_change() -> None:
+    """같은 투표자가 A→B로 대상을 바꾸면 재발화한다."""
+    rules = WerewolfRules(_MockTracker())
+    ctx = _ctx_vote("vote_countdown")
+    perception_a = _frame([_pointing_hand_at(0.8, 0.5)])   # p_2 방향
+
+    hand_p1 = _pointing_hand_at(0.8, 0.5)
+    hand_p1_left = HandDet(
+        handedness="Right",
+        wrist_xy=(0.5, 0.5),
+        landmarks_21=[(0.0, 0.0)] * 9 + [(0.15, 0.5)] + [(0.0, 0.0)] * 11,
+        gesture="neutral",
+        player_id="p_1",
+    )
+
+    # 첫 지목: p_2
+    cands1 = rules.build_candidates(ctx, _frame([_pointing_hand_at(0.8, 0.5)]))
+    assert any(c[0] == VOTE_POINT and c[1]["target_id"] == "p_2" for c in cands1)
+
+    # 같은 대상 연속: 발화 없음
+    cands2 = rules.build_candidates(ctx, _frame([_pointing_hand_at(0.8, 0.5)]))
+    assert not any(c[0] == VOTE_POINT for c in cands2)
+
+    # 대상 변경: p_2 → (no valid target) — 방향 바꿔 hit 없는 경우엔 None 반환
+    cands3 = rules.build_candidates(ctx, _frame([_pointing_hand_at(0.5, 0.2)]))
+    assert not any(c[0] == VOTE_POINT for c in cands3)
+
+
+def test_vote_point_same_target_suppressed() -> None:
+    """같은 대상을 계속 가리키면 재발화하지 않는다(매 프레임 스팸 방지)."""
+    rules = WerewolfRules(_MockTracker())
+    ctx = _ctx_vote("vote_countdown")
+
+    first = rules.build_candidates(ctx, _frame([_pointing_hand_at(0.8, 0.5)]))
+    assert any(c[0] == VOTE_POINT for c in first)
+
+    for _ in range(5):
+        repeat = rules.build_candidates(ctx, _frame([_pointing_hand_at(0.8, 0.5)]))
+        assert not any(c[0] == VOTE_POINT for c in repeat)
+
+
 def test_role_detected_in_final_role_reveal() -> None:
     """최종 재확인 단계에서도 카메라 ROLE_DETECTED 가 생성된다.
 

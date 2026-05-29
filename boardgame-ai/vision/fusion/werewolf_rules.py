@@ -354,8 +354,6 @@ class WerewolfRules:
         voter_id = hand.player_id
         if not voter_id:
             return None
-        if voter_id in self._votes_cast:
-            return None
         if not hand.landmarks_21 or len(hand.landmarks_21) < 9:
             return None
 
@@ -397,6 +395,10 @@ class WerewolfRules:
                 best_target = target_id
 
         if best_target is None:
+            return None
+
+        # 동일 대상 매 프레임 재발화 억제. 대상이 바뀐 경우만 발화.
+        if best_target == self._votes_cast.get(voter_id):
             return None
 
         self._votes_cast[voter_id] = best_target

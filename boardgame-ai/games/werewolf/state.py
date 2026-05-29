@@ -125,6 +125,8 @@ class WerewolfGameState:
     phase: str                         # WerewolfPhase value
     state_version: int = 0
     winner: str | None = None          # "werewolf" | "village" | "tanner" | None
+    votes_locked: bool = False         # 카운트다운 종료 후 결과 확인 대기
+    countdown_remaining: int | None = None  # 투표 카운트다운 남은 초 (None=비활성)
 
     @classmethod
     def new(
@@ -162,6 +164,8 @@ class WerewolfGameState:
             "phase": self.phase,
             "state_version": self.state_version,
             "winner": self.winner,
+            "votes_locked": self.votes_locked,
+            "countdown_remaining": self.countdown_remaining,
         }
 
     @classmethod
@@ -177,4 +181,6 @@ class WerewolfGameState:
             phase=d["phase"],
             state_version=int(d.get("state_version", 0)),
             winner=d.get("winner"),
+            votes_locked=bool(d.get("votes_locked", False)),
+            countdown_remaining=d.get("countdown_remaining"),
         )

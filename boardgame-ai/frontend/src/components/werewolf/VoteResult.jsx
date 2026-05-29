@@ -2,10 +2,13 @@ import { useEffect, useMemo, useState } from 'react'
 
 const AUTO_ADVANCE_SEC = 10
 
-export default function VoteResult({ players = [], votes = {}, onComplete }) {
+export default function VoteResult({ players = [], votes = {}, onComplete, editable = false, send, onConfirm }) {
   const [countdown, setCountdown] = useState(AUTO_ADVANCE_SEC)
+  const [selectedVoter, setSelectedVoter] = useState(null)
 
+  // 비편집 모드: 자동 진행 타이머
   useEffect(() => {
+    if (editable) return
     let remaining = AUTO_ADVANCE_SEC
     const interval = setInterval(() => {
       remaining -= 1
@@ -16,7 +19,8 @@ export default function VoteResult({ players = [], votes = {}, onComplete }) {
       }
     }, 1000)
     return () => clearInterval(interval)
-  }, [])
+  }, [editable]) // eslint-disable-line react-hooks/exhaustive-deps
+
   // votes: { voter_player_id: target_player_id }
   const { tally, condemned } = useMemo(() => {
     const count = {}
@@ -26,17 +30,36 @@ export default function VoteResult({ players = [], votes = {}, onComplete }) {
     })
 
     const maxVotes = Math.max(...Object.values(count), 0)
-    const condemned = players.filter(p => count[p.player_id] === maxVotes && maxVotes > 0)
+    const cond = players.filter(p => count[p.player_id] === maxVotes && maxVotes > 0)
 
-    const tally = [...players]
+    const t = [...players]
       .sort((a, b) => count[b.player_id] - count[a.player_id])
       .map(p => ({ ...p, voteCount: count[p.player_id] }))
 
-    return { tally, condemned }
+    return { tally: t, condemned: cond }
   }, [players, votes])
 
   const maxVotes = tally[0]?.voteCount ?? 0
   const condemnedNames = condemned.map(p => p.playername).join(', ')
+
+  // editable 모드: 2-탭 투표 보정
+  const handleCorrectionClick = (playerId) => {
+    if (!editable || !send) return
+    if (!selectedVoter) {
+      setSelectedVoter(playerId)
+    } else if (selectedVoter === playerId) {
+      setSelectedVoter(null)
+    } else {
+      send('werewolf_vote_player', { target_id: playerId }, selectedVoter)
+      setSelectedVoter(null)
+    }
+  }
+
+  const handleConfirm = () => {
+    if (!send) return
+    send('werewolf_vote_result_confirm', {})
+    onConfirm?.()
+  }
 
   return (
     <>
@@ -60,7 +83,7 @@ export default function VoteResult({ players = [], votes = {}, onComplete }) {
         }
       `}</style>
 
-      <div onClick={onComplete} style={styles.page}>
+      <div onClick={editable ? undefined : onComplete} style={{ ...styles.page, cursor: editable ? 'default' : 'pointer' }}>
 
         {/* 배경 */}
         <div style={styles.sky} />
@@ -92,24 +115,22 @@ export default function VoteResult({ players = [], votes = {}, onComplete }) {
         </svg>
 
         {/* 컨텐츠 */}
-        <div style={styles.content}>
+        <div style={{ ...styles.content, marginBottom: editable ? 16 : 80 }}>
 
           {/* 타이틀 */}
           <div style={{ ...styles.title, animation: 'flicker 4s ease-in-out infinite' }}>
-            투표 결과
+            {editable ? '투표 결과 맞나요?' : '투표 결과'}
           </div>
 
           {/* 심판 플레이어 카드 */}
           <div style={{ animation: 'cardReveal 0.6s cubic-bezier(0.22,0.61,0.36,1) 0.1s both' }}>
             <div style={styles.condemnedCard}>
-              {/* 아바타 */}
               <div style={styles.avatar}>
                 <svg viewBox="0 0 48 48" width="42" height="42" fill="none">
                   <circle cx="24" cy="18" r="9" fill="rgba(245,180,160,0.5)" />
                   <path d="M8 42c0-8.837 7.163-16 16-16s16 7.163 16 16" stroke="rgba(245,180,160,0.5)" strokeWidth="2.5" strokeLinecap="round" />
                 </svg>
               </div>
-              {/* 심판 텍스트 */}
               <div style={styles.condemnedLabel}>
                 <span style={styles.condemnedName}>{condemnedNames || '—'}</span>
                 <span style={styles.condemnedSuffix}> 님 심판</span>
@@ -151,9 +172,50 @@ export default function VoteResult({ players = [], votes = {}, onComplete }) {
             ))}
           </div>
 
-          <div style={styles.tapHint}>
-            화면을 터치하면 계속합니다{countdown > 0 && <span style={{ marginLeft: 6, opacity: 0.6 }}>({countdown})</span>}
-          </div>
+          {/* editable 모드: 투표 보정 패널 */}
+          {editable && (
+            <div style={styles.correctionPanel}>
+              <div style={styles.correctionHeader}>
+                {selectedVoter
+                  ? <span>보정할 대상을 선택하세요 — 투표자: <span style={{ color: '#ff9980', fontWeight: 700 }}>{players.find(p => p.player_id === selectedVoter)?.playername}</span></span>
+                  : '오인식 수정: 투표자 이름을 누르세요'
+                }
+              </div>
+              <div style={styles.correctionGrid}>
+                {players.map(p => {
+                  const targetId = votes[p.player_id]
+                  const targetName = targetId ? players.find(pp => pp.player_id === targetId)?.playername : '기권'
+                  const isSelected = selectedVoter === p.player_id
+                  return (
+                    <div
+                      key={p.player_id}
+                      onClick={() => handleCorrectionClick(p.player_id)}
+                      style={{
+                        ...styles.correctionRow,
+                        ...(isSelected ? styles.correctionRowSelected : {}),
+                        cursor: 'pointer',
+                      }}
+                    >
+                      <span style={styles.correctionVoter}>{p.playername}</span>
+                      <span style={styles.correctionArrow}>→</span>
+                      <span style={styles.correctionTarget}>{targetName}</span>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* 하단 힌트 / 확인 버튼 */}
+          {editable ? (
+            <button onClick={handleConfirm} style={confirmBtn}>
+              투표 확정
+            </button>
+          ) : (
+            <div style={styles.tapHint}>
+              화면을 터치하면 계속합니다{countdown > 0 && <span style={{ marginLeft: 6, opacity: 0.6 }}>({countdown})</span>}
+            </div>
+          )}
         </div>
 
       </div>
@@ -173,7 +235,6 @@ const styles = {
     fontFamily: "'Segoe UI', 'Apple SD Gothic Neo', sans-serif",
     color: '#F8F1DD',
     userSelect: 'none',
-    cursor: 'pointer',
   },
 
   sky: {
@@ -204,38 +265,40 @@ const styles = {
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
-    gap: 20,
+    gap: 16,
     width: '100%',
-    maxWidth: 400,
-    padding: '0 32px',
-    marginBottom: 80,
+    maxWidth: 480,
+    padding: '0 24px',
+    overflowY: 'auto',
+    maxHeight: '90vh',
   },
 
   title: {
-    fontSize: 36,
+    fontSize: 32,
     fontWeight: 800,
-    letterSpacing: 4,
+    letterSpacing: 3,
     color: '#f5c6c6',
     textShadow: '0 0 30px rgba(200,60,30,0.7), 0 2px 8px rgba(0,0,0,0.6)',
     animation: 'fadeUp 0.6s ease-out both',
+    textAlign: 'center',
   },
 
   condemnedCard: {
     background: 'rgba(180,40,20,0.22)',
     border: '1px solid rgba(255,120,80,0.4)',
     borderRadius: 16,
-    padding: '18px 40px',
+    padding: '14px 32px',
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
-    gap: 10,
+    gap: 8,
     backdropFilter: 'blur(8px)',
     boxShadow: '0 0 32px rgba(200,60,30,0.2)',
   },
 
   avatar: {
-    width: 64,
-    height: 64,
+    width: 56,
+    height: 56,
     borderRadius: '50%',
     background: 'rgba(180,60,40,0.3)',
     border: '1.5px solid rgba(255,120,80,0.3)',
@@ -245,7 +308,7 @@ const styles = {
   },
 
   condemnedLabel: {
-    fontSize: 18,
+    fontSize: 17,
     textAlign: 'center',
   },
 
@@ -263,7 +326,7 @@ const styles = {
     width: '100%',
     display: 'flex',
     flexDirection: 'column',
-    gap: 10,
+    gap: 8,
   },
 
   tallyRow: {
@@ -273,7 +336,7 @@ const styles = {
     background: 'rgba(0,0,0,0.28)',
     border: '1px solid rgba(200,80,50,0.12)',
     borderRadius: 10,
-    padding: '12px 16px',
+    padding: '10px 14px',
   },
 
   tallyRowHighlight: {
@@ -282,10 +345,10 @@ const styles = {
   },
 
   tallyName: {
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: 600,
     color: '#f5d8d0',
-    width: 60,
+    width: 56,
     flexShrink: 0,
   },
 
@@ -304,11 +367,68 @@ const styles = {
   },
 
   tallyCount: {
-    fontSize: 18,
+    fontSize: 17,
     fontWeight: 700,
-    width: 24,
+    width: 22,
     textAlign: 'right',
     flexShrink: 0,
+  },
+
+  correctionPanel: {
+    width: '100%',
+    background: 'rgba(0,0,0,0.3)',
+    border: '1px solid rgba(200,80,50,0.2)',
+    borderRadius: 14,
+    padding: '14px 16px',
+    animation: 'fadeUp 0.5s ease-out 0.3s both',
+  },
+
+  correctionHeader: {
+    fontSize: 13,
+    color: 'rgba(245,200,190,0.6)',
+    marginBottom: 10,
+    textAlign: 'center',
+  },
+
+  correctionGrid: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 6,
+  },
+
+  correctionRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 10,
+    padding: '8px 12px',
+    borderRadius: 8,
+    background: 'rgba(0,0,0,0.2)',
+    border: '1px solid rgba(200,80,50,0.1)',
+    transition: 'background 0.2s, border-color 0.2s',
+  },
+
+  correctionRowSelected: {
+    background: 'rgba(255,140,60,0.18)',
+    border: '1px solid rgba(255,180,80,0.6)',
+  },
+
+  correctionVoter: {
+    fontSize: 14,
+    fontWeight: 700,
+    color: '#f5d8d0',
+    width: 60,
+    flexShrink: 0,
+  },
+
+  correctionArrow: {
+    fontSize: 14,
+    color: 'rgba(245,200,190,0.4)',
+  },
+
+  correctionTarget: {
+    fontSize: 13,
+    color: '#ff9980',
+    flex: 1,
   },
 
   tapHint: {
@@ -317,4 +437,19 @@ const styles = {
     letterSpacing: 0.5,
     marginTop: 4,
   },
+}
+
+const confirmBtn = {
+  marginTop: 8,
+  padding: '14px 48px',
+  background: 'linear-gradient(135deg, #c84010, #ff6030)',
+  border: 'none',
+  borderRadius: 12,
+  color: '#fff',
+  fontSize: 18,
+  fontWeight: 800,
+  letterSpacing: 2,
+  cursor: 'pointer',
+  boxShadow: '0 0 24px rgba(200,60,30,0.5)',
+  fontFamily: "'Segoe UI', 'Apple SD Gothic Neo', sans-serif",
 }

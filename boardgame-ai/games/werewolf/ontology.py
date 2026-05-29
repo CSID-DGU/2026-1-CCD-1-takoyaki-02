@@ -80,12 +80,14 @@ class WerewolfInputType(StrEnum):
     """UI → FSM 늑대인간 전용 입력.
 
     data 스키마:
-        VOTE_PLAYER: {"target_id": str}
+        VOTE_PLAYER:         {"target_id": str}
+        VOTE_RESULT_CONFIRM: {}  — 투표 결과 확인 화면에서 최종 확정
     """
 
     ADD_30_SEC = "add_30_sec"
     START_NOW = "start_now"
     VOTE_PLAYER = "werewolf_vote_player"
+    VOTE_RESULT_CONFIRM = "werewolf_vote_result_confirm"
 
 
 # 야간 페이즈 순서 (NIGHT_ORDER 역할 문자열과 대응)
