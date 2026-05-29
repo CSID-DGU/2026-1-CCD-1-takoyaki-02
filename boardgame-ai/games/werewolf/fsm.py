@@ -489,7 +489,15 @@ class WerewolfFSM(BaseFSM):
         target_id = event.data.get("target_id")
         if not actor_id or not target_id:
             return []
-        return self._record_vote(actor_id, target_id)
+        messages = self._record_vote(actor_id, target_id)
+        if messages:
+            # Benchmark hook: 비전이 인식한 투표 (vote_recognition 분모).
+            try:
+                from benchmarks.common.trace_setup import bench_log
+                bench_log().info("vote_cast -")
+            except Exception:
+                pass
+        return messages
 
     def _handle_gesture_confirmed(self) -> list[WSMessage]:
         current = WerewolfPhase(self.state.phase)
@@ -554,7 +562,15 @@ class WerewolfFSM(BaseFSM):
         target_id = data.get("target_id")
         if not target_id:
             return []
-        return self._set_vote(player_id, target_id)
+        messages = self._set_vote(player_id, target_id)
+        if messages:
+            # Benchmark hook: 사용자의 투표 오인식 수동 정정 = 인식 실패 신호.
+            try:
+                from benchmarks.common.trace_setup import bench_log
+                bench_log().info("vote_correction -")
+            except Exception:
+                pass
+        return messages
 
     def _handle_vote_result_confirm(self) -> list[WSMessage]:
         """투표 결과 확인 화면에서 최종 확정. votes_locked 상태에서만 유효."""

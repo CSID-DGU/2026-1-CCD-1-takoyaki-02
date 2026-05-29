@@ -242,6 +242,15 @@ class WerewolfSession:
         if not role:
             return
 
+        # Benchmark hook: 역할 등록 인식 정확도. match=1 → 비전 감지값을 그대로 확정,
+        # match=0 → 비전이 미감지했거나(detected None) 사용자가 수동 정정.
+        try:
+            from benchmarks.common.trace_setup import bench_log
+            match = 1 if (detected and role == _normalize_role(str(detected))) else 0
+            bench_log().info("role_recognition reg match=%d", match)
+        except Exception:
+            pass
+
         self._role_reg["confirmed_roles"][player_id] = role
         next_index = self._role_reg["player_index"] + 1
         player_order = self._role_reg["player_order"]
@@ -523,6 +532,14 @@ class WerewolfSession:
         role = detected or (_normalize_role(str(payload_role)) if payload_role else None)
         if not role:
             return
+
+        # Benchmark hook: 최종 공개 인식 정확도. match=1 → 비전이 카드를 감지,
+        # match=0 → 비전 미감지로 사용자가 직접 카드 선택.
+        try:
+            from benchmarks.common.trace_setup import bench_log
+            bench_log().info("role_recognition reveal match=%d", 1 if detected else 0)
+        except Exception:
+            pass
 
         try:
             self._fsm.state.get_player(player_id).current_role = role

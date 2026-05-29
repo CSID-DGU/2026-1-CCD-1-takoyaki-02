@@ -101,6 +101,7 @@ class BenchmarkSession:
             channel_latency,
             completion_rate,
             fps_analysis,
+            recognition_rate,
             resource_usage,
             trace_collector,
             ui_latency,
@@ -130,6 +131,7 @@ class BenchmarkSession:
             ("cache_hit_rate", cache_hit_rate),
             ("ws_recovery", ws_recovery),
             ("undo_rate", undo_rate),
+            ("recognition_rate", recognition_rate),
             ("completion_rate", completion_rate),
             ("resource_usage", resource_usage),
         ]:
@@ -228,10 +230,46 @@ class BenchmarkSession:
         if isinstance(ur, dict) and ur.get("rolls", 0) > 0:
             lines.append("## ⑤ 실전 라운드 정확도 (되돌리기 proxy)")
             lines.append(
-                f"- {ur['rolls']} 굴림 중 {ur['undos']} 되돌리기 "
-                f"= 신뢰도 추정 {ur['estimated_accuracy']*100:.1f}%"
+                f"- {ur['rolls']} 굴림 중 인식실패 {ur.get('recognition_failures', ur['undos'])} "
+                f"(되돌리기 {ur['undos']} + 눈수정 {ur.get('manual_corrections', 0)}) "
+                f"= 정확도 추정 {ur['estimated_accuracy']*100:.1f}%"
             )
             lines.append("")
+
+        # 웨어울프 비전 인식 정확도
+        rr = results.get("recognition_rate", {})
+        if isinstance(rr, dict) and ("role_overall" in rr or "vote" in rr):
+            ro = rr.get("role_overall", {})
+            vt = rr.get("vote", {})
+            reg = rr.get("role_registration", {})
+            rev = rr.get("role_reveal", {})
+            has_role = ro.get("total", 0) > 0
+            has_vote = vt.get("vision_casts", 0) > 0
+            if has_role or has_vote:
+                lines.append("## ⑤-2 웨어울프 비전 인식 정확도")
+                if has_role:
+                    lines.append(
+                        f"- 역할 인식 전체 {ro['matched']}/{ro['total']} "
+                        f"= {ro['accuracy']*100:.1f}%"
+                    )
+                    if reg.get("total"):
+                        lines.append(
+                            f"  - 등록: {reg['matched']}/{reg['total']} "
+                            f"({reg['accuracy']*100:.1f}%)"
+                        )
+                    if rev.get("total"):
+                        lines.append(
+                            f"  - 최종공개: {rev['matched']}/{rev['total']} "
+                            f"({rev['accuracy']*100:.1f}%)"
+                        )
+                if has_vote:
+                    acc = vt.get("estimated_accuracy")
+                    acc_str = f"{acc*100:.1f}%" if acc is not None else "?"
+                    lines.append(
+                        f"- 투표 인식: {vt['vision_casts']} 투표 중 "
+                        f"수동정정 {vt['manual_corrections']} = 정확도 추정 {acc_str}"
+                    )
+                lines.append("")
 
         # 게임 진행 성공률
         cr = results.get("completion_rate", {})
