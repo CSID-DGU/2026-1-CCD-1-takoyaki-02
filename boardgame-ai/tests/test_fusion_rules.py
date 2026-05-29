@@ -368,16 +368,6 @@ def test_vote_point_retarget_fires_on_target_change() -> None:
     """같은 투표자가 A→B로 대상을 바꾸면 재발화한다."""
     rules = WerewolfRules(_MockTracker())
     ctx = _ctx_vote("vote_countdown")
-    perception_a = _frame([_pointing_hand_at(0.8, 0.5)])   # p_2 방향
-
-    hand_p1 = _pointing_hand_at(0.8, 0.5)
-    hand_p1_left = HandDet(
-        handedness="Right",
-        wrist_xy=(0.5, 0.5),
-        landmarks_21=[(0.0, 0.0)] * 9 + [(0.15, 0.5)] + [(0.0, 0.0)] * 11,
-        gesture="neutral",
-        player_id="p_1",
-    )
 
     # 첫 지목: p_2
     cands1 = rules.build_candidates(ctx, _frame([_pointing_hand_at(0.8, 0.5)]))
