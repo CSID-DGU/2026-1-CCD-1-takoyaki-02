@@ -178,11 +178,15 @@ def test_vision_vote_allows_retarget() -> None:
     _set_vote_countdown_state(fsm)
 
     def _vote(actor, target):
-        return fsm.handle_event(GameEvent(
-            event_type=WerewolfEventType.VOTE_POINT,
-            actor_id=actor, confidence=0.9, frame_id=1,
-            data={"target_id": target},
-        ))
+        return fsm.handle_event(
+            GameEvent(
+                event_type=WerewolfEventType.VOTE_POINT,
+                actor_id=actor,
+                confidence=0.9,
+                frame_id=1,
+                data={"target_id": target},
+            )
+        )
 
     _vote("p_0", "p_1")
     assert fsm.state.get_player("p_0").voted_for == "p_1"
@@ -199,7 +203,9 @@ def test_vision_vote_rejected_after_lock() -> None:
 
     event = GameEvent(
         event_type=WerewolfEventType.VOTE_POINT,
-        actor_id="p_0", confidence=0.9, frame_id=1,
+        actor_id="p_0",
+        confidence=0.9,
+        frame_id=1,
         data={"target_id": "p_1"},
     )
     msgs = fsm.handle_event(event)
@@ -242,8 +248,10 @@ async def test_countdown_timer_decrements_and_locks() -> None:
     """_run_vote_countdown 실행 시 countdown_remaining이 감소하고 최종적으로 lock된다."""
     fsm = _make_fsm(["werewolf", "villager"])
 
-    with patch("games.werewolf.fsm.VOTE_COUNTDOWN_SECONDS", 2), \
-         patch("games.werewolf.fsm.VOTE_LOCK_GRACE", 0):
+    with (
+        patch("games.werewolf.fsm.VOTE_COUNTDOWN_SECONDS", 2),
+        patch("games.werewolf.fsm.VOTE_LOCK_GRACE", 0),
+    ):
         fsm.state.phase = WerewolfPhase.DAY_DISCUSSION.value
         fsm._advance_to_next_phase()
         # 카운트다운 완료 + grace 대기
