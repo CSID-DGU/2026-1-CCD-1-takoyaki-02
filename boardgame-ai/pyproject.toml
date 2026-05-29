@@ -28,7 +28,7 @@ line-length = 100
 select = ["E", "F", "I", "UP", "B", "SIM"]
 
 [tool.ruff.lint.isort]
-known_first_party = ["core", "vision", "bridge", "games", "audio", "backend", "agents", "benchmarks"]
+known-first-party = ["core", "vision", "bridge", "games", "audio", "backend", "agents", "benchmarks"]
 
 [tool.mypy]
 strict = true
