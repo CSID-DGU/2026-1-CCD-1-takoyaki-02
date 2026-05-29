@@ -177,7 +177,7 @@ class WerewolfRules:
                 continue
             if not _any_hand_near_card(perception.hands, card.bbox, _ROLE_REG_HAND_DIST):
                 continue
-            if card.stable_frames < 15:
+            if card.stable_frames < 5:
                 continue
             # 다른 플레이어의 카드가 감지된 경우: card_player_id를 포함해 세션이 경고 처리
             self._reported_roles.add(actor_id)
