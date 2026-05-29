@@ -12,7 +12,7 @@
 from __future__ import annotations
 
 from core.events import FusionContext
-from vision.fusion.werewolf_rules import ROLE_DETECTED, WerewolfRules
+from vision.fusion.werewolf_rules import ROLE_DETECTED, VOTE_POINT, WerewolfRules
 from vision.schemas import BBox, FramePerception, HandDet
 from vision.tracking.card_tracker import CardTracker
 from vision.werewolf.schemas import TrackedCard
@@ -148,8 +148,8 @@ def test_role_detected_bbox_exactly_at_threshold_passes() -> None:
 
 
 def test_role_detected_insufficient_stable_frames() -> None:
-    """stable_frames < 15 이면 발화 안 됨."""
-    tracker = _MockTracker([_card(stable_frames=14)])
+    """stable_frames < 5 이면 발화 안 됨."""
+    tracker = _MockTracker([_card(stable_frames=4)])
     rules = WerewolfRules(tracker)
     ctx = _ctx_role_reg()
     perception = _frame(hands=[_hand_at()])
@@ -298,3 +298,93 @@ def test_card_tracker_reset_stable_frames_empty_tracker() -> None:
     real_tracker = CardTracker()
     real_tracker.reset_stable_frames()  # 예외 없이 통과
     assert real_tracker.get_tracked_cards() == []
+
+
+# ── VOTE_POINT 페이즈 게이트 ────────────────────────────────────────────────────
+
+
+def _ctx_vote(fsm_state: str) -> FusionContext:
+    """좌석 좌표 기반 투표 컨텍스트. p_1 은 자기 자신(제외 대상), p_2 는 오른쪽."""
+    return FusionContext(
+        fsm_state=fsm_state,
+        game_type="werewolf",
+        active_player=None,
+        allowed_actors=["p_1", "p_2"],
+        expected_events=[VOTE_POINT],
+        anchors={
+            "seat_p_1": {"x": 0.5, "y": 0.5},
+            "seat_p_2": {"x": 0.85, "y": 0.5},
+        },
+    )
+
+
+def _pointing_hand_at(target_cx: float, target_cy: float) -> HandDet:
+    """손목(0.5,0.5)에서 target 방향을 가리키는 포인팅 손."""
+    landmarks = [(0.0, 0.0)] * 21
+    landmarks[0] = (0.5, 0.5)               # wrist
+    landmarks[8] = (target_cx, target_cy)   # index tip — 지목 방향
+    return HandDet(
+        handedness="Right",
+        wrist_xy=(0.5, 0.5),
+        landmarks_21=landmarks,
+        gesture="neutral",
+        player_id="p_1",
+    )
+
+
+def test_vote_point_detected_in_vote_countdown() -> None:
+    """포인팅 투표가 vote_countdown 페이즈에서 VOTE_POINT 후보를 생성한다.
+
+    FSM은 투표를 vote_countdown으로 진입시키고 전원 투표 전까지 머무므로,
+    이 페이즈에서 감지되지 않으면 손 지목이 영영 이벤트가 되지 않는다(회귀 방지).
+    """
+    rules = WerewolfRules(_MockTracker())
+    hand = _pointing_hand_at(0.8, 0.5)  # p_2 좌석(0.85,0.5) 방향
+    cands = rules.build_candidates(_ctx_vote("vote_countdown"), _frame([hand]))
+    assert any(c[0] == VOTE_POINT and c[1]["target_id"] == "p_2" for c in cands)
+
+
+def test_vote_point_detected_in_vote_phase() -> None:
+    """레거시 'vote' 페이즈에서도 동일하게 감지된다."""
+    rules = WerewolfRules(_MockTracker())
+    hand = _pointing_hand_at(0.8, 0.5)
+    cands = rules.build_candidates(_ctx_vote("vote"), _frame([hand]))
+    assert any(c[0] == VOTE_POINT and c[1]["target_id"] == "p_2" for c in cands)
+
+
+def test_vote_point_skips_self() -> None:
+    """자기 좌석 방향으로 가리켜도 본인은 지목 대상에서 제외된다."""
+    rules = WerewolfRules(_MockTracker())
+    # p_1 손목(0.5,0.5) → 자기 좌석(0.5,0.5)은 t<=0 으로 제외, 다른 방향엔 좌석 없음
+    hand = _pointing_hand_at(0.5, 0.2)  # 위쪽 — 어떤 좌석도 없음
+    cands = rules.build_candidates(_ctx_vote("vote_countdown"), _frame([hand]))
+    assert not any(c[0] == VOTE_POINT for c in cands)
+
+
+# ── final_role_reveal 페이즈 ROLE_DETECTED ─────────────────────────────────────
+
+
+def test_role_detected_in_final_role_reveal() -> None:
+    """최종 재확인 단계에서도 카메라 ROLE_DETECTED 가 생성된다.
+
+    이전엔 build_candidates가 'role_registration'에서만 _check_role_detected를
+    호출해, final_role_reveal에서는 카메라 인식이 영영 동작하지 않았다(회귀 방지).
+    """
+    card = _card()
+    tracker = _MockTracker([card])
+    rules = WerewolfRules(tracker)
+    ctx = FusionContext(
+        fsm_state="final_role_reveal",
+        game_type="werewolf",
+        active_player="p_1",
+        allowed_actors=["p_1"],
+        expected_events=[ROLE_DETECTED],
+    )
+    perception = _frame(hands=[_hand_at(0.45, 0.45)])
+
+    # 1프레임: 플레이어 진입 → reset_stable_frames로 stable_frames=0 → 아직 발화 안 함.
+    assert rules.build_candidates(ctx, perception) == []
+    # 실제 CardTracker처럼 카드가 안정 추적돼 stable_frames 누적된 뒤엔 발화.
+    card.stable_frames = 15
+    cands = rules.build_candidates(ctx, perception)
+    assert any(c[0] == ROLE_DETECTED and c[1]["actor_id"] == "p_1" for c in cands)

@@ -553,7 +553,7 @@ class WerewolfSession:
             valid_targets=None,
             zones={},
             anchors={},
-            params={"stabilization_frames": 5},
+            params={"stabilization_frames": 1},
         )
         self._send_fusion_context(ctx, self._state_version)
 
