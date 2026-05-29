@@ -287,6 +287,10 @@ class WerewolfFSM(BaseFSM):
         """original_role 기준으로 해당 역할의 player_id 목록을 반환한다."""
         return [p.player_id for p in self.state.players if p.original_role == role.value]
 
+    def _role_in_game(self, role: WerewolfRole) -> bool:
+        """플레이어 또는 센터 카드에 해당 역할이 존재하는지 확인한다."""
+        return bool(self._players_with_role(role)) or role.value in self.state.center_cards
+
     def _make_state_update(self) -> WSMessage:
         return WSMessage(
             msg_type=MsgType.STATE_UPDATE.value,
@@ -305,7 +309,7 @@ class WerewolfFSM(BaseFSM):
                 else NIGHT_PHASES.index(current)
             )
             for next_phase in NIGHT_PHASES[search_from + 1:]:
-                if self._players_with_role(PHASE_TO_ROLE[next_phase]):
+                if self._role_in_game(PHASE_TO_ROLE[next_phase]):
                     return self._enter_phase(next_phase)
             return self._enter_phase(WerewolfPhase.DAY_DISCUSSION)
 
