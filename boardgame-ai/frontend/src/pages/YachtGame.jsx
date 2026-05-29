@@ -489,6 +489,7 @@ export default function YachtGame({ players, tutorialMode = false, onExit, onCha
   const startedRef = useRef(false)
   const introTtsPlayedRef = useRef(false)
   const previousTurnRef = useRef(null)
+  const previousRollRef = useRef(null)
   const previousScoresRef = useRef(new Map())
 
   useEffect(() => {
@@ -559,6 +560,20 @@ export default function YachtGame({ players, tutorialMode = false, onExit, onCha
   useEffect(() => {
     if (!state?.players?.length) return
 
+    const previousRoll = previousRollRef.current
+    const currentRoll = {
+      playerId: state.current_player_id,
+      rollCount: Number(state.roll_count || 0),
+    }
+    if (
+      previousRoll &&
+      previousRoll.playerId === currentRoll.playerId &&
+      currentRoll.rollCount > previousRoll.rollCount
+    ) {
+      playLocalSfx('dice_roll')
+    }
+    previousRollRef.current = currentRoll
+
     if (previousTurnRef.current && previousTurnRef.current !== state.current_player_id) {
       setTurnPulseKey(key => key + 1)
     }
@@ -586,6 +601,7 @@ export default function YachtGame({ players, tutorialMode = false, onExit, onCha
     previousScoresRef.current = nextScores
     if (addedScore) {
       setRecentScore(addedScore)
+      playLocalSfx('score_select')
     }
   }, [state])
 
@@ -1102,6 +1118,11 @@ function toggleKeep(index, state, send) {
 function scoreCategory(category, state, send) {
   if (!DISPLAY_CATEGORIES.includes(category)) return
   send('SCORE_CATEGORY_SELECTED', { category }, state.current_player_id)
+}
+
+function playLocalSfx(name) {
+  const audio = new Audio(`/sfx/${name}.mp3`)
+  audio.play().catch(() => {})
 }
 
 function upperSubtotal(scores) {
