@@ -193,26 +193,20 @@ class WerewolfSession:
         if not player_order:
             return
         normalized_roles = [_normalize_role(r) for r in selected_roles]
-        # 역할 등록 전 카드 세팅 안내를 먼저 표시. CARD_SETUP_DONE 수신 후 실제 등록 시작.
-        # 파이프라인 전환은 CARD_SETUP_DONE 이후로 미룸 — card_setup 화면에서
-        # OK 제스처를 로비 파이프라인이 감지할 수 있어야 하기 때문.
         self._practice_mode = bool(payload.get("practice_mode", False))
         self._pending_role_reg = {
             "selected_roles": normalized_roles,
             "player_order": player_order,
         }
-        # card_setup 화면에서 OK 제스처를 로비 파이프라인이 감지해야 함.
-        # WS 연결 시 웨어울프 파이프라인으로 전환됐으므로 로비로 되돌림.
+        # START_ROLE_REGISTRATION 즉시 웨어울프 파이프라인으로 전환.
+        # card_setup OK 제스처도 웨어울프 FusionEngine이 직접 처리.
         if self._pipeline_switcher is not None:
-            self._pipeline_switcher(None)
-        # 로비 FusionEngine의 _gesture_confirmed_emitted 가드를 초기화한다.
-        # 좌석 등록 직후 OK 사인이 PLAYER_SETUP 컨텍스트에서 한 번 발화돼 가드에 남아 있으면
-        # card_setup에서 OK 제스처가 차단된다. fsm_state를 새 값으로 바꾸면 가드가 지워진다.
+            self._pipeline_switcher("werewolf")
         self._state_version += 1
         self._send_fusion_context(
             FusionContext(
                 fsm_state="card_setup",
-                game_type=None,
+                game_type="werewolf_practice" if self._practice_mode else "werewolf",
                 active_player=None,
                 allowed_actors=[],
                 expected_events=[CommonEventType.GESTURE_CONFIRMED],
@@ -588,15 +582,12 @@ class WerewolfSession:
             "selected_roles": all_roles,
             "player_order": player_order,
         }
-        # card_setup 화면에서 OK 제스처를 감지하려면 로비 파이프라인이 활성화되어야 함
-        if self._pipeline_switcher is not None:
-            self._pipeline_switcher(None)
-        # 제스처 가드(_gesture_confirmed_emitted) 초기화를 위해 새 fsm_state 전송
+        # 웨어울프 파이프라인 유지 (card_setup OK 제스처도 웨어울프 FusionEngine이 처리)
         self._state_version += 1
         self._send_fusion_context(
             FusionContext(
                 fsm_state="card_setup",
-                game_type=None,
+                game_type="werewolf_practice" if self._practice_mode else "werewolf",
                 active_player=None,
                 allowed_actors=[],
                 expected_events=[CommonEventType.GESTURE_CONFIRMED],
@@ -617,7 +608,7 @@ class WerewolfSession:
         self._send_fusion_context(
             FusionContext(
                 fsm_state="card_setup_confirm",
-                game_type=None,
+                game_type="werewolf_practice" if self._practice_mode else "werewolf",
                 active_player=None,
                 allowed_actors=[],
                 expected_events=[CommonEventType.GESTURE_CONFIRMED],
@@ -635,8 +626,6 @@ class WerewolfSession:
         # CardSetupGuide 완료 → 웨어울프 파이프라인으로 전환 후 역할 등록 시작
         if self._pending_role_reg is None:
             return
-        if self._pipeline_switcher is not None:
-            self._pipeline_switcher("werewolf")
         data = self._pending_role_reg
         self._pending_role_reg = None
         selected_roles = data["selected_roles"]
