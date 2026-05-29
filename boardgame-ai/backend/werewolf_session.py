@@ -375,6 +375,11 @@ class WerewolfSession:
             await self._handle_card_placed_down()
             return
 
+        if etype == CommonEventType.GESTURE_CONFIRMED:
+            if self._pending_role_reg is not None:
+                await self._finish_card_setup()
+            return
+
         if self._fsm is None:
             return
 
@@ -391,6 +396,20 @@ class WerewolfSession:
             return
         if self._role_reg is not None:
             if self._role_reg["detected_role"] is not None:
+                return
+            # 다른 플레이어의 카드가 감지된 경우 등록하지 않고 경고만 발화
+            card_player_id = (event.data or {}).get("card_player_id")
+            active_player_id = self._role_reg.get("player_id")
+            if card_player_id and active_player_id and card_player_id != active_player_id:
+                if self._agent is not None:
+                    import time as _t
+                    await self._agent.on_game_event(GameEvent(
+                        event_type=event.event_type,
+                        actor_id=card_player_id,
+                        confidence=event.confidence,
+                        frame_id=event.frame_id,
+                        data={},
+                    ))
                 return
             self._role_reg["detected_role"] = role
             await self._broadcast_role_reg()

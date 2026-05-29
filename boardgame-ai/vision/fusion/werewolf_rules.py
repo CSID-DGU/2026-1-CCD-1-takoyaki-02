@@ -179,10 +179,15 @@ class WerewolfRules:
                 continue
             if card.stable_frames < 15:
                 continue
+            # 다른 플레이어의 카드가 감지된 경우: card_player_id를 포함해 세션이 경고 처리
             self._reported_roles.add(actor_id)
             return (
                 ROLE_DETECTED,
-                {"actor_id": actor_id, "role": card.cls_name.lower()},
+                {
+                    "actor_id": actor_id,
+                    "role": card.cls_name.lower(),
+                    "card_player_id": card.player_id,
+                },
                 0.9,
             )
         return None
