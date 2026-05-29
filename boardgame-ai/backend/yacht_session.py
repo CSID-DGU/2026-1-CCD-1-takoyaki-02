@@ -11,15 +11,14 @@ from typing import Any
 
 from fastapi import WebSocket
 
+from agents.context import AgentContext
+from agents.orchestrator import AgentOrchestrator
 from audio.manager import AudioManager
 from bridge.local_bridge import LocalBridge
 from core.constants import MsgType
 from core.envelope import WSMessage
 from core.events import FusionContext, GameEvent
 from games.yacht import YachtEventType, YachtFSM, YachtGameState, YachtInputType, YachtPhase
-
-from agents.context import AgentContext
-from agents.orchestrator import AgentOrchestrator
 
 # AudioManager가 가로채는 msg_type 집합. session.send()에서 분기 기준.
 _AUDIO_MSG_TYPES = {
@@ -58,7 +57,9 @@ class YachtSession:
         self._last_tts_request: tuple[str, float] = ("", 0.0)
         self._send_raw_bound = self._send_raw
         if audio_manager is not None:
-            audio_manager.attach_broadcast(self._send_raw_bound, session_id=audio_manager.get_session_id())
+            audio_manager.attach_broadcast(
+                self._send_raw_bound, session_id=audio_manager.get_session_id()
+            )
         # FSM 상태 변경 직렬화 — 비전 스레드와 WS 스레드가 동시에 호출 가능
         self._fsm_lock = threading.Lock()
 
@@ -140,8 +141,9 @@ class YachtSession:
         if input_type == "START_YACHT":
             # Benchmark hook: 게임 시작 시각 (completion_rate 측정용).
             try:
-                from benchmarks.common.trace_setup import bench_log
                 import time as _t
+
+                from benchmarks.common.trace_setup import bench_log
                 bench_log().info("game_start yacht %.6f", _t.time())
             except Exception:
                 pass
@@ -149,7 +151,9 @@ class YachtSession:
             return
 
         if self.fsm is None:
-            await self.send(WSMessage.make_error("GAME_NOT_STARTED", "요트다이스가 시작되지 않았습니다."))
+            await self.send(
+                WSMessage.make_error("GAME_NOT_STARTED", "요트다이스가 시작되지 않았습니다.")
+            )
             return
 
         if input_type == "ROLL_DICE":
@@ -190,6 +194,14 @@ class YachtSession:
                     )
                 )
                 return
+
+            # Benchmark hook: 사용자의 눈 수 직접 정정 = 순수 인식 실패 신호
+            # (undo_round와 함께 인식 정확도 proxy로 집계).
+            try:
+                from benchmarks.common.trace_setup import bench_log
+                bench_log().info("manual_dice_correction -")
+            except Exception:
+                pass
 
             with self._fsm_lock:
                 previous_state = deepcopy(self.fsm.state)
@@ -293,7 +305,9 @@ class YachtSession:
             await self.start_game({"players": players, "tutorial_mode": self.tutorial_mode})
             return
 
-        await self.send(WSMessage.make_error("UNKNOWN_INPUT", f"알 수 없는 입력입니다: {input_type}"))
+        await self.send(
+            WSMessage.make_error("UNKNOWN_INPUT", f"알 수 없는 입력입니다: {input_type}")
+        )
 
     async def start_game(self, payload: dict[str, Any]) -> None:
         if self._pipeline_switcher is not None:
@@ -377,7 +391,12 @@ class YachtSession:
         keep = list(keep_mask or [])
         return [
             int(values[index])
-            if index < len(values) and index < len(keep) and keep[index] and values[index] is not None
+            if (
+                index < len(values)
+                and index < len(keep)
+                and keep[index]
+                and values[index] is not None
+            )
             else random.randint(1, 6)
             for index in range(5)
         ]
@@ -431,7 +450,10 @@ class YachtSession:
         await self._agent.on_state_change(agent_ctx, state_version=state.state_version)
 
     async def send(self, message: WSMessage) -> None:
-        """FSM이 만든 메시지를 라우팅. audio 관련은 AudioManager 거쳐 audio_url 채워진 후 broadcast."""
+        """FSM이 만든 메시지를 라우팅.
+
+        audio 관련은 AudioManager 거쳐 audio_url 채워진 후 broadcast.
+        """
         if message.msg_type in _AUDIO_MSG_TYPES and self._audio_manager is not None:
             await self._audio_manager.handle_outbound(message)
             return

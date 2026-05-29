@@ -3,22 +3,33 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import re
 from collections.abc import Callable
 from typing import Any
 
 from fastapi import WebSocket
 
+from agents.context import AgentContext
+from agents.orchestrator import AgentOrchestrator
 from audio.manager import AudioManager
 from core.constants import CommonEventType, MsgType
 from core.envelope import WSMessage
 from core.events import FusionContext, GameEvent
-from games.werewolf.fsm import ACTIVE_NIGHT_PHASES, ACTIVE_PHASE_TIMEOUT, PASSIVE_PHASE_DURATION, WerewolfFSM
-from games.werewolf.ontology import PASSIVE_NIGHT_PHASES, WerewolfEventType, WerewolfInputType, WerewolfPhase, WerewolfRole
+from games.werewolf.fsm import (
+    ACTIVE_NIGHT_PHASES,
+    ACTIVE_PHASE_TIMEOUT,
+    PASSIVE_PHASE_DURATION,
+    WerewolfFSM,
+)
+from games.werewolf.ontology import (
+    PASSIVE_NIGHT_PHASES,
+    WerewolfEventType,
+    WerewolfInputType,
+    WerewolfPhase,
+    WerewolfRole,
+)
 from games.werewolf.state import WerewolfPlayerState
-
-from agents.context import AgentContext
-from agents.orchestrator import AgentOrchestrator
 
 # AudioManager가 가로채는 msg_type 집합. yacht_session.py와 동일.
 _AUDIO_MSG_TYPES = {
@@ -66,7 +77,9 @@ class WerewolfSession:
         # 동일 객체 참조를 유지해야 detach_broadcast_if에서 is 비교가 가능.
         self._send_raw_bound = self._send_raw
         if audio_manager is not None:
-            audio_manager.attach_broadcast(self._send_raw_bound, session_id=audio_manager.get_session_id())
+            audio_manager.attach_broadcast(
+                self._send_raw_bound, session_id=audio_manager.get_session_id()
+            )
         self._pending_role_reg: dict | None = None
         self._practice_mode: bool = False
         self._role_reveal: dict | None = None
@@ -189,17 +202,18 @@ class WerewolfSession:
             await self.send_many(self._fsm.handle_input(input_type, payload, player_id))
             return
 
-        await self.send(WSMessage.make_error("UNKNOWN_INPUT", f"알 수 없는 입력입니다: {input_type}"))
+        await self.send(
+            WSMessage.make_error("UNKNOWN_INPUT", f"알 수 없는 입력입니다: {input_type}")
+        )
 
     def get_vision_event_handler(self) -> Callable[[GameEvent, int], None]:
         """비전 스레드에서 호출될 동기 핸들러 반환. 이벤트를 asyncio 루프에 스케줄."""
         def handler(event: GameEvent, state_version: int) -> None:
-            try:
+            # 루프 종료 후 호출 시 무시
+            with contextlib.suppress(RuntimeError):
                 asyncio.run_coroutine_threadsafe(
                     self._handle_vision_event(event), self._loop
                 )
-            except RuntimeError:
-                pass  # 루프 종료 후 호출 시 무시
         return handler
 
     # ── 역할 등록 (pre-game) ──────────────────────────────────────────────────
@@ -241,6 +255,15 @@ class WerewolfSession:
         role = _normalize_role(str(payload_role)) if payload_role else detected
         if not role:
             return
+
+        # Benchmark hook: 역할 등록 인식 정확도. match=1 → 비전 감지값을 그대로 확정,
+        # match=0 → 비전이 미감지했거나(detected None) 사용자가 수동 정정.
+        try:
+            from benchmarks.common.trace_setup import bench_log
+            match = 1 if (detected and role == _normalize_role(str(detected))) else 0
+            bench_log().info("role_recognition reg match=%d", match)
+        except Exception:
+            pass
 
         self._role_reg["confirmed_roles"][player_id] = role
         next_index = self._role_reg["player_index"] + 1
@@ -290,7 +313,10 @@ class WerewolfSession:
                 game_type="werewolf_practice" if self._practice_mode else "werewolf",
                 active_player=None,
                 allowed_actors=[],
-                expected_events=[WerewolfEventType.CARD_PLACED_DOWN, WerewolfEventType.CARD_UNSTABLE],
+                expected_events=[
+                    WerewolfEventType.CARD_PLACED_DOWN,
+                    WerewolfEventType.CARD_UNSTABLE,
+                ],
                 reject_events=[WerewolfEventType.ROLE_DETECTED],
                 valid_targets=None,
                 zones={},
@@ -340,8 +366,9 @@ class WerewolfSession:
     async def _start_game(self, payload: dict) -> None:
         # Benchmark hook.
         try:
-            from benchmarks.common.trace_setup import bench_log
             import time as _t
+
+            from benchmarks.common.trace_setup import bench_log
             bench_log().info("game_start werewolf %.6f", _t.time())
         except Exception:
             pass
@@ -417,7 +444,6 @@ class WerewolfSession:
             active_player_id = self._role_reg.get("player_id")
             if card_player_id and active_player_id and card_player_id != active_player_id:
                 if self._agent is not None:
-                    import time as _t
                     await self._agent.on_game_event(GameEvent(
                         event_type=event.event_type,
                         actor_id=card_player_id,
@@ -467,14 +493,12 @@ class WerewolfSession:
         phase_end_warning = None
         if fusion_ctx.fsm_state == WerewolfPhase.DAY_DISCUSSION:
             timeout = 300.0
-        elif fusion_ctx.fsm_state in PASSIVE_NIGHT_PHASES:
-            if not self._practice_mode:
-                timeout = float(PASSIVE_PHASE_DURATION)
-                phase_end_warning = "눈을 다시 감아주세요."
-        elif fusion_ctx.fsm_state in ACTIVE_NIGHT_PHASES:
-            if not self._practice_mode:
-                timeout = float(ACTIVE_PHASE_TIMEOUT)
-                phase_end_warning = "눈을 다시 감아주세요."
+        elif fusion_ctx.fsm_state in PASSIVE_NIGHT_PHASES and not self._practice_mode:
+            timeout = float(PASSIVE_PHASE_DURATION)
+            phase_end_warning = "눈을 다시 감아주세요."
+        elif fusion_ctx.fsm_state in ACTIVE_NIGHT_PHASES and not self._practice_mode:
+            timeout = float(ACTIVE_PHASE_TIMEOUT)
+            phase_end_warning = "눈을 다시 감아주세요."
         agent_ctx = AgentContext(
             game_type="werewolf_practice" if self._practice_mode else "werewolf",
             fsm_state=fusion_ctx.fsm_state,
@@ -514,7 +538,9 @@ class WerewolfSession:
         await self._push_role_reveal_context(first_player)
         await self._broadcast_role_reveal()
 
-    async def _confirm_role_reveal(self, player_id: str | None, payload: dict | None = None) -> None:
+    async def _confirm_role_reveal(
+        self, player_id: str | None, payload: dict | None = None
+    ) -> None:
         """플레이어의 최종 역할을 확정하고 FSM current_role을 업데이트한다."""
         if self._role_reveal is None or player_id is None or self._fsm is None:
             return
@@ -523,6 +549,14 @@ class WerewolfSession:
         role = detected or (_normalize_role(str(payload_role)) if payload_role else None)
         if not role:
             return
+
+        # Benchmark hook: 최종 공개 인식 정확도. match=1 → 비전이 카드를 감지,
+        # match=0 → 비전 미감지로 사용자가 직접 카드 선택.
+        try:
+            from benchmarks.common.trace_setup import bench_log
+            bench_log().info("role_recognition reveal match=%d", 1 if detected else 0)
+        except Exception:
+            pass
 
         try:
             self._fsm.state.get_player(player_id).current_role = role
@@ -680,10 +714,9 @@ class WerewolfSession:
 
     async def _broadcast_msg(self, msg: WSMessage) -> None:
         """WerewolfFSM 타이머가 호출하는 broadcast 콜백. audio 메시지도 여기서 흐를 수 있음."""
-        try:
+        # disconnect 후 타이머가 남아 있을 때 조용히 종료
+        with contextlib.suppress(Exception):
             await self.send_many([msg])
-        except Exception:
-            pass  # disconnect 후 타이머가 남아 있을 때 조용히 종료
 
     async def send_many(self, messages: list[WSMessage]) -> None:
         for msg in messages:

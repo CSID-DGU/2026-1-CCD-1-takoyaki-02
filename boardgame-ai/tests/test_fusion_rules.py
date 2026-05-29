@@ -321,8 +321,8 @@ def _ctx_vote(fsm_state: str) -> FusionContext:
 def _pointing_hand_at(target_cx: float, target_cy: float) -> HandDet:
     """손목(0.5,0.5)에서 target 방향을 가리키는 포인팅 손."""
     landmarks = [(0.0, 0.0)] * 21
-    landmarks[0] = (0.5, 0.5)               # wrist
-    landmarks[8] = (target_cx, target_cy)   # index tip — 지목 방향
+    landmarks[0] = (0.5, 0.5)  # wrist
+    landmarks[8] = (target_cx, target_cy)  # index tip — 지목 방향
     return HandDet(
         handedness="Right",
         wrist_xy=(0.5, 0.5),

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from typing import Awaitable, Callable
+from collections.abc import Awaitable, Callable
 
 from core.constants import CommonEventType, MsgType
 from core.envelope import WSMessage
@@ -26,12 +26,11 @@ from games.werewolf.ontology import (
     WerewolfInputType,
     WerewolfPhase,
     WerewolfRole,
-    WEREWOLF_TEAM,
 )
+from games.werewolf.state import WerewolfGameState, WerewolfPlayerState
 
 VOTE_COUNTDOWN_SECONDS = 3   # "3,2,1" 카운트다운 시작값
 VOTE_LOCK_GRACE = 0.5        # 카운트다운 0 도달 후 지목 유예 시간(초)
-from games.werewolf.state import WerewolfGameState, WerewolfPlayerState
 
 
 PASSIVE_PHASE_DURATION = 10  # 패시브 역할 안내 화면 표시 시간(초)
@@ -331,8 +330,9 @@ class WerewolfFSM(BaseFSM):
             self.state.winner = judge_winner(self.state)
             # Benchmark hook: 정상 게임 종료.
             try:
-                from benchmarks.common.trace_setup import bench_log
                 import time as _t
+
+                from benchmarks.common.trace_setup import bench_log
                 bench_log().info("game_end werewolf normal %.6f", _t.time())
             except Exception:
                 pass
@@ -483,13 +483,24 @@ class WerewolfFSM(BaseFSM):
         return []
 
     def _handle_vote_point(self, event: GameEvent) -> list[WSMessage]:
-        if WerewolfPhase(self.state.phase) not in (WerewolfPhase.VOTE_COUNTDOWN, WerewolfPhase.VOTE):
+        if WerewolfPhase(self.state.phase) not in (
+            WerewolfPhase.VOTE_COUNTDOWN,
+            WerewolfPhase.VOTE,
+        ):
             return []
         actor_id = event.actor_id
         target_id = event.data.get("target_id")
         if not actor_id or not target_id:
             return []
-        return self._record_vote(actor_id, target_id)
+        messages = self._record_vote(actor_id, target_id)
+        if messages:
+            # Benchmark hook: 비전이 인식한 투표 (vote_recognition 분모).
+            try:
+                from benchmarks.common.trace_setup import bench_log
+                bench_log().info("vote_cast -")
+            except Exception:
+                pass
+        return messages
 
     def _handle_gesture_confirmed(self) -> list[WSMessage]:
         current = WerewolfPhase(self.state.phase)
@@ -547,14 +558,25 @@ class WerewolfFSM(BaseFSM):
 
     def _handle_vote_player(self, player_id: str | None, data: dict) -> list[WSMessage]:
         """수동 보정 경로. votes_locked이어도 허용 (확인 화면 오인식 보정용)."""
-        if WerewolfPhase(self.state.phase) not in (WerewolfPhase.VOTE_COUNTDOWN, WerewolfPhase.VOTE):
+        if WerewolfPhase(self.state.phase) not in (
+            WerewolfPhase.VOTE_COUNTDOWN,
+            WerewolfPhase.VOTE,
+        ):
             return []
         if not player_id:
             return []
         target_id = data.get("target_id")
         if not target_id:
             return []
-        return self._set_vote(player_id, target_id)
+        messages = self._set_vote(player_id, target_id)
+        if messages:
+            # Benchmark hook: 사용자의 투표 오인식 수동 정정 = 인식 실패 신호.
+            try:
+                from benchmarks.common.trace_setup import bench_log
+                bench_log().info("vote_correction -")
+            except Exception:
+                pass
+        return messages
 
     def _handle_vote_result_confirm(self) -> list[WSMessage]:
         """투표 결과 확인 화면에서 최종 확정. votes_locked 상태에서만 유효."""
