@@ -5,7 +5,7 @@ export default function NightStart({ onComplete, send, onExit, isPracticeMode })
   useEffect(() => {
     // 연습모드만 프론트에서 발화 — 비연습모드는 ProgressAgent가 담당
     if (isPracticeMode) {
-      send?.('TTS_REQUEST', { text: '연습모드입니다. 눈을 감지 않고 진행합니다. 차례가 되면 해당 역할 플레이어가 행동을 수행해주세요.' })
+      send?.('TTS_REQUEST', { text: '튜토리얼 모드입니다. 눈을 감지 않고 진행합니다. 차례가 되면 해당 역할 플레이어가 행동을 수행해주세요.' })
     }
 
     // 늑대 울음 환경음 — 원본 7초, 최대 5초에서 컷.
@@ -47,7 +47,7 @@ export default function NightStart({ onComplete, send, onExit, isPracticeMode })
 
     let timer = null
     const unsubscribe = audio.onNextTtsEnded(() => {
-      timer = setTimeout(onComplete, isPracticeMode ? 4000 : 8000)
+      timer = setTimeout(onComplete, isPracticeMode ? 9000 : 8000)
     })
     return () => {
       unsubscribe()
@@ -145,14 +145,16 @@ export default function NightStart({ onComplete, send, onExit, isPracticeMode })
         {/* 중앙 텍스트 */}
         <div style={styles.inner}>
           <div style={{ ...styles.ttsLabel, animation: 'ttsFlicker 1.6s ease-in-out infinite' }}>
-            {isPracticeMode ? '연습 모드' : 'TTS 재생 중'}
+            {isPracticeMode ? '튜토리얼 모드' : 'TTS 재생 중'}
           </div>
           <div style={{ ...styles.title, animation: 'fadeIn 0.8s ease-out both' }}>
             밤이 되었습니다
           </div>
-          <div style={{ ...styles.subtitle, animation: 'fadeIn 0.8s ease-out 0.2s both' }}>
-            {isPracticeMode ? '눈을 감지 않고 진행합니다' : '모두 눈을 감아주세요'}
-          </div>
+          {isPracticeMode && (
+            <div style={{ ...styles.subtitle, animation: 'fadeIn 0.8s ease-out 0.2s both' }}>
+              눈을 감지 않고 진행합니다
+            </div>
+          )}
           {isPracticeMode && (
             <div style={{ ...styles.subtitle, fontSize: 14, marginTop: 4, animation: 'fadeIn 0.8s ease-out 0.4s both' }}>
               차례가 되면 해당 역할 플레이어가 행동을 수행해주세요

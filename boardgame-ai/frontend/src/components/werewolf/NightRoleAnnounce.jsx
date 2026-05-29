@@ -12,6 +12,7 @@ const ROLE_NIGHT_DATA = {
     image: '/roles/werewolf.png',
     announce: '늑대인간은 깨어나세요.',
     action: '서로를 확인하고 다시 눈을 감으세요.',
+    tutorialAction: '서로를 확인하세요.',
   },
   minion: {
     name: '하수인',
@@ -24,6 +25,7 @@ const ROLE_NIGHT_DATA = {
     image: '/roles/mason.png',
     announce: '프리메이슨은 깨어나세요.',
     action: '서로를 확인하고 다시 눈을 감으세요.',
+    tutorialAction: '서로를 확인하세요.',
   },
   seer: {
     name: '예언자',
@@ -66,7 +68,7 @@ function toKoreanTTS(text) {
   return text.replace(/([123])(명|장|개)/g, (_, n, counter) => `${KOREAN_NUMS[Number(n)]} ${counter}`)
 }
 
-export default function NightRoleAnnounce({ roleId, onComplete, onExit }) {
+export default function NightRoleAnnounce({ roleId, onComplete, onExit, isPracticeMode }) {
   const role = ROLE_NIGHT_DATA[roleId]
   const isPassive = PASSIVE_ROLES.has(roleId)
   const duration = isPassive ? PASSIVE_DURATION : ACTIVE_DURATION
@@ -84,6 +86,8 @@ export default function NightRoleAnnounce({ roleId, onComplete, onExit }) {
   }, [roleId])
 
   if (!role) return null
+
+  const displayAction = isPracticeMode ? (role.tutorialAction ?? role.action) : role.action
 
   return (
     <>
@@ -180,7 +184,7 @@ export default function NightRoleAnnounce({ roleId, onComplete, onExit }) {
 
           <div style={{ ...styles.textBlock, animation: 'fadeIn 0.6s ease-out 0.25s both' }}>
             <p style={styles.announceText}>{role.announce}</p>
-            <p style={styles.actionText}>{role.action}</p>
+            <p style={styles.actionText}>{displayAction}</p>
             <p style={styles.countdownText}>{countdown}초 후 자동으로 넘어갑니다</p>
           </div>
 

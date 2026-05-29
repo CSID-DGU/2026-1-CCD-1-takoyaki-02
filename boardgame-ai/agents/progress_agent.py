@@ -20,9 +20,9 @@ from core.audio import AudioPriority
 _WEREWOLF_SCRIPTS: dict[str, str] = {
     "night_start":        "밤이 되었습니다. 모두 눈을 감아주세요.",
     "night_doppelganger": "도플갱어는 깨어나세요. 다른 플레이어 1명의 카드를 확인하세요. 그 역할이 됩니다.",
-    "night_werewolf":     "늑대인간은 깨어나세요. 서로를 확인하세요.",
+    "night_werewolf":     "늑대인간은 깨어나세요. 서로를 확인하고 다시 눈을 감으세요.",
     "night_minion":       "하수인은 깨어나세요. 늑대인간들은 엄지를 들어올려 자신을 알려주세요.",
-    "night_mason":        "프리메이슨은 깨어나세요. 서로를 확인하세요.",
+    "night_mason":        "프리메이슨은 깨어나세요. 서로를 확인하고 다시 눈을 감으세요.",
     "night_seer":         "예언자는 깨어나세요. 다른 플레이어 1명 또는 중앙 카드 2장을 확인할 수 있습니다.",
     "night_robber":       "도둑은 깨어나세요. 다른 플레이어 1명의 카드와 자신의 카드를 교환할 수 있습니다.",
     "night_troublemaker": "말썽꾼은 깨어나세요. 자신을 제외한 두 플레이어의 카드를 서로 교환하세요.",
@@ -30,11 +30,20 @@ _WEREWOLF_SCRIPTS: dict[str, str] = {
     "night_insomniac":    "불면증환자는 깨어나세요. 자신의 카드를 확인하세요.",
     # day_discussion: NightEnd 컴포넌트가 "아침이 밝았습니다 → 토론 시작" 순서를 관리.
     # ProgressAgent가 여기서 발화하면 NightEnd TTS와 순서 충돌 → 제거.
-    "vote_countdown":     "투표를 시작합니다. 제거할 플레이어를 손으로 가리키세요.",
+    # vote_countdown: VoteCountdown.jsx 마운트 시 직접 발화 — FUSION_CONTEXT 타이밍 불일치 방지.
+}
+
+# 튜토리얼 모드 — 눈 감기 관련 안내 제거
+_WEREWOLF_PRACTICE_SCRIPTS: dict[str, str] = {
+    **_WEREWOLF_SCRIPTS,
+    "night_start":    "밤이 되었습니다.",
+    "night_werewolf": "늑대인간은 깨어나세요. 서로를 확인하세요.",
+    "night_mason":    "프리메이슨은 깨어나세요. 서로를 확인하세요.",
 }
 
 _SCRIPTS: dict[str, dict[str, str]] = {
-    "werewolf": _WEREWOLF_SCRIPTS,
+    "werewolf":          _WEREWOLF_SCRIPTS,
+    "werewolf_practice": _WEREWOLF_PRACTICE_SCRIPTS,
 }
 
 

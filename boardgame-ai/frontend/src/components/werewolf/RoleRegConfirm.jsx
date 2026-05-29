@@ -112,7 +112,7 @@ const ROLES = [
   {
     id: 'minion', name: '하수인', image: '/roles/minion.png',
     gradient: 'linear-gradient(135deg, #5a1a7a, #2a0a4a)',
-    desc: '늑대인간 팀이지만 누가 늑대인간인지 알 수 없습니다.',
+    desc: '밤에 깨어나 늑대인간이 누구인지 확인합니다. 단, 늑대인간은 하수인이 누구인지 모릅니다.',
     action: '밤에 깨어나 늑대인간이 누구인지 확인합니다. 단, 늑대인간은 하수인이 누구인지 모릅니다.',
     winCondition: '늑대인간이 처형되지 않으면 늑대인간 팀 승리입니다. 단, 늑대인간이 없는데 자신이 처형되면 마을 팀이 승리합니다.',
   },
@@ -307,7 +307,7 @@ export default function RoleRegConfirm({ player, detectedRoleId, allRoles = [], 
                   <img src={selected.image} alt={selected.name} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
                 </div>
                 <div>
-                  <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 2, color: 'rgba(220,185,80,0.6)', textTransform: 'uppercase', marginBottom: 4 }}>연습모드 역할 설명</div>
+                  <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 2, color: 'rgba(220,185,80,0.6)', textTransform: 'uppercase', marginBottom: 4 }}>튜토리얼 모드 역할 설명</div>
                   <div style={{ fontSize: 26, fontWeight: 800, color: '#F8F1DD' }}>{selected.name}</div>
                 </div>
               </div>
