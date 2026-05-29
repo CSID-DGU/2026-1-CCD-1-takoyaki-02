@@ -9,7 +9,7 @@ export default function VoteCountdown({ players = [], votes = {}, send, onExit }
   const allDone = total > 0 && doneCount >= total
 
   useEffect(() => {
-    send?.('TTS_REQUEST', { text: '투표를 시작합니다. 제거할 플레이어의 카드를 지목하세요.' })
+    send?.('TTS_REQUEST', { text: '투표를 시작합니다. 제거할 플레이어를 지목하세요.' })
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleCardClick = (playerId) => {
@@ -99,7 +99,7 @@ export default function VoteCountdown({ players = [], votes = {}, send, onExit }
             </>
           ) : (
             <>
-              <div style={styles.guideLine}>지목할 플레이어의 카드를 손가락으로 가리키세요.</div>
+              <div style={styles.guideLine}>지목할 플레이어를 손가락으로 가리키세요.</div>
               <div style={styles.guideLineSub}>직접 선택: 투표자 카드를 먼저 누르세요. 자기 자신 지목은 기권입니다.</div>
             </>
           )}
