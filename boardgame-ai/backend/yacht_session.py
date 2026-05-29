@@ -191,6 +191,14 @@ class YachtSession:
                 )
                 return
 
+            # Benchmark hook: 사용자의 눈 수 직접 정정 = 순수 인식 실패 신호
+            # (undo_round와 함께 인식 정확도 proxy로 집계).
+            try:
+                from benchmarks.common.trace_setup import bench_log
+                bench_log().info("manual_dice_correction -")
+            except Exception:
+                pass
+
             with self._fsm_lock:
                 previous_state = deepcopy(self.fsm.state)
                 if self.fsm.state.phase in (
