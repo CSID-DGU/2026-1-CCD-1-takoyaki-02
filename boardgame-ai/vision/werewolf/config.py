@@ -14,7 +14,7 @@ class WerewolfVisionConfig:
     source: int | str = 0
     resolution: tuple[int, int] = (1920, 1080)
     target_fps: int = 30
-    frame_skip: int = 2
+    frame_skip: int = 0
 
     # YOLO 카드 감지 모델
     # 학습 완료 후 이 경로에 .pt 파일을 두면 자동 로드
