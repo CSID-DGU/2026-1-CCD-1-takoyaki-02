@@ -245,7 +245,12 @@ class WerewolfVisionPipeline:
                 if margin >= MARGIN_THRESHOLD or track.match_attempts >= MAX_MATCH_ATTEMPTS:
                     track.pending_match = False
 
-            player_id = track.confirmed_player_id
+            # confirmed_player_id는 "2표+마진" 게이트로 초기 오매칭 굳음을 막지만,
+            # 투표 포인팅·OK 사인처럼 짧게 손을 뻗는 동작은 표를 못 모아 None이 되기 쉽다.
+            # None이면 best_effort(마진 없이 최빈 non-None)로 폴백해 "등록된 손은
+            # 항상 가장 비슷한 플레이어로 매칭"을 보장한다. 둘 다 None이면(=아직 한 번도
+            # 매칭된 적 없음) None 유지.
+            player_id = track.confirmed_player_id or track.best_effort_player_id
             prev_gesture = self._prev_gestures.get(track.track_id)
             stable_hand = HandDet(
                 handedness=stable_handedness,

@@ -36,13 +36,20 @@ CARD_UNSTABLE    = "werewolf_card_unstable"
 
 _PHASE_ROLE_REGISTRATION = "role_registration"
 _PHASE_ROLE_REG_TRANSITION = "role_reg_transition"
+# 투표 종료 후 카드가 바뀐 플레이어가 한 명씩 자기 카드를 다시 확인하는 단계.
+# 등록 단계와 동일하게 ROLE_DETECTED 를 카메라로 감지해야 한다(같은 _check_role_detected 사용).
+_PHASE_FINAL_ROLE_REVEAL = "final_role_reveal"
 _PHASE_NIGHT_DOPPELGANGER = "night_doppelganger"
 _PHASE_NIGHT_SEER = "night_seer"
 _PHASE_NIGHT_INSOMNIAC = "night_insomniac"
 _PHASE_NIGHT_ROBBER = "night_robber"
 _PHASE_NIGHT_TROUBLEMAKER = "night_troublemaker"
 _PHASE_NIGHT_DRUNK = "night_drunk"
+# FSM은 투표를 VOTE_COUNTDOWN("vote_countdown")으로 진입시키고 전원 투표 전까지
+# 여기 머문다. "vote"는 자동 전이 경로가 없는 사실상 死페이즈이므로, 포인팅 투표는
+# 두 문자열 모두에서 감지해야 한다. 둘 다 expected_events=[VOTE_POINT]로 동일 처리됨.
 _PHASE_VOTE = "vote"
+_PHASE_VOTE_COUNTDOWN = "vote_countdown"
 
 # YOLO cls_name (Title Case) → FSM role 문자열 (lowercase) 변환
 _BACK_CLASS = "Card_Back"
@@ -51,6 +58,9 @@ _BACK_CLASS = "Card_Back"
 _GRAB_DIST_THRESHOLD = 0.08   # 손목-카드 중심 최대 거리 (grab/release 판정)
 _MIN_POINT_LENGTH = 0.03      # 손목→검지끝 최소 거리 (포인팅 제스처 판별)
 _RAY_MAX_T = 1.5              # ray cast 최대 거리 (정규화)
+# 투표: 손가락 ray 와 좌석 좌표 사이 허용 수직거리(정규화). 이 안에 들어오는
+# 좌석 중 가장 가까운(ray 진행방향 t>0) 좌석을 지목 대상으로 본다.
+_SEAT_POINT_PERP_DIST = 0.18
 
 # 역할 등록 단계 전용 파라미터
 _ROLE_REG_MIN_BBOX_SHORT = 0.06  # 카드 bbox 단변 최소값 (정규화). 멀리 있는 작은 카드 제외.
@@ -118,7 +128,8 @@ class WerewolfRules:
             if c:
                 candidates.append(c)
 
-        elif phase == _PHASE_ROLE_REGISTRATION:
+        elif phase in (_PHASE_ROLE_REGISTRATION, _PHASE_FINAL_ROLE_REVEAL):
+            # 등록·최종 재확인 모두 active_player의 카드를 카메라로 재인식한다.
             # 플레이어가 전환되면 카드 stable_frames를 리셋해 재인식을 강제한다.
             # 직전 플레이어의 카드가 아직 테이블에 있을 경우 즉시 발화하는 연쇄 인식 방지.
             current_reg_player = ctx.active_player or ""
@@ -139,7 +150,7 @@ class WerewolfRules:
             if c:
                 candidates.append(c)
 
-        elif phase == _PHASE_VOTE:
+        elif phase in (_PHASE_VOTE, _PHASE_VOTE_COUNTDOWN):
             for hand in perception.hands:
                 c = self._check_vote_point(hand, ctx, tracked)
                 if c:
@@ -334,9 +345,11 @@ class WerewolfRules:
         ctx: FusionContext,
         tracked: list[TrackedCard],
     ) -> tuple[str, dict, float] | None:
-        """손목[0]→검지끝[8] 방향 벡터 연장선이 face_down 카드 bbox 와 교차하면 VOTE_POINT.
+        """손목[0]→검지끝[8] ray 가 가장 잘 향하는 좌석(player)을 지목 → VOTE_POINT.
 
-        1인 1표 — 이미 투표한 voter_id 는 skip.
+        카드 위치/인식과 무관하게 ctx.anchors 의 seat_{pid} 좌표로 사람을 가리킨다.
+        투표 단계의 카드는 테이블 중앙에 모여 player_id=None 으로 잡히므로(카드 기반
+        지목은 동작 불가), 좌석 좌표 ray 매칭으로 대체했다. 1인 1표.
         """
         voter_id = hand.player_id
         if not voter_id:
@@ -358,23 +371,41 @@ class WerewolfRules:
 
         nx, ny = dx / length, dy / length
 
-        for card in tracked:
-            if card.face_up:
-                continue  # 뒤집힌 카드만 투표 대상
-            if card.player_id is None:
-                continue  # 센터 카드는 투표 대상 아님
-            if not _ray_hits_bbox(wrist, (nx, ny), card.bbox, _RAY_MAX_T):
+        # ctx.anchors 에서 seat_{pid} 좌표 수집 (자기 자신 제외)
+        best_target: str | None = None
+        best_perp = _SEAT_POINT_PERP_DIST
+        for key, pos in ctx.anchors.items():
+            if not key.startswith("seat_"):
                 continue
+            target_id = key[len("seat_"):]
+            if target_id == voter_id:
+                continue
+            sx = pos.get("x")
+            sy = pos.get("y")
+            if sx is None or sy is None:
+                continue
+            # ray(wrist + t·(nx,ny)) 위로의 좌석 투영 파라미터 t.
+            t = (sx - wrist[0]) * nx + (sy - wrist[1]) * ny
+            if t <= 0 or t > _RAY_MAX_T:
+                continue  # 손가락 뒤쪽 또는 너무 먼 좌석
+            # ray 직선과 좌석점 사이 수직거리.
+            proj_x = wrist[0] + t * nx
+            proj_y = wrist[1] + t * ny
+            perp = math.hypot(sx - proj_x, sy - proj_y)
+            if perp < best_perp:
+                best_perp = perp
+                best_target = target_id
 
-            self._votes_cast[voter_id] = card.player_id
-            data = {
-                "actor_id": voter_id,
-                "target_id": card.player_id,
-                "_key": (voter_id, card.player_id),
-            }
-            return VOTE_POINT, data, 0.85
+        if best_target is None:
+            return None
 
-        return None
+        self._votes_cast[voter_id] = best_target
+        data = {
+            "actor_id": voter_id,
+            "target_id": best_target,
+            "_key": (voter_id, best_target),
+        }
+        return VOTE_POINT, data, 0.85
 
 
 # ── 헬퍼 함수 ─────────────────────────────────────────────────────────────────
@@ -410,42 +441,3 @@ def _find_nearest_card(
             best_dist = dist
             best = card
     return best
-
-
-def _ray_hits_bbox(
-    origin: tuple[float, float],
-    direction: tuple[float, float],
-    bbox: object,
-    max_t: float,
-) -> bool:
-    """AABB 레이-박스 교차 검사 (정규화 좌표 기준).
-
-    origin 에서 direction 방향으로 뻗은 반직선이 bbox 와 교차하면 True.
-    t ∈ [0, max_t] 범위만 검사.
-    """
-    ox, oy = origin
-    dx, dy = direction
-
-    if abs(dx) < 1e-9:
-        # 수직 방향 — x 가 bbox 범위 안에 있는지만 확인
-        txmin = float("-inf") if bbox.x1 <= ox <= bbox.x2 else float("inf")
-        txmax = float("inf") if bbox.x1 <= ox <= bbox.x2 else float("-inf")
-    else:
-        txmin = (bbox.x1 - ox) / dx
-        txmax = (bbox.x2 - ox) / dx
-        if txmin > txmax:
-            txmin, txmax = txmax, txmin
-
-    if abs(dy) < 1e-9:
-        tymin = float("-inf") if bbox.y1 <= oy <= bbox.y2 else float("inf")
-        tymax = float("inf") if bbox.y1 <= oy <= bbox.y2 else float("-inf")
-    else:
-        tymin = (bbox.y1 - oy) / dy
-        tymax = (bbox.y2 - oy) / dy
-        if tymin > tymax:
-            tymin, tymax = tymax, tymin
-
-    t_enter = max(txmin, tymin, 0.0)
-    t_exit = min(txmax, tymax, max_t)
-
-    return t_enter <= t_exit
