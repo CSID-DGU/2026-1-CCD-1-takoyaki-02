@@ -296,6 +296,13 @@ class YachtFSM(BaseFSM):
         return [self._make_state_update()]
 
     def _is_current_actor(self, actor_id: str | None) -> bool:
+        """굴린 사람이 현재 차례 플레이어인가.
+
+        actor_id가 None이면 비전이 굴린 사람을 특정하지 못한 경우다. 이때는
+        현재 플레이어의 굴림인데 손 player_id가 미확정이었을 가능성이 높으므로
+        통과시킨다 (정상 굴림을 차례 위반으로 오인하지 않기 위함).
+        actor_id가 다른 플레이어로 명확히 잡힌 경우에만 차례 위반으로 본다.
+        """
         return actor_id in (None, self.state.current_player.player_id)
 
     def _roll_message(self) -> str:

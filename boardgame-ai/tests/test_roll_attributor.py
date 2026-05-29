@@ -209,6 +209,34 @@ def test_finger_in_tray_triggers_occupation() -> None:
     assert attr.state == RollState.HAND_IN_TRAY
 
 
+def test_roll_fires_when_hand_player_id_unconfirmed() -> None:
+    """active_player가 정해졌지만 손의 player_id가 아직 미확정(None)인 굴림도 발화.
+
+    실전 회귀: 굴림처럼 짧은 동작에선 player_id 다수결이 굳기 전이라 손에
+    player_id가 안 붙는데, finalize 가드가 active_player 필터로 손을 검사하면
+    가드가 영원히 안 풀려 발화가 통째로 막혔다. 가드를 무필터로 완화해 해소.
+    """
+    attr = RollAttributor(
+        stabilization_frames=3,
+        enter_debounce_frames=1,
+        exit_debounce_frames=1,
+        roll_tray_in_tray_required=1,
+    )
+
+    # active_player는 "p_a"로 정해졌지만 감지된 손은 아직 player_id 미확정(None).
+    hand_in = _hand(None, (0.5, 0.5))
+    attr.update(_frame(0, [], _initial_dice()), active_player="p_a")
+    attr.update(_frame(1, [hand_in], _initial_dice()), active_player="p_a")
+    assert attr.state == RollState.HAND_IN_TRAY
+
+    attr.update(_frame(2, [hand_in], _initial_dice()), active_player="p_a")
+    result = attr.update(_frame(3, [], _rolled_dice()), active_player="p_a")
+    # 발화돼야 한다 (가드 통과). actor는 player_id 미확정이라 None일 수 있음.
+    assert attr.just_finalized is True
+    assert attr.state == RollState.WAITING
+    _ = result
+
+
 def test_no_tray_no_occupation() -> None:
     """tray 미감지면 점유 판정 안 함."""
     attr = RollAttributor(
@@ -228,6 +256,59 @@ def test_no_tray_no_occupation() -> None:
     result = attr.update(perception)
     assert result is None
     assert attr.state == RollState.WAITING
+
+
+def test_cover_and_uncover_same_pips_no_fire() -> None:
+    """roll_tray로 잠깐 가렸다 치우기 — 눈 분포 동일하면 발화 안 함.
+
+    실전 회귀: 가림 시 ByteTrack이 track_id를 재할당하거나 개수가 잠깐
+    어긋나 변화 점수가 1.0으로 튀어, 굴리지도 않았는데 ROLL_CONFIRMED가
+    발화돼 굴림 횟수가 깎였다. pip 분포(multiset) 비교로 눈이 그대로면 0점.
+    """
+    attr = RollAttributor(
+        stabilization_frames=3,
+        enter_debounce_frames=1,
+        exit_debounce_frames=1,
+        roll_tray_in_tray_required=1,
+    )
+    initial = [_dice(i, (0.3 + 0.05 * i, 0.4), pip=p) for i, p in enumerate([1, 2, 3, 4, 5])]
+
+    attr.update(_frame(0, [], initial))
+    attr.update(_frame(1, [_hand("p_a", (0.5, 0.5))], initial))
+    assert attr.state == RollState.HAND_IN_TRAY
+
+    # 가렸다 치움: track_id는 새로 부여됐지만 눈 분포는 그대로(위치도 그대로).
+    uncovered = [
+        _dice(i + 100, (0.3 + 0.05 * i, 0.4), pip=p) for i, p in enumerate([1, 2, 3, 4, 5])
+    ]
+    result = attr.update(_frame(2, [], uncovered))
+    assert result is None
+    assert attr.just_finalized is False
+    assert attr.state == RollState.WAITING
+
+
+def test_non_current_player_roll_returns_that_player_as_actor() -> None:
+    """차례가 아닌 사람(p_b)이 굴려도 actor는 p_b로 잡힌다 (FSM 차례 경고용).
+
+    실전 회귀: actor 산정이 active_player(p_a) 필터를 걸어, p_b 굴림에서
+    actor가 None이 됐다. FSM은 actor=None을 현재 플레이어로 간주해 차례
+    경고 없이 정상 처리했다. 필터를 풀어 실제 굴린 사람을 actor로 반환.
+    """
+    attr = RollAttributor(
+        stabilization_frames=3,
+        enter_debounce_frames=1,
+        exit_debounce_frames=1,
+        roll_tray_in_tray_required=1,
+    )
+    # active_player는 p_a지만 굴리는 손은 p_b.
+    hand_b = _hand("p_b", (0.5, 0.5))
+    attr.update(_frame(0, [], _initial_dice()), active_player="p_a")
+    attr.update(_frame(1, [hand_b], _initial_dice()), active_player="p_a")
+    assert attr.state == RollState.HAND_IN_TRAY
+
+    attr.update(_frame(2, [hand_b], _initial_dice()), active_player="p_a")
+    result = attr.update(_frame(3, [], _rolled_dice()), active_player="p_a")
+    assert result == "p_b"
 
 
 def test_static_scene_no_fire() -> None:

@@ -181,9 +181,7 @@ class VisionPipeline:
             hands=hands,
         )
 
-        roll_actor = self._roll_attributor.update(
-            perception, active_player=self._active_player
-        )
+        roll_actor = self._roll_attributor.update(perception, active_player=self._active_player)
         if roll_actor is not None:
             perception.roll_actor_id = roll_actor
         if self._roll_attributor.just_finalized:
@@ -294,7 +292,10 @@ class VisionPipeline:
                 if margin >= MARGIN_THRESHOLD or track.match_attempts >= MAX_MATCH_ATTEMPTS:
                     track.pending_match = False
 
-            player_id = track.confirmed_player_id
+            # 확정값 우선, 미확정이면 best-effort 최빈값으로 폴백.
+            # 등록된 손은 항상 누군가로 매칭되어야 actor 산정이 None으로 새지 않고
+            # 차례 위반(옆사람 굴림)이 감지된다.
+            player_id = track.confirmed_player_id or track.best_effort_player_id
             prev_gesture = self._prev_gestures.get(track.track_id)
             stable_hand = HandDet(
                 handedness=stable_handedness,
