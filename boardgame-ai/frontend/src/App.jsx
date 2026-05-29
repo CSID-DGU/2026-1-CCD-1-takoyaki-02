@@ -69,9 +69,10 @@ export default function App() {
     }
   }, [state?.sound_seq])
 
-  // 백엔드 phase가 늑대인간 게임 단계로 진입하면 page 동기화
+  // 백엔드 phase가 늑대인간 게임 단계로 진입하면 page 동기화 (새로고침 복구 용도)
+  // seat/lobby에서는 발동하지 않음 — 게임 선택 전 한밤 파이프라인이 켜지는 사이드이펙트 방지
   useEffect(() => {
-    if (WEREWOLF_PHASES.has(phase) && page !== 'werewolf') {
+    if (WEREWOLF_PHASES.has(phase) && page !== 'werewolf' && page !== 'seat' && page !== 'lobby') {
       setPage('werewolf')
     }
   }, [phase, page])
