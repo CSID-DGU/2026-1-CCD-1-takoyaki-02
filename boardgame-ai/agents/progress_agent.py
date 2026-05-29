@@ -61,6 +61,8 @@ class ProgressAgent(BaseAgent):
         return self._werewolf_progress(ctx)
 
     def _yacht_progress(self, ctx: AgentContext) -> Intervention | None:
+        if ctx.game_specific.get("tutorial_mode") and ctx.fsm_state != "AWAITING_ROLL":
+            return None
         # 요트는 같은 fsm_state(awaiting_keep 등)가 매 굴림마다 반복되므로
         # 상태명 중복 체크 대신 last_message 내용으로 TTS 발화를 결정한다.
         text = ctx.game_specific.get("last_message", "")

@@ -26,12 +26,13 @@ const SHOW_DICE_MANUAL_INPUT = import.meta.env.VITE_SHOW_DICE_MANUAL_INPUT !== '
 const TUTORIAL_INTRO_TEXT =
   '요트다이스는 플레이어가 순서대로 주사위 5개를 굴리고, 나온 눈 조합을 가장 유리한 점수 칸에 기록해 총점을 겨루는 게임입니다. 한 턴에는 최대 세 번까지 굴릴 수 있고, 마음에 드는 주사위는 킵한 뒤 나머지만 다시 굴릴 수 있습니다.'
 const TUTORIAL_GUIDE_STEPS = [
-  '원하는 주사위를 킵할 수 있습니다. 킵한 주사위는 다음 굴림에서 유지됩니다.',
-  '한 번 킵한 주사위를 다시 누르면 킵이 풀리고, 다음 굴림에서 다시 굴릴 수 있습니다.',
+  '주사위 중 마음에 드는 눈이 있다면 그 주사위를 보드 위 주사위 공간으로 옮겨서 킵해주세요. 끝났다면 태블릿의 다음 버튼을 눌러주세요.',
+  '킵했던 주사위도 언제든 굴림 영역으로 옮겨 다시 굴릴 수 있습니다.',
   '주사위는 세 번까지 굴릴 수 있습니다. 다시 굴리거나 그 전에 점수 칸을 선택해 턴을 끝낼 수도 있습니다.',
-  '점수판 오른쪽 위 ? 버튼에서 족보 설명을 볼 수 있습니다.',
-  '점수판에서 원하는 점수 칸을 선택하면 이번 턴의 점수가 기록됩니다.',
+  '점수판 오른쪽 위 물음표 버튼에서 족보 설명을 볼 수 있습니다.',
+  '점수판에서 원하는 점수 칸을 선택하면 이번 턴의 점수가 기록됩니다. 주사위를 더 굴리거나, 원하시는 족보를 선택해주세요.',
 ]
+const sentTutorialTtsKeys = new Set()
 
 const s = {
   page: {
@@ -683,9 +684,12 @@ export default function YachtGame({ players, tutorialMode = false, onExit, onCha
 
   useEffect(() => {
     if (!connected || !tutorialText) return
+    if (state?.phase === 'AWAITING_ROLL') return
     const key = `${state?.current_player_id || ''}:${state?.phase || ''}:${state?.roll_count || 0}:${tutorialGuideStep}:${tutorialText}`
     if (lastTutorialTtsKeyRef.current === key) return
+    if (sentTutorialTtsKeys.has(key)) return
     lastTutorialTtsKeyRef.current = key
+    sentTutorialTtsKeys.add(key)
     send('TTS_REQUEST', { text: tutorialText })
   }, [connected, send, state?.current_player_id, state?.phase, state?.roll_count, tutorialGuideStep, tutorialText])
 
@@ -1172,7 +1176,7 @@ function getTutorialGuide(state, currentPlayer, guideStep) {
   }
   if (state.phase === 'AWAITING_SCORE') {
     return {
-      text: '이제 점수 칸을 선택할 차례입니다. 예상 점수를 보고 원하는 칸에 기록하세요. 족보가 헷갈리면 점수판 오른쪽 위 ? 버튼을 확인하세요.',
+      text: '이제 점수 칸을 선택할 차례입니다. 예상 점수를 보고 원하는 칸에 기록하세요. 족보가 헷갈리면 점수판 오른쪽 위 물음표 버튼을 확인하세요.',
       hasNext: false,
     }
   }

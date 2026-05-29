@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import random
 import threading
+import time
 from collections.abc import Callable
 from copy import deepcopy
 from typing import Any
@@ -54,6 +55,7 @@ class YachtSession:
         self._bridge = bridge
         self._audio_manager = audio_manager
         self._agent = agent_orchestrator
+        self._last_tts_request: tuple[str, float] = ("", 0.0)
         self._send_raw_bound = self._send_raw
         if audio_manager is not None:
             audio_manager.attach_broadcast(self._send_raw_bound, session_id=audio_manager.get_session_id())
@@ -107,6 +109,11 @@ class YachtSession:
         if input_type == "TTS_REQUEST":
             text = str(payload.get("text") or "").strip()
             if text and self._audio_manager is not None:
+                now = time.monotonic()
+                last_text, last_at = self._last_tts_request
+                if text == last_text and now - last_at < 4.0:
+                    return
+                self._last_tts_request = (text, now)
                 state_version = self.fsm.state.state_version if self.fsm is not None else 0
                 await self._audio_manager.enqueue_tts(text=text, state_version=state_version)
             return
@@ -408,6 +415,7 @@ class YachtSession:
             "available_categories": list(state.available_categories),
             "roll_count": state.roll_count,
             "last_message": state.last_message,
+            "tutorial_mode": self.tutorial_mode,
         }
         agent_ctx = AgentContext(
             game_type="yacht",
