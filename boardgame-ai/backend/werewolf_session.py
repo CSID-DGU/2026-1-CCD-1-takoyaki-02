@@ -285,19 +285,12 @@ class WerewolfSession:
             for p in players_data
         ]
         seat_positions = self._seat_positions_fn() if self._seat_positions_fn else {}
-        sv = lambda: self._fsm.state.state_version if self._fsm is not None else 0
-
-        async def _tts(text: str) -> None:
-            if self._audio_manager is not None:
-                await self._audio_manager.enqueue_tts(text=text, state_version=sv())
 
         self._fsm = WerewolfFSM(
             players=ws_players,
             center_cards=center_cards,
             broadcast=self._broadcast_msg,
             seat_positions=seat_positions,
-            enqueue_tts_fn=_tts,
-            practice_mode=self._practice_mode,
         )
         await self.send_many(self._fsm.start())
 
@@ -373,9 +366,13 @@ class WerewolfSession:
         if fusion_ctx.fsm_state == WerewolfPhase.DAY_DISCUSSION:
             timeout = 300.0
         elif fusion_ctx.fsm_state in PASSIVE_NIGHT_PHASES:
-            pass  # TempoAgent 미사용 — 야간 페이즈에서 시간 안내 발화 없음
+            if not self._practice_mode:
+                timeout = float(PASSIVE_PHASE_DURATION)
+                phase_end_warning = "눈을 다시 감아주세요."
         elif fusion_ctx.fsm_state in ACTIVE_NIGHT_PHASES:
-            pass  # TempoAgent 미사용 — 야간 페이즈에서 시간 안내 발화 없음
+            if not self._practice_mode:
+                timeout = float(ACTIVE_PHASE_TIMEOUT)
+                phase_end_warning = "눈을 다시 감아주세요."
         agent_ctx = AgentContext(
             game_type="werewolf_practice" if self._practice_mode else "werewolf",
             fsm_state=fusion_ctx.fsm_state,

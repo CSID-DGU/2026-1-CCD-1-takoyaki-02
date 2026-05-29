@@ -58,14 +58,10 @@ class WerewolfFSM(BaseFSM):
         center_cards: list[str],
         broadcast: Callable[[WSMessage], Awaitable[None]],
         seat_positions: dict[str, tuple[float, float]] | None = None,
-        enqueue_tts_fn: Callable[[str], Awaitable[None]] | None = None,
-        practice_mode: bool = False,
     ) -> None:
         self.state = WerewolfGameState.new(players, center_cards)
         self._broadcast = broadcast
         self._seat_positions: dict[str, tuple[float, float]] = seat_positions or {}
-        self._enqueue_tts = enqueue_tts_fn
-        self._practice_mode = practice_mode
         self._timer_task: asyncio.Task[None] | None = None
         self._passive_timer_task: asyncio.Task[None] | None = None
         self._active_timer_task: asyncio.Task[None] | None = None
@@ -564,10 +560,7 @@ class WerewolfFSM(BaseFSM):
     async def _run_passive_timer(self, phase: WerewolfPhase) -> None:
         """패시브 역할 안내 화면을 PASSIVE_PHASE_DURATION 초 표시 후 다음 페이즈로 전이."""
         try:
-            await asyncio.sleep(PASSIVE_PHASE_DURATION - 4)
-            if not self._practice_mode and WerewolfPhase(self.state.phase) == phase and self._enqueue_tts:
-                await self._enqueue_tts("눈을 다시 감아주세요.")
-            await asyncio.sleep(4)
+            await asyncio.sleep(PASSIVE_PHASE_DURATION)
             if WerewolfPhase(self.state.phase) == phase:
                 self.state.state_version += 1
                 for msg in self._advance_to_next_phase():
@@ -578,10 +571,7 @@ class WerewolfFSM(BaseFSM):
     async def _run_active_timer(self, phase: WerewolfPhase) -> None:
         """액티브 역할 카드 감지 대기. ACTIVE_PHASE_TIMEOUT 초 경과 시 강제 전이."""
         try:
-            await asyncio.sleep(ACTIVE_PHASE_TIMEOUT - 4)
-            if not self._practice_mode and WerewolfPhase(self.state.phase) == phase and self._enqueue_tts:
-                await self._enqueue_tts("눈을 다시 감아주세요.")
-            await asyncio.sleep(4)
+            await asyncio.sleep(ACTIVE_PHASE_TIMEOUT)
             if WerewolfPhase(self.state.phase) == phase:
                 self.state.state_version += 1
                 for msg in self._advance_to_next_phase():
