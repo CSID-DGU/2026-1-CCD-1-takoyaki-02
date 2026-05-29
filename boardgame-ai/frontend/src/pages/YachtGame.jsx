@@ -21,6 +21,7 @@ const CATEGORY_LABELS = [
 
 const UPPER = ['ones', 'twos', 'threes', 'fours', 'fives', 'sixes']
 const DISPLAY_CATEGORIES = CATEGORY_LABELS.filter(([key]) => key !== 'bonus').map(([key]) => key)
+const SHOW_MANUAL_ROLL = import.meta.env.VITE_SHOW_MANUAL_ROLL === 'true'
 const TUTORIAL_INTRO_TEXT =
   '요트다이스는 플레이어가 순서대로 주사위 5개를 굴리고, 나온 눈 조합을 가장 유리한 점수 칸에 기록해 총점을 겨루는 게임입니다. 한 턴에는 최대 세 번까지 굴릴 수 있고, 마음에 드는 주사위는 킵한 뒤 나머지만 다시 굴릴 수 있습니다.'
 
@@ -554,6 +555,7 @@ export default function YachtGame({ players, tutorialMode = false, onExit, onCha
   const canUndo = state?.can_undo ?? true
   const isTutorial = Boolean(state?.tutorial_mode)
   const canManualRoll =
+    SHOW_MANUAL_ROLL &&
     ['AWAITING_ROLL', 'AWAITING_KEEP'].includes(state?.phase) &&
     Number(state?.remaining_rolls || 0) > 0
   const tutorialText = isTutorial ? getTutorialText(state, currentPlayer) : null
