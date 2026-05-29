@@ -31,8 +31,10 @@ ROLE_DETECTED = "werewolf_role_detected"
 CARD_PEEK = "werewolf_card_peek"
 CARD_SWAP = "werewolf_card_swap"
 VOTE_POINT = "werewolf_vote_point"
+CARD_PLACED_DOWN = "werewolf_card_placed_down"
 
 _PHASE_ROLE_REGISTRATION = "role_registration"
+_PHASE_ROLE_REG_TRANSITION = "role_reg_transition"
 _PHASE_NIGHT_DOPPELGANGER = "night_doppelganger"
 _PHASE_NIGHT_SEER = "night_seer"
 _PHASE_NIGHT_INSOMNIAC = "night_insomniac"
@@ -52,6 +54,9 @@ _RAY_MAX_T = 1.5              # ray cast 최대 거리 (정규화)
 # 역할 등록 단계 전용 파라미터
 _ROLE_REG_MIN_BBOX_SHORT = 0.06  # 카드 bbox 단변 최소값 (정규화). 멀리 있는 작은 카드 제외.
 _ROLE_REG_HAND_DIST = 0.12       # 손목-카드 중심 최대 거리. 손으로 집어든 카드만 인식.
+
+# 역할 등록 전환(카드 내려놓기) 전용 파라미터
+_PLACED_DOWN_STABLE_FRAMES = 10  # 후면 카드가 이 프레임 이상 안정돼야 감지 (frame_skip=2 기준 ≈ 1초)
 
 
 class WerewolfRules:
@@ -77,6 +82,8 @@ class WerewolfRules:
         self._votes_cast: dict[str, str] = {}
         # 역할 등록 단계: 직전 active_player 추적 (플레이어 전환 감지용)
         self._last_reg_player: str = ""
+        # 역할 등록 전환: 카드 내려놓기 감지 1회 발화 플래그
+        self._card_placed_down_reported: bool = False
 
     def build_candidates(
         self,
@@ -100,11 +107,19 @@ class WerewolfRules:
             self._swap_first_touch.clear()
             self._votes_cast.clear()
             self._last_reg_player = ""
+            self._card_placed_down_reported = False
 
         tracked = self._card_tracker.get_tracked_cards()
         candidates: list[tuple[str, dict, float]] = []
 
-        if phase == _PHASE_ROLE_REGISTRATION:
+        if phase == _PHASE_ROLE_REG_TRANSITION:
+            if not self._card_placed_down_reported:
+                c = self._check_card_placed_down(tracked)
+                if c:
+                    self._card_placed_down_reported = True
+                    candidates.append(c)
+
+        elif phase == _PHASE_ROLE_REGISTRATION:
             # 플레이어가 전환되면 카드 stable_frames를 리셋해 재인식을 강제한다.
             # 직전 플레이어의 카드가 아직 테이블에 있을 경우 즉시 발화하는 연쇄 인식 방지.
             current_reg_player = ctx.active_player or ""
@@ -162,14 +177,40 @@ class WerewolfRules:
                 continue
             if not _any_hand_near_card(perception.hands, card.bbox, _ROLE_REG_HAND_DIST):
                 continue
-            if card.stable_frames < 15:
+            if card.stable_frames < 5:
                 continue
+            # 다른 플레이어의 카드가 감지된 경우: card_player_id를 포함해 세션이 경고 처리
             self._reported_roles.add(actor_id)
             return (
                 ROLE_DETECTED,
-                {"actor_id": actor_id, "role": card.cls_name.lower()},
+                {
+                    "actor_id": actor_id,
+                    "role": card.cls_name.lower(),
+                    "card_player_id": card.player_id,
+                },
                 0.9,
             )
+        return None
+
+    def _check_card_placed_down(
+        self,
+        tracked: list[TrackedCard],
+    ) -> tuple[str, dict, float] | None:
+        """역할 등록 전환 단계: 앞면이 확인된 카드가 후면으로 안정되면 CARD_PLACED_DOWN 발화.
+
+        조건:
+          1. cls_name 이 있는 카드 (한 번이라도 앞면으로 인식된 카드)
+          2. 현재 face_up == False (후면 상태)
+          3. stable_frames >= _PLACED_DOWN_STABLE_FRAMES (안정 추적 중)
+        """
+        for card in tracked:
+            if card.cls_name is None:
+                continue
+            if card.face_up:
+                continue
+            if card.stable_frames < _PLACED_DOWN_STABLE_FRAMES:
+                continue
+            return (CARD_PLACED_DOWN, {}, 0.9)
         return None
 
     # ── CARD_PEEK ────────────────────────────────────────────────────────────────

@@ -96,6 +96,24 @@ class HandTrack:
             return None
         return candidate
 
+    @property
+    def best_effort_player_id(self) -> str | None:
+        """마진 검증 없이 player_id_buf의 최빈 non-None 값.
+
+        confirmed_player_id는 초기 오매칭 굳음을 막으려 "2표+마진" 게이트를 걸어
+        매칭이 잡혔어도 None을 돌려줄 수 있다. 그러나 옆사람이 잠깐 손을 뻗어
+        굴린 짧은 트랙은 그 게이트를 통과할 표를 못 모아 player_id가 None이 되고,
+        그러면 actor 산정이 None → 굴림이 현재 플레이어로 오인되어 차례 경고가
+        누락된다. 한 번이라도 매칭된 적 있으면(=등록된 손 중 가장 가까운 후보가
+        잡혔으면) None 대신 그 최빈값을 돌려, "등록된 손은 항상 누군가로 매칭"이라는
+        원래 설계를 actor 경로에서 보장한다."""
+        if not self.player_id_buf:
+            return None
+        counts = Counter(p for p in self.player_id_buf if p is not None)
+        if not counts:
+            return None
+        return counts.most_common(1)[0][0]
+
 
 class HandTracker:
     """wrist 좌표 기반 프레임 간 손 추적기.

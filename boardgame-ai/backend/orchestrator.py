@@ -81,11 +81,15 @@ class Orchestrator:
             self._handle_seat_registered(event)
         elif event.event_type == CommonEventType.GESTURE_CONFIRMED:
             self._handle_gesture_confirmed(event)
+            # 웨어울프 세션이 연결돼 있으면 함께 전달 (card_setup 제스처 처리용)
+            if self._werewolf_event_handler is not None:
+                self._werewolf_event_handler(event, state_version)
         elif event.event_type in (
             WerewolfEventType.ROLE_DETECTED,
             WerewolfEventType.CARD_PEEK,
             WerewolfEventType.CARD_SWAP,
             WerewolfEventType.VOTE_POINT,
+            WerewolfEventType.CARD_PLACED_DOWN,
         ):
             if self._werewolf_event_handler is not None:
                 self._werewolf_event_handler(event, state_version)

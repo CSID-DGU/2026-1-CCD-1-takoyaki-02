@@ -125,6 +125,16 @@ export default function WerewolfGame({ players, onChangePlayers, onChangeGame, o
     }
   }, [roleReg?.player_id, roleReg?.detected_role])
 
+  // 백엔드가 다음 플레이어로 업데이트하면 전환 화면 자동 종료
+  useEffect(() => {
+    if (!showRoleTransition) return
+    if (!roleReg?.player_id) return
+    if (roleTransitionPlayer && roleReg.player_id !== roleTransitionPlayer.player_id) {
+      setShowRoleTransition(false)
+      setRoleTransitionPlayer(null)
+    }
+  }, [roleReg?.player_id]) // eslint-disable-line react-hooks/exhaustive-deps
+
   // phase가 바뀌면 트랜지션 시작
   useEffect(() => {
     if (!phase) return

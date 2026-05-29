@@ -118,8 +118,9 @@ class RollAttributor:
         self._fallback_buf: deque[str | None] = deque(maxlen=grab_fallback_window_frames)
         # roll_tray가 tray 안에 있는 동안만 누적되는 nearest 버퍼 —
         # 실제 굴림통과 함께 움직이는 손의 player_id가 최빈으로 잡힘.
-        # 이게 1순위 actor 산정 근거. HAND_IN_TRAY 진입 시 매번 초기화.
-        self._roll_actor_buf: deque[str | None] = deque(maxlen=grab_fallback_window_frames)
+        # 이게 1순위 actor 산정 근거. HAND_IN_TRAY 진입 시 매번 초기화하고,
+        # player_id가 잡힌 프레임(None 아님)만 누적해 다수결 통계가 흐려지지 않게 한다.
+        self._roll_actor_buf: deque[str] = deque(maxlen=grab_fallback_window_frames)
 
         # roll_tray center 이력 — 굴림통이 실제로 흔들리는지 판정용.
         # tray 가장자리에서 손가락 한 두 마디만 진입한 채 굴리는 자세에선
@@ -138,14 +139,18 @@ class RollAttributor:
     ) -> str | None:
         """매 프레임 호출. ROLL_CONFIRMED 발화 시 actor 반환, 아니면 None.
 
-        active_player가 주어지면 점유/nearest 판정에서 그 플레이어의 손만 본다.
-        옆사람이 dice를 만지거나 손을 트레이 근처에 두어도 영향받지 않는다.
+        actor는 active_player 필터 없이 "실제로 굴린(roll_tray에 손이 가장
+        가까웠던) 사람"으로 잡는다. 차례가 아닌 사람이 굴려도 그 사람의
+        player_id가 actor로 반환되어 FSM이 차례 위반을 감지할 수 있다.
+        active_player 인자는 인터페이스 호환을 위해 남겨두되 사용하지 않는다.
         """
+        _ = active_player
         self._just_finalized = False  # 매 프레임 리셋 — 발화 분기에서만 True
 
-        # nearest player_id 누적 (tray 또는 roll_tray 근처).
-        # active_player가 있으면 그 플레이어의 손만 후보. 옆사람 nearest 누적 차단.
-        nearest = self._nearest_player_to_tray(perception, active_player=active_player)
+        # nearest player_id 누적 (tray 또는 roll_tray 근처) — fallback actor용.
+        # actor 판정에는 active_player 필터를 걸지 않는다: 차례가 아닌 사람이
+        # 굴린 경우에도 그 사람을 actor로 잡아야 FSM이 차례 위반을 감지한다.
+        nearest = self._nearest_player_to_tray(perception, active_player=None)
         self._fallback_buf.append(nearest)
 
         # roll_tray center 이력 갱신 — 점유 트리거의 보조 신호 (흔들림 감지).
@@ -163,11 +168,9 @@ class RollAttributor:
         #   2) roll_tray가 tray와 겹친 채로 흔들리고 있다
         #      — 트레이 가장자리에서 굴림통 끝만 잡고 흔들 때
         #        손 landmark가 tray bbox에 안 떨어지는 자세 커버.
-        # 점유 판정에서는 active_player 필터를 풀어, 옆사람이 굴림통을 대신
-        # 들어주는 경우에도 점유 진입/이탈이 잡히게 한다.
-        # actor 결정은 _roll_actor_buf / _candidate_actor / fallback에서
-        # active_player 필터를 그대로 유지하므로 옆사람이 actor로 오인되지 않는다.
-        # 점유 진입/이탈 판정: active_player 필터를 풀어 옆사람 굴림 케이스도 잡음.
+        # 점유 판정·actor 판정 모두 active_player 필터를 걸지 않는다.
+        # actor를 무필터로 잡아야 차례가 아닌 사람의 굴림도 그 사람 player_id로
+        # 잡혀 FSM이 차례 경고를 띄울 수 있다.
         hand_in_any = self._is_any_hand_in_tray(perception, active_player=None)
         roll_tray_shaking = self._is_roll_tray_shaking(perception)
         if hand_in_any or roll_tray_shaking:
@@ -176,19 +179,19 @@ class RollAttributor:
         else:
             self._out_streak += 1
             self._in_streak = 0
-        # finalize 가드용 갱신: active_player의 손이 실제 tray 안에 잡힌 경우에만 True.
-        # 옆사람 손으로는 가드가 풀리지 않게 active_player 필터를 적용해 검사.
-        # active_player가 None(게임 미시작 등)이면 필터 효과 없음 (모든 손 허용).
-        if (
-            self._state == RollState.HAND_IN_TRAY
-            and self._is_any_hand_in_tray(perception, active_player=active_player)
-        ):
+        # finalize 가드용 갱신: 점유 중 어떤 손이든 실제 tray 안에 한 번이라도
+        # 잡혔는지. 점유 진입/이탈 판정과 동일하게 active_player 필터를 풀어 검사한다.
+        # player_id 다수결이 굳기 전(굴림처럼 짧은 동작)엔 손에 player_id가 안
+        # 붙어 있어, 필터를 켜면 정상 굴림인데도 가드가 영원히 안 풀려 finalize가
+        # 막히는 데드락이 생긴다. 이 가드의 목적은 "손이 한 번도 tray 안에 안
+        # 들어온 shaking 단독(담기) 동작" 차단이므로 무필터로 충분하다.
+        if self._state == RollState.HAND_IN_TRAY and hand_in_any:
             self._hand_seen_in_tray = True
 
         if self._state == RollState.WAITING:
-            return self._step_waiting(perception, active_player)
+            return self._step_waiting(perception)
         # HAND_IN_TRAY
-        return self._step_hand_in_tray(perception, active_player)
+        return self._step_hand_in_tray(perception)
 
     @property
     def state(self) -> RollState:
@@ -204,7 +207,6 @@ class RollAttributor:
     def _step_waiting(
         self,
         perception: YachtFramePerception,
-        active_player: str | None = None,
     ) -> str | None:
         if perception.tray is None:
             return None
@@ -231,25 +233,28 @@ class RollAttributor:
                     )
         # 진입 디바운스 — 연속 N프레임 안에 있어야 진짜 진입으로 인정
         if self._in_streak >= self._enter_debounce:
-            self._enter_hand_in_tray(perception, active_player)
+            self._enter_hand_in_tray(perception)
         return None
 
     def _step_hand_in_tray(
         self,
         perception: YachtFramePerception,
-        active_player: str | None = None,
     ) -> str | None:
         # 점유 중 candidate_actor를 매 프레임 덮어쓰지 않는다.
         # 앞사람이 tray 옆에 손만 두고 있으면 그쪽이 매 프레임 nearest로 잡혀
         # 진짜 굴리는 사람의 진입 시점 actor를 덮어버리는 오인을 방지.
         # 대신 roll_tray가 tray 안에 들어와 있는 "굴리는 중" 프레임에서만
         # nearest를 별도 버퍼에 누적해 확정 시 최빈값으로 사용한다.
+        # actor 누적에는 active_player 필터를 걸지 않는다 — 차례가 아닌 사람이
+        # 굴린 경우에도 그 사람의 player_id를 actor로 잡아야 FSM이 차례 경고를
+        # 띄울 수 있다. (현재 플레이어 손이 가장 가까우면 자연히 그쪽이 최빈값.)
         if self._is_roll_tray_in_tray(perception):
             self._roll_tray_in_tray_streak += 1
-            nearest_roll = self._nearest_player_to_tray(
-                perception, active_player=active_player
-            )
-            self._roll_actor_buf.append(nearest_roll)
+            nearest_roll = self._nearest_player_to_tray(perception, active_player=None)
+            # player_id가 잡힌 프레임만 누적 — None을 넣으면 손이 잠깐 안 잡힌
+            # 프레임이 통계에 섞여 최빈값이 흐려진다. 잡힌 사람만 모아 다수결.
+            if nearest_roll is not None:
+                self._roll_actor_buf.append(nearest_roll)
 
         # 진출 디바운스 — 연속 N프레임 밖이어야 진짜 빠진 걸로 인정
         if self._out_streak < self._exit_debounce:
@@ -312,15 +317,10 @@ class RollAttributor:
             #        (= 실제 굴림통과 함께 움직인 손의 주인)
             # 2순위: 진입 시점에 잡힌 candidate_actor
             # 3순위: 전체 윈도우 nearest 최빈값 (둘 다 비어있을 때만)
-            actor = (
-                _mode(self._roll_actor_buf)
-                or self._candidate_actor
-                or self._fallback_actor()
-            )
+            actor = _mode(self._roll_actor_buf) or self._candidate_actor or self._fallback_actor()
             self._just_finalized = True
             _log.info(
-                "[roll] ROLL_CONFIRMED actor=%s "
-                "(roll_buf_mode=%s candidate=%s fallback=%s)",
+                "[roll] ROLL_CONFIRMED actor=%s (roll_buf_mode=%s candidate=%s fallback=%s)",
                 actor,
                 _mode(self._roll_actor_buf),
                 self._candidate_actor,
@@ -336,18 +336,16 @@ class RollAttributor:
     def _enter_hand_in_tray(
         self,
         perception: YachtFramePerception,
-        active_player: str | None = None,
     ) -> None:
         self._state = RollState.HAND_IN_TRAY
         # 이번 점유 동안만의 roll_tray 기준 nearest를 다시 모으기 시작.
         self._roll_actor_buf.clear()
-        # 진입 시점에 active_player의 손이 실제 tray 안이면 즉시 True.
-        # shaking 단독 진입(또는 옆사람만 손이 잡힌 경우)이면 False로 시작해,
-        # 점유 중 active_player 손이 한 번도 안 잡히면 finalize가 차단된다.
-        # active_player가 None이면 필터 효과 없음 (모든 손 허용).
-        self._hand_seen_in_tray = self._is_any_hand_in_tray(
-            perception, active_player=active_player
-        )
+        # 진입 시점에 어떤 손이든 실제 tray 안이면 즉시 True.
+        # shaking 단독 진입(굴림통만 흔들리고 손은 tray 밖)이면 False로 시작해,
+        # 점유 중 손이 한 번도 tray 안에 안 잡히면 finalize가 차단된다.
+        # 점유 판정과 동일하게 active_player 필터는 적용하지 않는다 (player_id
+        # 미확정 손도 인정해 finalize 데드락 방지).
+        self._hand_seen_in_tray = self._is_any_hand_in_tray(perception, active_player=None)
         # 손이 들어온 직후의 흐트러진 dice 좌표 대신,
         # 손 들어가기 직전 마지막 stable snapshot을 비교 기준으로 사용.
         if self._last_stable_snapshot is not None:
@@ -355,10 +353,10 @@ class RollAttributor:
         else:
             target = self._dice_outside_keep(perception)
             self._snapshot = _take_snapshot(target)
-        # 점유 시점 nearest를 candidate로 우선 채택
-        nearest = self._nearest_player_to_tray(
-            perception, active_player=active_player
-        )
+        # 점유 시점 nearest를 candidate로 우선 채택.
+        # actor 판정에는 active_player 필터를 걸지 않는다 — 차례가 아닌 사람이
+        # 굴린 경우에도 그 사람을 actor로 잡아야 FSM 차례 경고가 동작한다.
+        nearest = self._nearest_player_to_tray(perception, active_player=None)
         if nearest is not None:
             self._candidate_actor = nearest
         n_kept = self._n_kept(perception)
@@ -531,44 +529,75 @@ def _compute_change_score(
     current: list[DiceState],
     center_shift_ratio: float,
 ) -> float:
-    """snapshot 대비 변화한 dice 비율 (0.0~1.0).
+    """snapshot 대비 변화 점수 (0.0~1.0). 눈(pip) 분포를 1순위로 본다.
 
-    각 dice가 다음 중 하나라도 만족하면 changed:
-      - track_id가 snapshot에 없음 (가림 후 새 ID 부여 = 큰 이동)
-      - center 이동 > min_size * center_shift_ratio
-      - pip_count 바뀜
-    snapshot의 dice 개수와 현재 개수가 다르면 점수 1.0 (확실히 변함).
+    핵심 설계:
+      roll_tray로 dice를 잠깐 가렸다 치우기만 해도 ByteTrack이 track_id를
+      재할당하거나 개수가 잠깐 어긋나, track_id 기준 비교는 "변화 없음"인데도
+      높은 점수를 내 오발화가 났다. 그래서 track_id에 의존하지 않고 pip 값의
+      분포(multiset)를 비교한다 — 가렸다 치우면 눈이 그대로라 분포가 같아
+      점수 0, 진짜 굴리면 눈이 바뀐 만큼 점수가 오른다.
+
+    절차:
+      1) pip 분포(정렬된 multiset)가 다르면 → 바뀐 눈의 개수 비율을 점수로.
+      2) pip 분포가 같으면 → track_id가 매칭되는 dice의 위치 이동만 본다.
+         (눈은 같지만 위치가 크게 바뀐 "같은 눈 굴림" 일부를 살리는 보조 경로.
+          가렸다 치우기는 위치가 거의 그대로라 여기서도 0에 수렴.)
+
+    주의: 같은 눈이 그대로 나온 굴림(특히 4킵+1굴림)은 분포·위치 모두
+    구분 불가에 가까워 발화되지 않을 수 있다 — 이는 가렸다 치우기 오발화를
+    막기 위한 의도된 트레이드오프.
     """
     if not current:
         return 0.0
-    # snapshot이 비어있으면 (점유 시작 시 dice 미감지) 어떤 변화든 인정
+    # snapshot이 비어있으면 (점유 시작 시 dice 미감지) 비교 불가 → 0.
+    # 과거엔 1.0(무조건 변화)이었으나, 손/roll_tray가 dice를 가린 채 진입한
+    # 경우에도 1.0이 나와 가렸다 치우기가 오발화됐다.
     if not snapshot.items:
-        return 1.0
-    if len(snapshot.items) != len(current):
-        return 1.0
+        return 0.0
 
-    changed = 0
+    prev_pips = sorted(p for _, p in snapshot.items.values() if p is not None)
+    cur_pips = sorted(d.pip_count for d in current if d.pip_count is not None)
+
+    # 1) pip 분포 비교 — 분포가 다르면 그 차이를 점수로.
+    if prev_pips != cur_pips:
+        denom = max(len(prev_pips), len(cur_pips), 1)
+        diff = _multiset_diff_count(prev_pips, cur_pips)
+        return min(1.0, diff / denom)
+
+    # 2) pip 분포 동일 — track_id가 매칭되는 dice의 위치 이동만 본다.
+    #    매칭 안 되는(가림으로 재할당된) track_id는 "변화 없음"으로 취급:
+    #    위치 정보가 신뢰 불가라 변화로 카운트하지 않는다.
+    matched = 0
+    moved = 0
     for d in current:
         prev = snapshot.items.get(d.track_id)
         if prev is None:
-            changed += 1
             continue
-        prev_center, prev_pip = prev
+        matched += 1
+        prev_center, _ = prev
         size = min(d.bbox.w, d.bbox.h)
         threshold = size * center_shift_ratio
         dx = d.center[0] - prev_center[0]
         dy = d.center[1] - prev_center[1]
-        moved = (dx * dx + dy * dy) ** 0.5 > threshold
-        # pip 변화 — 둘 다 값이 있고 다르거나, None에서 값이 새로 잡힌 경우
-        pip_changed = False
-        if d.pip_count is not None and prev_pip is not None:
-            pip_changed = d.pip_count != prev_pip
-        elif d.pip_count is not None and prev_pip is None:
-            # 점유 시점엔 pip 못 잡았다가 굴림 후 새로 잡힌 케이스
-            pip_changed = True
-        if moved or pip_changed:
-            changed += 1
-    return changed / len(current)
+        if (dx * dx + dy * dy) ** 0.5 > threshold:
+            moved += 1
+    if matched == 0:
+        return 0.0
+    return moved / matched
+
+
+def _multiset_diff_count(a: list[int], b: list[int]) -> int:
+    """두 정렬 multiset 사이에서 한쪽에만 있는 원소 개수 (대칭차의 크기).
+
+    예: [1,1,2,3] vs [1,2,2,3] → 1 (1 하나 빠지고 2 하나 늘어 = 변화 1개).
+    """
+    ca, cb = Counter(a), Counter(b)
+    diff = 0
+    for v in set(ca) | set(cb):
+        diff += abs(ca[v] - cb[v])
+    # 한 쪽에서 빠지고 다른 쪽에서 들어온 건 같은 "변화 1건"이므로 절반.
+    return diff // 2 + diff % 2
 
 
 def _mode(buf: deque[str | None]) -> str | None:
