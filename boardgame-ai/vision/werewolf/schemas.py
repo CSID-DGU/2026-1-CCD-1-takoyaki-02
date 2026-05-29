@@ -60,7 +60,8 @@ class TrackedCard:
     player_id: str | None      # 매칭된 player_id. None 이면 센터 카드
     card_index: int            # 플레이어 카드는 0, 센터 카드는 0/1/2 (좌→우)
     stable_frames: int         # 연속 추적 프레임 수
-    just_flipped_up: bool = False  # face_down → face_up 전환이 이번 프레임인지 (1회성)
+    just_flipped_up: bool = False    # face_down → face_up 전환이 이번 프레임인지 (1회성)
+    just_flipped_down: bool = False  # face_up → face_down 전환이 이번 프레임인지 (1회성)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -72,4 +73,5 @@ class TrackedCard:
             "card_index": self.card_index,
             "stable_frames": self.stable_frames,
             "just_flipped_up": self.just_flipped_up,
+            "just_flipped_down": self.just_flipped_down,
         }

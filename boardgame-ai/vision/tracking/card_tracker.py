@@ -95,6 +95,7 @@ class CardTracker:
 
             prev_face_up = self._prev_face_up.get(track_id, False)
             just_flipped_up = face_up and not prev_face_up
+            just_flipped_down = not face_up and prev_face_up
             self._prev_face_up[track_id] = face_up
 
             if track_id in self._card_states:
@@ -125,6 +126,7 @@ class CardTracker:
                 card_index=card_index,
                 stable_frames=stable_frames,
                 just_flipped_up=just_flipped_up,
+                just_flipped_down=just_flipped_down,
             )
 
         # 소멸된 트랙 정리
@@ -158,6 +160,7 @@ class CardTracker:
         for card in self._card_states.values():
             card.stable_frames = 0
             card.just_flipped_up = False
+            card.just_flipped_down = False
 
 
 # ── 내부 헬퍼 ─────────────────────────────────────────────────────────────────
