@@ -82,7 +82,7 @@ async def lifespan(app: FastAPI):
     bridge.on_game_event(orchestrator.handle_game_event)
 
     camera_index = int(os.environ.get("CAMERA_INDEX", "0"))
-    camera = CameraManager(source=camera_index, resolution=None, fps=0)
+    camera = CameraManager(source=camera_index, resolution=None, fps=30)
     # 비전 → 활성 YachtSession.fsm 라우터. LocalBridge에 자동 핸들러 등록됨.
     yacht_runner = YachtRunner(config=config, bridge=bridge, loop=loop)
     werewolf_runner = WerewolfRunner(bridge=bridge)

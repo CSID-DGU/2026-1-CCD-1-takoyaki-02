@@ -83,6 +83,18 @@ class WerewolfSession:
 
     async def send_hello(self) -> None:
         await self.send(WSMessage.make_hello({"game_type": "werewolf"}))
+        # 게임 선택 즉시 파이프라인이 동작하도록 초기 FusionContext 전송
+        self._state_version += 1
+        self._send_fusion_context(
+            FusionContext(
+                fsm_state="card_setup",
+                game_type="werewolf",
+                active_player=None,
+                allowed_actors=[],
+                expected_events=[CommonEventType.GESTURE_CONFIRMED],
+            ),
+            self._state_version,
+        )
 
     async def handle_client_message(self, data: dict[str, Any]) -> None:
         input_type = str(data.get("input_type", ""))
@@ -202,10 +214,6 @@ class WerewolfSession:
             "selected_roles": normalized_roles,
             "player_order": player_order,
         }
-        # START_ROLE_REGISTRATION 즉시 웨어울프 파이프라인으로 전환.
-        # card_setup OK 제스처도 웨어울프 FusionEngine이 직접 처리.
-        if self._pipeline_switcher is not None:
-            self._pipeline_switcher("werewolf")
         self._state_version += 1
         self._send_fusion_context(
             FusionContext(
