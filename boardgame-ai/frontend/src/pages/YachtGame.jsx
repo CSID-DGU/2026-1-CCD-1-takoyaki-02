@@ -918,12 +918,27 @@ export default function YachtGame({ players, tutorialMode = false, onExit, onCha
           100% { background: var(--bg-surface); }
         }
 
+        @keyframes yachtScoreSuggest {
+          0%, 100% {
+            background: color-mix(in oklch, var(--info) 14%, var(--bg-surface));
+            box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--info) 20%, transparent);
+          }
+          50% {
+            background: color-mix(in oklch, #31c46b 16%, var(--bg-surface));
+            box-shadow: inset 0 0 0 1px rgba(49, 196, 107, 0.28);
+          }
+        }
+
         .yacht-turn-pulse {
           animation: yachtTurnPulse 420ms ease-out;
         }
 
         .yacht-score-flash {
           animation: yachtScoreFlash 900ms ease-out;
+        }
+
+        .yacht-score-suggest {
+          animation: yachtScoreSuggest 1.8s ease-in-out infinite;
         }
 
       `}</style>
@@ -1210,6 +1225,16 @@ function ScoreTable({ state, currentOnly = false, compact = false, recentScore, 
   const tdScoreStyle = rowPaddingY != null
     ? { ...s.tdScore, paddingTop: rowPaddingY, paddingBottom: rowPaddingY }
     : s.tdScore
+  const suggestedCategories = new Set(
+    !compact && state.phase !== 'AWAITING_ROLL' && state.dice_values?.length
+      ? DISPLAY_CATEGORIES
+        .filter(key => state.available_categories?.includes(key))
+        .map(key => [key, Number(previewScore(key, state.dice_values))])
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 3)
+        .map(([key]) => key)
+      : [],
+  )
 
   return (
     <>
@@ -1269,11 +1294,15 @@ function ScoreTable({ state, currentOnly = false, compact = false, recentScore, 
           const highlightScore =
             recentScore?.playerId === player?.player_id &&
             recentScore?.category === key
+          const suggested = canScore && suggestedCategories.has(key)
 
           return (
             <tr
               key={key}
-              className={highlightScore ? 'yacht-score-flash' : undefined}
+              className={[
+                highlightScore ? 'yacht-score-flash' : '',
+                suggested ? 'yacht-score-suggest' : '',
+              ].filter(Boolean).join(' ') || undefined}
               style={s.scoreRow(canScore)}
               onClick={canScore ? () => onScore(key) : undefined}
             >
