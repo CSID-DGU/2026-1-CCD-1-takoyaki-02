@@ -153,6 +153,10 @@ class WerewolfSession:
             self._pending_game_data = None
             self._pending_role_reg = None
             self._role_reveal = None
+            self._pending_next_reg_player = None
+            if self._reg_transition_task and not self._reg_transition_task.done():
+                self._reg_transition_task.cancel()
+            self._reg_transition_task = None
             if self._audio_manager is not None and self._current_bgm is not None:
                 await self._audio_manager.stop_bgm()
             self._current_bgm = None
@@ -258,17 +262,18 @@ class WerewolfSession:
     async def _start_reg_transition(self, next_player: str) -> None:
         """역할 확인 후 카드 내려놓기 감지 대기 상태로 진입.
 
-        비전이 CARD_PLACED_DOWN 을 감지하면 3초 후 다음 플레이어로 진행.
-        15초 폴백 타이머로 비전 미감지 상황도 대응.
+        비전이 CARD_PLACED_DOWN 을 감지하면 2초 후 다음 플레이어로 진행.
+        카드가 다시 움직이면 CARD_UNSTABLE → 5초 폴백으로 복귀.
+        비전 미감지 시 5초 폴백 타이머로 강제 진행.
         """
         self._pending_next_reg_player = next_player
         if self._reg_transition_task and not self._reg_transition_task.done():
             self._reg_transition_task.cancel()
-        # 폴백: 7초 안에 카드를 못 감지하면 강제 진행
+        # 폴백: 5초 안에 카드를 못 감지하면 강제 진행
         self._reg_transition_task = asyncio.create_task(
-            self._advance_to_next_reg_player(delay=7.0)
+            self._advance_to_next_reg_player(delay=5.0)
         )
-        # 비전이 role_reg_transition 페이즈에서 카드 내려놓기를 감지하도록 FusionContext 전송
+        # 비전이 role_reg_transition 페이즈에서 카드 안정/불안정을 감지하도록 FusionContext 전송
         self._state_version += 1
         self._send_fusion_context(
             FusionContext(
@@ -276,7 +281,7 @@ class WerewolfSession:
                 game_type="werewolf_practice" if self._practice_mode else "werewolf",
                 active_player=None,
                 allowed_actors=[],
-                expected_events=[WerewolfEventType.CARD_PLACED_DOWN],
+                expected_events=[WerewolfEventType.CARD_PLACED_DOWN, WerewolfEventType.CARD_UNSTABLE],
                 reject_events=[WerewolfEventType.ROLE_DETECTED],
                 valid_targets=None,
                 zones={},
@@ -304,13 +309,23 @@ class WerewolfSession:
             pass
 
     async def _handle_card_placed_down(self) -> None:
-        """CARD_PLACED_DOWN 수신 시 호출. 폴백 타이머를 취소하고 3초 후 다음 플레이어로 진행."""
+        """CARD_PLACED_DOWN 수신 시 호출. 현재 타이머를 취소하고 2초 후 다음 플레이어로 진행."""
         if self._pending_next_reg_player is None:
             return
         if self._reg_transition_task and not self._reg_transition_task.done():
             self._reg_transition_task.cancel()
         self._reg_transition_task = asyncio.create_task(
             self._advance_to_next_reg_player(delay=2.0)
+        )
+
+    async def _handle_card_unstable(self) -> None:
+        """CARD_UNSTABLE 수신 시 호출. 2초 타이머를 취소하고 5초 폴백으로 복귀."""
+        if self._pending_next_reg_player is None:
+            return
+        if self._reg_transition_task and not self._reg_transition_task.done():
+            self._reg_transition_task.cancel()
+        self._reg_transition_task = asyncio.create_task(
+            self._advance_to_next_reg_player(delay=5.0)
         )
 
     async def _start_game(self, payload: dict) -> None:
@@ -360,6 +375,10 @@ class WerewolfSession:
 
         if etype == WerewolfEventType.CARD_PLACED_DOWN:
             await self._handle_card_placed_down()
+            return
+
+        if etype == WerewolfEventType.CARD_UNSTABLE:
+            await self._handle_card_unstable()
             return
 
         if etype == CommonEventType.GESTURE_CONFIRMED:
