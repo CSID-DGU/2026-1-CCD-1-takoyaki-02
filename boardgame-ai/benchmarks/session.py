@@ -198,7 +198,8 @@ class BenchmarkSession:
             s = fps["fps_summary"]
             lines.append(
                 f"- 목표 {fps.get('target_fps')} fps / 실제 평균 {s['mean']:.1f} fps "
-                f"(p5 {fps['fps_summary'].get('min', 0):.0f}, drop {fps.get('drop_rate', 0)*100:.1f}%)"
+                f"(p5 {fps['fps_summary'].get('min', 0):.0f}, "
+                f"drop {fps.get('drop_rate', 0)*100:.1f}%)"
             )
             for seg in fps.get("by_segment", []):
                 lines.append(
@@ -325,8 +326,9 @@ class BenchmarkSession:
                 )
             lines.append("")
 
-        lines.append(f"_상세 JSON: `{self._session_dir.name if self._session_dir else '?'}/*.json`_")
-        lines.append(f"_환경: env.json 참고 (CPU/RAM/OS 등)_")
+        sd_name = self._session_dir.name if self._session_dir else "?"
+        lines.append(f"_상세 JSON: `{sd_name}/*.json`_")
+        lines.append("_환경: env.json 참고 (CPU/RAM/OS 등)_")
         return "\n".join(lines)
 
     def session_dir(self) -> Path | None:
