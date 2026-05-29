@@ -312,7 +312,10 @@ class YachtSession:
                 "주사위 5개를 굴리면 카메라가 결과를 인식합니다."
             )
         elif self.fsm.state.phase == YachtPhase.AWAITING_KEEP.value:
-            self.fsm.state.last_message = _TUTORIAL_KEEP_GUIDE
+            remaining = {2: "두 번", 1: "한 번"}.get(max(0, 3 - self.fsm.state.roll_count), "0번")
+            self.fsm.state.last_message = (
+                f"기회 {remaining} 남았습니다. 다시 굴리거나 점수 칸을 선택해주세요."
+            )
         else:
             return
 
