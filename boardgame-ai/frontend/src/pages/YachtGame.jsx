@@ -159,8 +159,8 @@ const s = {
     width: 18,
     height: 18,
     borderRadius: '50%',
-    background: active ? '#31c46b' : 'var(--bg-elev)',
-    boxShadow: active ? '0 0 0 4px rgba(49, 196, 107, 0.22)' : 'none',
+    background: active ? 'var(--yacht)' : 'var(--bg-elev)',
+    boxShadow: active ? '0 0 0 4px color-mix(in oklch, var(--yacht) 20%, transparent)' : 'none',
   }),
   diceTray: {
     width: 'min(520px, 100%)',
