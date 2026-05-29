@@ -32,6 +32,7 @@ CARD_PEEK = "werewolf_card_peek"
 CARD_SWAP = "werewolf_card_swap"
 VOTE_POINT = "werewolf_vote_point"
 CARD_PLACED_DOWN = "werewolf_card_placed_down"
+CARD_UNSTABLE    = "werewolf_card_unstable"
 
 _PHASE_ROLE_REGISTRATION = "role_registration"
 _PHASE_ROLE_REG_TRANSITION = "role_reg_transition"
@@ -82,8 +83,8 @@ class WerewolfRules:
         self._votes_cast: dict[str, str] = {}
         # 역할 등록 단계: 직전 active_player 추적 (플레이어 전환 감지용)
         self._last_reg_player: str = ""
-        # 역할 등록 전환: 카드 내려놓기 감지 1회 발화 플래그
-        self._card_placed_down_reported: bool = False
+        # 역할 등록 전환: 카드 안정 상태 추적 (stable↔unstable 전환 감지용)
+        self._card_was_stable: bool = False
 
     def build_candidates(
         self,
@@ -107,17 +108,15 @@ class WerewolfRules:
             self._swap_first_touch.clear()
             self._votes_cast.clear()
             self._last_reg_player = ""
-            self._card_placed_down_reported = False
+            self._card_was_stable = False
 
         tracked = self._card_tracker.get_tracked_cards()
         candidates: list[tuple[str, dict, float]] = []
 
         if phase == _PHASE_ROLE_REG_TRANSITION:
-            if not self._card_placed_down_reported:
-                c = self._check_card_placed_down(tracked)
-                if c:
-                    self._card_placed_down_reported = True
-                    candidates.append(c)
+            c = self._check_card_placed_down(tracked)
+            if c:
+                candidates.append(c)
 
         elif phase == _PHASE_ROLE_REGISTRATION:
             # 플레이어가 전환되면 카드 stable_frames를 리셋해 재인식을 강제한다.
@@ -196,21 +195,21 @@ class WerewolfRules:
         self,
         tracked: list[TrackedCard],
     ) -> tuple[str, dict, float] | None:
-        """역할 등록 전환 단계: 앞면이 확인된 카드가 후면으로 안정되면 CARD_PLACED_DOWN 발화.
+        """역할 등록 전환 단계: 카드 안정 상태 전환을 감지해 이벤트 발화.
 
-        조건:
-          1. cls_name 이 있는 카드 (한 번이라도 앞면으로 인식된 카드)
-          2. 현재 face_up == False (후면 상태)
-          3. stable_frames >= _PLACED_DOWN_STABLE_FRAMES (안정 추적 중)
+        stable → unstable : CARD_UNSTABLE
+        unstable → stable : CARD_PLACED_DOWN
         """
-        for card in tracked:
-            if card.cls_name is None:
-                continue
-            if card.face_up:
-                continue
-            if card.stable_frames < _PLACED_DOWN_STABLE_FRAMES:
-                continue
+        is_stable = any(
+            card.stable_frames >= _PLACED_DOWN_STABLE_FRAMES
+            for card in tracked
+        )
+        if is_stable and not self._card_was_stable:
+            self._card_was_stable = True
             return (CARD_PLACED_DOWN, {}, 0.9)
+        if not is_stable and self._card_was_stable:
+            self._card_was_stable = False
+            return (CARD_UNSTABLE, {}, 0.9)
         return None
 
     # ── CARD_PEEK ────────────────────────────────────────────────────────────────
