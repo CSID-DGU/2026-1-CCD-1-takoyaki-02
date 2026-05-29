@@ -1,12 +1,11 @@
 import { useState, useEffect } from 'react'
 
-export default function VoteCountdown({ players = [], votes = {}, send, onExit }) {
-  // votes: { player_id: target_player_id } — 지목 완료된 플레이어 매핑
+export default function VoteCountdown({ players = [], votes = {}, send, onExit, countdownRemaining }) {
+  // votes: { player_id: target_player_id } — 현재 지목 상태 (카운트다운 중 가변)
   const [selectedVoter, setSelectedVoter] = useState(null)
 
   const doneCount = Object.keys(votes).length
   const total = players.length
-  const allDone = total > 0 && doneCount >= total
 
   useEffect(() => {
     send?.('TTS_REQUEST', { text: '투표를 시작합니다. 제거할 플레이어를 지목하세요.' })
@@ -15,17 +14,19 @@ export default function VoteCountdown({ players = [], votes = {}, send, onExit }
   const handleCardClick = (playerId) => {
     if (!send) return
     if (!selectedVoter) {
-      // 이미 투표 완료된 플레이어는 투표자로 선택 불가
       if (votes[playerId] !== undefined) return
       setSelectedVoter(playerId)
     } else if (selectedVoter === playerId) {
-      // 같은 카드 재클릭 → 선택 취소
       setSelectedVoter(null)
     } else {
       send('werewolf_vote_player', { target_id: playerId }, selectedVoter)
       setSelectedVoter(null)
     }
   }
+
+  // countdownRemaining: null=카운트다운 없음, 0="지목!", 1/2/3=숫자
+  const showCountdown = countdownRemaining != null
+  const countdownLabel = countdownRemaining === 0 ? '지목!' : String(countdownRemaining)
 
   return (
     <>
@@ -44,6 +45,16 @@ export default function VoteCountdown({ players = [], votes = {}, send, onExit }
           0%   { transform: scale(0.5); opacity: 0; }
           70%  { transform: scale(1.2); }
           100% { transform: scale(1);   opacity: 1; }
+        }
+        @keyframes countPop {
+          0%   { transform: scale(1.4); opacity: 0; }
+          40%  { transform: scale(0.95); opacity: 1; }
+          100% { transform: scale(1); opacity: 1; }
+        }
+        @keyframes shoutPop {
+          0%   { transform: scale(0.8); opacity: 0; }
+          50%  { transform: scale(1.15); }
+          100% { transform: scale(1); opacity: 1; }
         }
       `}</style>
 
@@ -84,7 +95,21 @@ export default function VoteCountdown({ players = [], votes = {}, send, onExit }
           투표
         </div>
 
-        {/* 안내 텍스트 */}
+        {/* 카운트다운 숫자 */}
+        {showCountdown && (
+          <div
+            key={countdownRemaining}
+            style={{
+              ...styles.countdownNum,
+              animation: countdownRemaining === 0 ? 'shoutPop 0.4s ease-out both' : 'countPop 0.35s ease-out both',
+              color: countdownRemaining === 0 ? '#ff6030' : '#f5c6c6',
+            }}
+          >
+            {countdownLabel}
+          </div>
+        )}
+
+        {/* 안내 텍스트 (카운트다운 중에도 표시) */}
         <div style={styles.guideBox}>
           {selectedVoter ? (
             <>
@@ -107,13 +132,15 @@ export default function VoteCountdown({ players = [], votes = {}, send, onExit }
 
         {/* 진행 현황 */}
         <div style={styles.progressLabel}>
-          {doneCount} / {total} 완료
+          {doneCount} / {total} 지목 완료
         </div>
 
         {/* 플레이어 카드 그리드 */}
         <div style={styles.grid}>
           {players.map((p, i) => {
-            const done = votes[p.player_id] !== undefined
+            const targetId = votes[p.player_id]
+            const targetPlayer = targetId ? players.find(pp => pp.player_id === targetId) : null
+            const done = targetId !== undefined
             const isSelected = selectedVoter === p.player_id
             const clickable = send && (!done || !!selectedVoter)
             const cardStyle = {
@@ -142,7 +169,8 @@ export default function VoteCountdown({ players = [], votes = {}, send, onExit }
                   <div style={styles.badgeSelected}>선택됨</div>
                 ) : done ? (
                   <div style={styles.badgeDone}>
-                    <span style={{ animation: 'checkPop 0.3s ease-out both' }}>✓</span> 완료
+                    <span style={{ animation: 'checkPop 0.3s ease-out both' }}>→</span>{' '}
+                    {targetPlayer?.playername ?? '?'}
                   </div>
                 ) : (
                   <div style={styles.badgePending}>대기 중</div>
@@ -203,6 +231,16 @@ const styles = {
     letterSpacing: 8,
     color: '#f5c6c6',
     textShadow: '0 0 30px rgba(200,60,30,0.7), 0 2px 8px rgba(0,0,0,0.6)',
+  },
+
+  countdownNum: {
+    position: 'relative',
+    zIndex: 1,
+    fontSize: 96,
+    fontWeight: 900,
+    letterSpacing: 4,
+    textShadow: '0 0 40px rgba(255,80,30,0.8), 0 4px 16px rgba(0,0,0,0.7)',
+    lineHeight: 1,
   },
 
   guideBox: {
@@ -301,6 +339,10 @@ const styles = {
     background: 'rgba(200,60,30,0.3)',
     borderRadius: 20,
     padding: '4px 14px',
+    maxWidth: '100%',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
   },
 
   badgePending: {

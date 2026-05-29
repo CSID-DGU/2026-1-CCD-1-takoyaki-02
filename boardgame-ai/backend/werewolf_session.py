@@ -172,6 +172,7 @@ class WerewolfSession:
             WerewolfInputType.ADD_30_SEC,
             WerewolfInputType.START_NOW,
             WerewolfInputType.VOTE_PLAYER,
+            WerewolfInputType.VOTE_RESULT_CONFIRM,
         ):
             await self.send_many(self._fsm.handle_input(input_type, payload, player_id))
             return

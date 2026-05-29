@@ -64,6 +64,7 @@ export default function WerewolfGame({ players, onChangePlayers, onChangeGame, o
   // /ws/werewolf 채널로도 audio_ack가 흐르도록 등록.
   useAudioPlayer(send)
   const [showVoteResult, setShowVoteResult] = useState(false)
+  const voteResultConfirmedRef = useRef(false)
 
   // 역할 감지 상태: 백엔드 role_reg.detected_role 변화 추적
   const [detectedRoleId, setDetectedRoleId] = useState(null)
@@ -155,7 +156,10 @@ export default function WerewolfGame({ players, onChangePlayers, onChangeGame, o
     }
 
     if (VOTE_PHASES.has(from) && !VOTE_PHASES.has(to)) {
-      setShowVoteResult(true)
+      if (!voteResultConfirmedRef.current) {
+        setShowVoteResult(true)
+      }
+      voteResultConfirmedRef.current = false
     }
 
     const type = getTransitionType(from, to)
@@ -227,12 +231,24 @@ export default function WerewolfGame({ players, onChangePlayers, onChangeGame, o
           .filter(p => p.voted_for != null)
           .map(p => [p.player_id, p.voted_for])
       )
+      if (wwState.votes_locked) {
+        return (
+          <VoteResult
+            players={players}
+            votes={votes}
+            editable={true}
+            send={send}
+            onConfirm={() => { voteResultConfirmedRef.current = true }}
+          />
+        )
+      }
       return (
         <VoteCountdown
           players={players}
           votes={votes}
           send={send}
           onExit={handleExit}
+          countdownRemaining={wwState.countdown_remaining ?? undefined}
         />
       )
     }

@@ -28,6 +28,9 @@ from games.werewolf.ontology import (
     WerewolfRole,
     WEREWOLF_TEAM,
 )
+
+VOTE_COUNTDOWN_SECONDS = 3   # "3,2,1" 카운트다운 시작값
+VOTE_LOCK_GRACE = 0.5        # 카운트다운 0 도달 후 지목 유예 시간(초)
 from games.werewolf.state import WerewolfGameState, WerewolfPlayerState
 
 
@@ -102,6 +105,8 @@ class WerewolfFSM(BaseFSM):
             return self._handle_start_now()
         if input_type == WerewolfInputType.VOTE_PLAYER:
             return self._handle_vote_player(player_id, data)
+        if input_type == WerewolfInputType.VOTE_RESULT_CONFIRM:
+            return self._handle_vote_result_confirm()
         return []
 
     def get_fusion_context(self) -> FusionContext:
@@ -369,7 +374,11 @@ class WerewolfFSM(BaseFSM):
             self._timer_task = asyncio.create_task(self._run_timer())
 
         elif phase == WerewolfPhase.VOTE_COUNTDOWN:
-            pass  # 전원 투표 완료 시에만 다음 페이즈로 전이
+            self.state.votes_locked = False
+            self.state.countdown_remaining = VOTE_COUNTDOWN_SECONDS
+            for p in self.state.players:
+                p.voted_for = None
+            self._active_timer_task = asyncio.create_task(self._run_vote_countdown())
 
         elif phase == WerewolfPhase.FINAL_ROLE_REVEAL:
             return msgs  # session이 FusionContext 관리
@@ -492,6 +501,13 @@ class WerewolfFSM(BaseFSM):
         return self._advance_to_next_phase()
 
     def _record_vote(self, voter_id: str, target_id: str) -> list[WSMessage]:
+        """비전 이벤트 경로. votes_locked이면 거부해 카운트다운 후 lock을 결정적으로 유지."""
+        if self.state.votes_locked:
+            return []
+        return self._set_vote(voter_id, target_id)
+
+    def _set_vote(self, voter_id: str, target_id: str) -> list[WSMessage]:
+        """voted_for 설정 공통 로직. 전이 없음 — VOTE_RESULT_CONFIRM에서만 전이."""
         try:
             voter = self.state.get_player(voter_id)
             self.state.get_player(target_id)  # target 존재 검증
@@ -499,10 +515,7 @@ class WerewolfFSM(BaseFSM):
             return []
         voter.voted_for = target_id
         self.state.state_version += 1
-        msgs = [self._make_state_update()]
-        if all(p.voted_for is not None for p in self.state.players):
-            msgs += self._advance_to_next_phase()
-        return msgs
+        return [self._make_state_update()]
 
     # ── Input handlers ──────────────────────────────────────────────────────────
 
@@ -533,6 +546,7 @@ class WerewolfFSM(BaseFSM):
         return []
 
     def _handle_vote_player(self, player_id: str | None, data: dict) -> list[WSMessage]:
+        """수동 보정 경로. votes_locked이어도 허용 (확인 화면 오인식 보정용)."""
         if WerewolfPhase(self.state.phase) not in (WerewolfPhase.VOTE_COUNTDOWN, WerewolfPhase.VOTE):
             return []
         if not player_id:
@@ -540,7 +554,15 @@ class WerewolfFSM(BaseFSM):
         target_id = data.get("target_id")
         if not target_id:
             return []
-        return self._record_vote(player_id, target_id)
+        return self._set_vote(player_id, target_id)
+
+    def _handle_vote_result_confirm(self) -> list[WSMessage]:
+        """투표 결과 확인 화면에서 최종 확정. votes_locked 상태에서만 유효."""
+        if WerewolfPhase(self.state.phase) != WerewolfPhase.VOTE_COUNTDOWN:
+            return []
+        if not self.state.votes_locked:
+            return []
+        return self._advance_to_next_phase()
 
     # ── Timer ───────────────────────────────────────────────────────────────────
 
@@ -558,6 +580,36 @@ class WerewolfFSM(BaseFSM):
             if WerewolfPhase(self.state.phase) == WerewolfPhase.DAY_DISCUSSION:
                 for msg in self._advance_to_next_phase():
                     await self._broadcast(msg)
+        except asyncio.CancelledError:
+            pass
+
+    async def _run_vote_countdown(self) -> None:
+        """VOTE_COUNTDOWN 3→0 카운트다운 → VOTE_LOCK_GRACE 유예 → votes_locked=True."""
+        try:
+            while (
+                self.state.countdown_remaining is not None
+                and self.state.countdown_remaining > 0
+            ):
+                await asyncio.sleep(1)
+                if WerewolfPhase(self.state.phase) != WerewolfPhase.VOTE_COUNTDOWN:
+                    return
+                self.state.countdown_remaining -= 1
+                self.state.state_version += 1
+                await self._broadcast(self._make_state_update())
+
+            if WerewolfPhase(self.state.phase) != WerewolfPhase.VOTE_COUNTDOWN:
+                return
+
+            # 유예 구간: 이 0.5초 동안도 비전 지목은 계속 반영됨
+            await asyncio.sleep(VOTE_LOCK_GRACE)
+
+            if WerewolfPhase(self.state.phase) != WerewolfPhase.VOTE_COUNTDOWN:
+                return
+
+            self.state.votes_locked = True
+            self.state.countdown_remaining = None
+            self.state.state_version += 1
+            await self._broadcast(self._make_state_update())
         except asyncio.CancelledError:
             pass
 
