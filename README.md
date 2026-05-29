@@ -4,7 +4,6 @@
 
 ```text
 boardgame-ai/
-├── app.py                  # 전체 모듈을 조립하고 실행하는 진입점
 ├── requirements.txt        # Python 의존성 목록
 ├── pyproject.toml          # 패키지 설정 및 개발 도구 설정
 ├── .gitignore              # Git 추적 제외 파일 목록
