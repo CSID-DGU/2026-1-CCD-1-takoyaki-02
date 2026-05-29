@@ -302,7 +302,8 @@ class YachtFSM(BaseFSM):
         values = ", ".join(str(v) for v in self.state.dice_values)
         if self.state.phase == YachtPhase.AWAITING_SCORE.value:
             return f"주사위 결과는 {values}입니다. 점수 칸을 선택해주세요."
-        return f"주사위 결과는 {values}입니다. 다시 굴리거나 점수 칸을 선택해주세요."
+        remaining_text = {2: "두 번", 1: "한 번"}.get(max(0, 3 - self.state.roll_count), "0번")
+        return f"기회 {remaining_text} 남았습니다. 다시 굴리거나 점수 칸을 선택해주세요."
 
     def _normalize_keep_mask(self, keep_mask: Any) -> list[bool]:
         if not isinstance(keep_mask, list) or len(keep_mask) != 5:

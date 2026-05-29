@@ -21,8 +21,17 @@ const CATEGORY_LABELS = [
 
 const UPPER = ['ones', 'twos', 'threes', 'fours', 'fives', 'sixes']
 const DISPLAY_CATEGORIES = CATEGORY_LABELS.filter(([key]) => key !== 'bonus').map(([key]) => key)
+const SHOW_MANUAL_ROLL = import.meta.env.VITE_SHOW_MANUAL_ROLL === 'true'
+const SHOW_DICE_MANUAL_INPUT = import.meta.env.VITE_SHOW_DICE_MANUAL_INPUT !== 'false'
 const TUTORIAL_INTRO_TEXT =
   '요트다이스는 플레이어가 순서대로 주사위 5개를 굴리고, 나온 눈 조합을 가장 유리한 점수 칸에 기록해 총점을 겨루는 게임입니다. 한 턴에는 최대 세 번까지 굴릴 수 있고, 마음에 드는 주사위는 킵한 뒤 나머지만 다시 굴릴 수 있습니다.'
+const TUTORIAL_GUIDE_STEPS = [
+  '원하는 주사위를 킵할 수 있습니다. 킵한 주사위는 다음 굴림에서 유지됩니다.',
+  '한 번 킵한 주사위를 다시 누르면 킵이 풀리고, 다음 굴림에서 다시 굴릴 수 있습니다.',
+  '주사위는 세 번까지 굴릴 수 있습니다. 다시 굴리거나 그 전에 점수 칸을 선택해 턴을 끝낼 수도 있습니다.',
+  '점수판 오른쪽 위 ? 버튼에서 족보 설명을 볼 수 있습니다.',
+  '점수판에서 원하는 점수 칸을 선택하면 이번 턴의 점수가 기록됩니다.',
+]
 
 const s = {
   page: {
@@ -205,6 +214,26 @@ const s = {
     lineHeight: 1.42,
     boxShadow: 'var(--shadow-sm)',
   },
+  tutorialBubbleText: {
+    marginBottom: 14,
+  },
+  tutorialNextButton: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    border: '1px solid color-mix(in oklch, var(--yacht) 45%, transparent)',
+    borderRadius: 'var(--radius)',
+    background: 'var(--yacht)',
+    color: '#17110c',
+    padding: '8px 14px',
+    fontSize: 15,
+    fontWeight: 850,
+    cursor: 'pointer',
+  },
+  tutorialBubbleFooter: {
+    display: 'flex',
+    justifyContent: 'flex-end',
+  },
   introShell: {
     width: 'min(900px, calc(100vw - 48px))',
     minHeight: 'calc(100vh - 104px)',
@@ -281,9 +310,9 @@ const s = {
     position: 'absolute',
     top: 32,
     right: 0,
-    width: 400,
+    width: 480,
     zIndex: 20,
-    padding: '16px 18px',
+    padding: '18px 20px',
     border: '1px solid var(--border)',
     borderRadius: 'var(--radius)',
     background: 'var(--bg-elev)',
@@ -292,16 +321,16 @@ const s = {
   },
   helpList: {
     display: 'grid',
-    gap: 7,
+    gap: 10,
     margin: 0,
     padding: 0,
     listStyle: 'none',
-    fontSize: 13,
-    lineHeight: 1.35,
+    fontSize: 16,
+    lineHeight: 1.45,
   },
   helpItemName: {
     display: 'inline-block',
-    minWidth: 104,
+    minWidth: 126,
     fontWeight: 800,
     color: 'var(--yacht)',
   },
@@ -380,6 +409,58 @@ const s = {
     background: 'transparent',
     cursor: 'pointer',
   },
+  manualModal: {
+    width: 'min(520px, calc(100vw - 32px))',
+    background: 'var(--bg-surface)',
+    border: '1px solid var(--border-soft)',
+    borderRadius: 'var(--radius-xl)',
+    boxShadow: 'var(--shadow-lg)',
+    padding: 28,
+    boxSizing: 'border-box',
+  },
+  manualTitle: {
+    fontSize: 24,
+    fontWeight: 850,
+    marginBottom: 10,
+    color: 'var(--fg)',
+  },
+  manualText: {
+    color: 'var(--fg-soft)',
+    fontSize: 15,
+    fontWeight: 650,
+    lineHeight: 1.45,
+    marginBottom: 20,
+  },
+  manualDiceRow: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(5, minmax(0, 1fr))',
+    gap: 10,
+    marginBottom: 16,
+  },
+  manualSelect: {
+    width: '100%',
+    height: 58,
+    border: '1px solid var(--border)',
+    borderRadius: 'var(--radius)',
+    background: 'var(--bg-elev)',
+    color: 'var(--fg)',
+    fontSize: 24,
+    fontWeight: 800,
+    textAlign: 'center',
+    cursor: 'pointer',
+  },
+  manualError: {
+    minHeight: 22,
+    color: 'var(--danger)',
+    fontSize: 14,
+    fontWeight: 750,
+    marginBottom: 14,
+  },
+  manualActions: {
+    display: 'flex',
+    justifyContent: 'flex-end',
+    gap: 10,
+  },
   endShell: {
     width: '100vw',
     minHeight: 'calc(100vh - 56px)',
@@ -422,6 +503,10 @@ export default function YachtGame({ players, tutorialMode = false, onExit, onCha
   // /ws/yacht 채널로도 audio_ack가 흐르도록 등록 (FSM 멘트는 이 채널로 옴).
   useAudioPlayer(send)
   const [leaderboardOpen, setLeaderboardOpen] = useState(false)
+  const [manualDiceOpen, setManualDiceOpen] = useState(false)
+  const [manualDiceValues, setManualDiceValues] = useState(['', '', '', '', ''])
+  const [manualDiceError, setManualDiceError] = useState('')
+  const [tutorialGuideStep, setTutorialGuideStep] = useState(0)
   const [tutorialIntroSeen, setTutorialIntroSeen] = useState(!tutorialMode)
   const [ttsEnabled, setTtsEnabled] = useState(true)
   const [bgmEnabled, setBgmEnabled] = useState(true)
@@ -432,7 +517,10 @@ export default function YachtGame({ players, tutorialMode = false, onExit, onCha
   const startedRef = useRef(false)
   const introTtsPlayedRef = useRef(false)
   const previousTurnRef = useRef(null)
+  const previousRollRef = useRef(null)
   const previousScoresRef = useRef(new Map())
+  const previousTutorialResetKeyRef = useRef('')
+  const lastTutorialTtsKeyRef = useRef('')
 
   useEffect(() => {
     audioApi.setTtsEnabled(true)
@@ -483,6 +571,14 @@ export default function YachtGame({ players, tutorialMode = false, onExit, onCha
     }
   }, [connected])
 
+  useEffect(() => {
+    if (!state?.tutorial_mode) return
+    const resetKey = `${state.current_player_id || ''}:${state.phase || ''}`
+    if (previousTutorialResetKeyRef.current === resetKey) return
+    previousTutorialResetKeyRef.current = resetKey
+    setTutorialGuideStep(0)
+  }, [state?.current_player_id, state?.phase, state?.tutorial_mode])
+
   // 백엔드가 보낸 hello 메시지 수신을 확인한 뒤에 START_YACHT 송신.
   // accept 직후 onopen이 뜨더라도 receive loop가 아직 시작되기 전일 수 있으므로,
   // 백엔드가 보낸 hello가 도착해야 receive 가능 상태임을 보장할 수 있다.
@@ -501,6 +597,20 @@ export default function YachtGame({ players, tutorialMode = false, onExit, onCha
 
   useEffect(() => {
     if (!state?.players?.length) return
+
+    const previousRoll = previousRollRef.current
+    const currentRoll = {
+      playerId: state.current_player_id,
+      rollCount: Number(state.roll_count || 0),
+    }
+    if (
+      previousRoll &&
+      previousRoll.playerId === currentRoll.playerId &&
+      currentRoll.rollCount > previousRoll.rollCount
+    ) {
+      playLocalSfx('dice_roll')
+    }
+    previousRollRef.current = currentRoll
 
     if (previousTurnRef.current && previousTurnRef.current !== state.current_player_id) {
       setTurnPulseKey(key => key + 1)
@@ -529,6 +639,7 @@ export default function YachtGame({ players, tutorialMode = false, onExit, onCha
     previousScoresRef.current = nextScores
     if (addedScore) {
       setRecentScore(addedScore)
+      playLocalSfx('score_select')
     }
   }, [state])
 
@@ -554,13 +665,29 @@ export default function YachtGame({ players, tutorialMode = false, onExit, onCha
   const canUndo = state?.can_undo ?? true
   const isTutorial = Boolean(state?.tutorial_mode)
   const canManualRoll =
+    SHOW_MANUAL_ROLL &&
     ['AWAITING_ROLL', 'AWAITING_KEEP'].includes(state?.phase) &&
     Number(state?.remaining_rolls || 0) > 0
-  const tutorialText = isTutorial ? getTutorialText(state, currentPlayer) : null
+  const canManualDiceInput =
+    SHOW_DICE_MANUAL_INPUT &&
+    (
+      (state?.phase === 'AWAITING_ROLL' && Number(state?.remaining_rolls || 0) > 0) ||
+      ['AWAITING_KEEP', 'AWAITING_SCORE'].includes(state?.phase)
+    )
+  const tutorialGuide = isTutorial ? getTutorialGuide(state, currentPlayer, tutorialGuideStep) : null
+  const tutorialText = tutorialGuide?.text || null
   const visibleStatusMessage =
     isTutorial && ['AWAITING_ROLL', 'AWAITING_KEEP'].includes(state?.phase)
       ? null
       : statusMessage
+
+  useEffect(() => {
+    if (!connected || !tutorialText) return
+    const key = `${state?.current_player_id || ''}:${state?.phase || ''}:${state?.roll_count || 0}:${tutorialGuideStep}:${tutorialText}`
+    if (lastTutorialTtsKeyRef.current === key) return
+    lastTutorialTtsKeyRef.current = key
+    send('TTS_REQUEST', { text: tutorialText })
+  }, [connected, send, state?.current_player_id, state?.phase, state?.roll_count, tutorialGuideStep, tutorialText])
 
   const startFullGame = () => {
     send('START_YACHT', { players: normalizePlayers(players), tutorial_mode: false })
@@ -568,6 +695,10 @@ export default function YachtGame({ players, tutorialMode = false, onExit, onCha
 
   const startTutorial = () => {
     setTutorialIntroSeen(true)
+  }
+
+  const nextTutorialGuide = () => {
+    setTutorialGuideStep(step => Math.min(step + 1, TUTORIAL_GUIDE_STEPS.length - 1))
   }
 
   const toggleBgm = () => {
@@ -580,6 +711,31 @@ export default function YachtGame({ players, tutorialMode = false, onExit, onCha
     const next = !ttsEnabled
     setTtsEnabled(next)
     audioApi.setTtsEnabled(next)
+  }
+
+  const openManualDiceInput = () => {
+    const values =
+      state?.dice_values?.length === 5
+        ? state.dice_values.map(value => String(value || 1))
+        : ['1', '1', '1', '1', '1']
+    setManualDiceValues(values)
+    setManualDiceError('')
+    setManualDiceOpen(true)
+  }
+
+  const updateManualDie = (index, value) => {
+    setManualDiceValues(prev => prev.map((item, i) => (i === index ? value : item)))
+    setManualDiceError('')
+  }
+
+  const submitManualDiceInput = () => {
+    const diceValues = manualDiceValues.map(value => Number(value))
+    if (diceValues.length !== 5 || diceValues.some(value => !Number.isInteger(value) || value < 1 || value > 6)) {
+      setManualDiceError('1부터 6까지의 값을 5개 모두 선택해주세요.')
+      return
+    }
+    send('MANUAL_DICE_INPUT', { dice_values: diceValues })
+    setManualDiceOpen(false)
   }
 
   const exitGame = () => {
@@ -733,7 +889,20 @@ export default function YachtGame({ players, tutorialMode = false, onExit, onCha
       </div>
       <div style={s.shell}>
         <main style={s.main}>
-          {tutorialText && <div style={s.tutorialBubble}>{tutorialText}</div>}
+          {tutorialText && (
+            <div style={s.tutorialBubble}>
+              <div style={tutorialGuide?.hasNext ? s.tutorialBubbleText : undefined}>
+                {tutorialText}
+              </div>
+              {tutorialGuide?.hasNext && (
+                <div style={s.tutorialBubbleFooter}>
+                  <button type="button" style={s.tutorialNextButton} onClick={nextTutorialGuide}>
+                    다음
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
 
           <div style={s.turnRow}>
             <div key={turnPulseKey} className={turnPulseKey ? 'yacht-turn-pulse' : undefined} style={s.turnBadge}>
@@ -763,6 +932,9 @@ export default function YachtGame({ players, tutorialMode = false, onExit, onCha
 
           <div style={s.actionRow}>
             <button style={s.buttonSmall} onClick={() => setLeaderboardOpen(true)}>리더보드 보기</button>
+            {canManualDiceInput && (
+              <button style={s.buttonSmall} onClick={openManualDiceInput}>인식이 잘못되었나요?</button>
+            )}
             {canManualRoll && (
               <button style={{ ...s.buttonSmall, ...s.primaryButton }} onClick={() => send('ROLL_DICE')}>굴리기</button>
             )}
@@ -799,6 +971,37 @@ export default function YachtGame({ players, tutorialMode = false, onExit, onCha
                   />
                 </div>
               ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {manualDiceOpen && (
+        <div style={s.modalShade}>
+          <div style={s.manualModal}>
+            <div style={s.manualTitle}>인식값 수정</div>
+            <div style={s.manualText}>
+              실제 주사위 눈과 다르게 표시됐다면 올바른 값을 선택해주세요.
+            </div>
+            <div style={s.manualDiceRow}>
+              {manualDiceValues.map((value, index) => (
+                <select
+                  key={index}
+                  style={s.manualSelect}
+                  value={value}
+                  onChange={event => updateManualDie(index, event.target.value)}
+                  aria-label={`주사위 ${index + 1}`}
+                >
+                  {[1, 2, 3, 4, 5, 6].map(face => (
+                    <option key={face} value={face}>{face}</option>
+                  ))}
+                </select>
+              ))}
+            </div>
+            <div style={s.manualError}>{manualDiceError}</div>
+            <div style={s.manualActions}>
+              <button style={s.buttonSmall} onClick={() => setManualDiceOpen(false)}>취소</button>
+              <button style={{ ...s.buttonSmall, ...s.primaryButton }} onClick={submitManualDiceInput}>적용</button>
             </div>
           </div>
         </div>
@@ -952,21 +1155,31 @@ function canToggleKeep(state) {
   return Boolean(state.dice_values?.length) && state.phase !== 'AWAITING_SCORE'
 }
 
-function getTutorialText(state, currentPlayer) {
+function getTutorialGuide(state, currentPlayer, guideStep) {
   const name = currentPlayer?.playername || '플레이어'
   if (state.phase === 'AWAITING_ROLL') {
-    return `${name}님 차례입니다. 주사위 5개를 굴리면 카메라가 결과를 인식합니다.`
+    return {
+      text: `${name}님 차례입니다. 주사위 5개를 굴리면 카메라가 결과를 인식합니다. 주사위를 굴려보세요.`,
+      hasNext: false,
+    }
   }
   if (state.phase === 'AWAITING_KEEP') {
-    if (state.roll_count >= 2) {
-      return '원하는 주사위를 킵할 수 있습니다. 킵한 주사위는 다음 굴림에서 유지되며, 한 번 킵한 주사위를 다시 굴릴 수도 있습니다. 주사위는 세 번까지 굴릴 수 있으며, 그 전에 점수 칸을 선택해 턴을 끝낼 수도 있습니다. 점수판 오른쪽 위 ? 버튼에서 족보 설명을 볼 수 있습니다.'
+    const safeStep = Math.max(0, Math.min(guideStep, TUTORIAL_GUIDE_STEPS.length - 1))
+    return {
+      text: TUTORIAL_GUIDE_STEPS[safeStep],
+      hasNext: safeStep < TUTORIAL_GUIDE_STEPS.length - 1,
     }
-    return '원하는 주사위를 킵할 수 있습니다. 킵한 주사위는 다음 굴림에서 유지되며, 한 번 킵한 주사위를 다시 굴릴 수도 있습니다. 주사위는 세 번까지 굴릴 수 있으며, 그 전에 점수 칸을 선택해 턴을 끝낼 수도 있습니다. 점수판 오른쪽 위 ? 버튼에서 족보 설명을 볼 수 있습니다.'
   }
   if (state.phase === 'AWAITING_SCORE') {
-    return '이제 점수 칸을 선택할 차례입니다. 예상 점수를 보고 원하는 칸에 기록하세요. 족보가 헷갈리면 점수판 오른쪽 위 ? 버튼을 확인하세요.'
+    return {
+      text: '이제 점수 칸을 선택할 차례입니다. 예상 점수를 보고 원하는 칸에 기록하세요. 족보가 헷갈리면 점수판 오른쪽 위 ? 버튼을 확인하세요.',
+      hasNext: false,
+    }
   }
-  return '요트다이스의 한 턴 흐름을 따라가고 있습니다.'
+  return {
+    text: '요트다이스의 한 턴 흐름을 따라가고 있습니다.',
+    hasNext: false,
+  }
 }
 
 function toggleKeep(index, state, send) {
@@ -979,6 +1192,11 @@ function toggleKeep(index, state, send) {
 function scoreCategory(category, state, send) {
   if (!DISPLAY_CATEGORIES.includes(category)) return
   send('SCORE_CATEGORY_SELECTED', { category }, state.current_player_id)
+}
+
+function playLocalSfx(name) {
+  const audio = new Audio(`/sfx/${name}.mp3`)
+  audio.play().catch(() => {})
 }
 
 function upperSubtotal(scores) {
