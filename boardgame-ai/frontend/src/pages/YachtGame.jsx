@@ -1366,6 +1366,15 @@ function getTutorialGuide(state, currentPlayer, guideStep) {
   }
   if (state.phase === 'AWAITING_KEEP') {
     const safeStep = Math.max(0, Math.min(guideStep, TUTORIAL_GUIDE_STEPS.length - 1))
+    const isScoreChoiceStep = safeStep === TUTORIAL_GUIDE_STEPS.length - 1
+    if (isScoreChoiceStep) {
+      const remainingRolls = Number(state.remaining_rolls ?? Math.max(0, 3 - Number(state.roll_count || 0)))
+      const chanceText = { 2: '기회 두 번', 1: '기회 한 번' }[remainingRolls] || '기회 0번'
+      return {
+        text: `${chanceText} 남았습니다. 점수판에서 원하는 점수 칸을 선택하면 이번 턴의 점수가 기록됩니다. 주사위를 더 굴리거나, 원하시는 족보를 선택해주세요.`,
+        hasNext: false,
+      }
+    }
     return {
       text: TUTORIAL_GUIDE_STEPS[safeStep],
       hasNext: safeStep > 0 && safeStep < TUTORIAL_GUIDE_STEPS.length - 1,
