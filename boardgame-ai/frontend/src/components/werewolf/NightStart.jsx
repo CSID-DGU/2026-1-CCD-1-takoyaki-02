@@ -3,10 +3,7 @@ import { audio } from '../../hooks/useAudioPlayer'
 
 export default function NightStart({ onComplete, send, onExit, isPracticeMode }) {
   useEffect(() => {
-    // 연습모드만 프론트에서 발화 — 비연습모드는 ProgressAgent가 담당
-    if (isPracticeMode) {
-      send?.('TTS_REQUEST', { text: '튜토리얼 모드입니다. 눈을 감지 않고 진행합니다. 차례가 되면 해당 역할 플레이어가 행동을 수행해주세요.' })
-    }
+    // night_start TTS는 모드와 무관하게 ProgressAgent가 전담 (중복 발화 방지)
 
     // 늑대 울음 환경음 — 원본 7초, 최대 5초에서 컷.
     // TTS가 거의 동시에 시작되더라도 최소 3초는 보장한다(밤 분위기 형성).
@@ -152,12 +149,12 @@ export default function NightStart({ onComplete, send, onExit, isPracticeMode })
           </div>
           {isPracticeMode && (
             <div style={{ ...styles.subtitle, animation: 'fadeIn 0.8s ease-out 0.2s both' }}>
-              눈을 감지 않고 진행합니다
+              튜토리얼 모드에서는 눈을 감지 않고 진행합니다
             </div>
           )}
           {isPracticeMode && (
             <div style={{ ...styles.subtitle, fontSize: 14, marginTop: 4, animation: 'fadeIn 0.8s ease-out 0.4s both' }}>
-              차례가 되면 해당 역할 플레이어가 행동을 수행해주세요
+              차례가 되면 해당 역할 플레이어가 행동을 수행하면 됩니다
             </div>
           )}
         </div>

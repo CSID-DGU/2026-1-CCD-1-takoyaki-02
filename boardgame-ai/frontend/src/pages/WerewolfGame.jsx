@@ -69,6 +69,9 @@ export default function WerewolfGame({ players, onChangePlayers, onChangeGame, o
   // 역할 감지 상태: 백엔드 role_reg.detected_role 변화 추적
   const [detectedRoleId, setDetectedRoleId] = useState(null)
   const [roleRegTimedOut, setRoleRegTimedOut] = useState(false)
+  // CONFIRM_ROLE 전송 후 다음 플레이어/게임 시작 전이를 기다리는 동안 true.
+  // 이 구간에 RoleRegShowCard가 재마운트되며 "카드를 보여주세요" TTS가 재발화되는 것을 막는다.
+  const [pendingConfirm, setPendingConfirm] = useState(false)
   const [showRoleTransition, setShowRoleTransition] = useState(false)
   const [roleTransitionPlayer, setRoleTransitionPlayer] = useState(null)
   // 튜토리얼: 역할 설명 페이지 상태 { role, confirmRoleId, confirmPlayerId, transitionPlayer }
@@ -117,6 +120,7 @@ export default function WerewolfGame({ players, onChangePlayers, onChangeGame, o
       prevDetectedRef.current = null
       setDetectedRoleId(null)
       setRoleRegTimedOut(false)
+      setPendingConfirm(false)  // 다음 플레이어로 진행됨 → 대기 해제
     }
     // 새 역할 감지 시 상태 업데이트
     const detected = roleReg?.detected_role
@@ -144,6 +148,7 @@ export default function WerewolfGame({ players, onChangePlayers, onChangeGame, o
       // (card_setup 등 잔여값이 남아 game phase 전환 시 오표시되는 것 방지)
       setDisplayedPhase(null)
       prevPhaseRef.current = null
+      setPendingConfirm(false)
       return
     }
     const from = prevPhaseRef.current
@@ -364,6 +369,9 @@ export default function WerewolfGame({ players, onChangePlayers, onChangeGame, o
             if (transitionPlayer) {
               setRoleTransitionPlayer(transitionPlayer)
               setShowRoleTransition(true)
+            } else {
+              // 전환 화면이 없는 경우(튜토리얼) 다음 플레이어/게임 시작 전까지 대기 표시
+              setPendingConfirm(true)
             }
             send('CONFIRM_ROLE', { role: confirmRoleId }, confirmPlayerId)
           }}
@@ -408,12 +416,20 @@ export default function WerewolfGame({ players, onChangePlayers, onChangeGame, o
               if (hasNextPlayer) {
                 setRoleTransitionPlayer(currentPlayer)
                 setShowRoleTransition(true)
+              } else {
+                // 마지막 플레이어: night_start 전환 전까지 RoleRegShowCard 재마운트 방지
+                setPendingConfirm(true)
               }
               send('CONFIRM_ROLE', { role: selectedRole?.id ?? detectedRoleId }, currentPlayer.player_id)
             }
           }}
         />
       )
+    }
+
+    // CONFIRM_ROLE 전송 후 다음 단계 전환 대기 — RoleRegShowCard 재마운트(TTS 재발화) 방지
+    if (pendingConfirm) {
+      return <div style={loadingStyle}>잠시만 기다려주세요...</div>
     }
 
     // 카드 스캔 화면
