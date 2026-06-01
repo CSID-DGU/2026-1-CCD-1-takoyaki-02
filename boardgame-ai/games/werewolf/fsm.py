@@ -373,10 +373,13 @@ class WerewolfFSM(BaseFSM):
             WerewolfPhase.NIGHT_MINION,
             WerewolfPhase.NIGHT_MASON,
         ):
-            # 패시브 역할: PASSIVE_PHASE_DURATION 초 동안 안내 화면 표시 후 자동 전이
-            self._passive_timer_task = asyncio.create_task(
-                self._run_passive_timer(phase)
-            )
+            # 패시브 역할: 일반 모드는 PASSIVE_PHASE_DURATION 초 후 자동 전이.
+            # 튜토리얼 모드는 안내 TTS를 끝까지 재생하도록 프론트가 start_now로 전이를
+            # 주도하므로 백엔드 고정 타이머를 걸지 않는다(마지막 역할 TTS 잘림 방지).
+            if not self._practice_mode:
+                self._passive_timer_task = asyncio.create_task(
+                    self._run_passive_timer(phase)
+                )
             msgs.append(
                 WSMessage.make_fusion_context(
                     self.get_fusion_context(),
@@ -404,8 +407,10 @@ class WerewolfFSM(BaseFSM):
         elif phase == WerewolfPhase.RESULT:
             return msgs  # 종료 상태; FusionContext 불필요
 
-        # 액티브 야간 역할: 카드 감지 우선, ACTIVE_PHASE_TIMEOUT 초 경과 시 자동 전이
-        if phase in ACTIVE_NIGHT_PHASES:
+        # 액티브 야간 역할: 카드 감지 우선, ACTIVE_PHASE_TIMEOUT 초 경과 시 자동 전이.
+        # 튜토리얼 모드는 카드 감지 외 폴백 타이머를 끄고, 프론트가 안내 TTS 종료 후
+        # start_now로 전이를 주도하게 해 TTS가 끊기지 않도록 한다.
+        if phase in ACTIVE_NIGHT_PHASES and not self._practice_mode:
             self._active_timer_task = asyncio.create_task(
                 self._run_active_timer(phase)
             )
