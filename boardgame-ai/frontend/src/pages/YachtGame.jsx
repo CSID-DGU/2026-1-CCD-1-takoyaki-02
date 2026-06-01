@@ -1346,7 +1346,7 @@ function getTutorialGuide(state, currentPlayer, guideStep) {
   const name = currentPlayer?.playername || '플레이어'
   if (state.phase === 'AWAITING_ROLL') {
     return {
-      text: `${name}님 차례입니다. 주사위 5개를 굴리면 카메라가 결과를 인식합니다. 주사위를 굴려보세요.`,
+      text: `${name}님 차례입니다. 주사위 5개를 굴리면 카메라가 결과를 인식합니다. 주사위 다섯개를 원형굴림통에 넣고 트레이 안에 굴려주세요.`,
       hasNext: false,
     }
   }
