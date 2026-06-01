@@ -110,6 +110,8 @@ class WerewolfFSM(BaseFSM):
             return self._handle_vote_player(player_id, data)
         if input_type == WerewolfInputType.VOTE_RESULT_CONFIRM:
             return self._handle_vote_result_confirm()
+        if input_type == WerewolfInputType.VOTE_COUNTDOWN_START:
+            return self._handle_vote_countdown_start()
         return []
 
     def get_fusion_context(self) -> FusionContext:
@@ -395,11 +397,14 @@ class WerewolfFSM(BaseFSM):
             self._timer_task = asyncio.create_task(self._run_timer())
 
         elif phase == WerewolfPhase.VOTE_COUNTDOWN:
+            # 카운트다운은 진입 즉시 시작하지 않는다. 프론트가 안내 TTS를 끝까지 재생한 뒤
+            # VOTE_COUNTDOWN_START 입력으로 시작을 주도한다(페이지 전환 직후 숫자가 곧바로
+            # 줄어 지목 타이밍을 놓치는 문제 방지). 준비 구간(countdown_remaining=None)에도
+            # 비전/수동 지목은 계속 반영된다.
             self.state.votes_locked = False
-            self.state.countdown_remaining = VOTE_COUNTDOWN_SECONDS
+            self.state.countdown_remaining = None
             for p in self.state.players:
                 p.voted_for = None
-            self._active_timer_task = asyncio.create_task(self._run_vote_countdown())
 
         elif phase == WerewolfPhase.FINAL_ROLE_REVEAL:
             return msgs  # session이 FusionContext 관리
@@ -586,6 +591,18 @@ class WerewolfFSM(BaseFSM):
         if not self.state.votes_locked:
             return []
         return self._advance_to_next_phase()
+
+    def _handle_vote_countdown_start(self) -> list[WSMessage]:
+        """안내 TTS 종료 후 프론트가 호출 — 5→0 카운트다운을 시작한다.
+        이미 시작했거나 잠긴 상태면 중복 신호(워치독+TTS 종료 동시 등)를 무시한다."""
+        if WerewolfPhase(self.state.phase) != WerewolfPhase.VOTE_COUNTDOWN:
+            return []
+        if self.state.countdown_remaining is not None or self.state.votes_locked:
+            return []
+        self.state.countdown_remaining = VOTE_COUNTDOWN_SECONDS
+        self.state.state_version += 1
+        self._active_timer_task = asyncio.create_task(self._run_vote_countdown())
+        return [self._make_state_update()]
 
     # ── Timer ───────────────────────────────────────────────────────────────────
 

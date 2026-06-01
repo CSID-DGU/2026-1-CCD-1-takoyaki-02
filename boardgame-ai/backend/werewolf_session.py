@@ -34,6 +34,11 @@ def _normalize_role(role_id: str) -> str:
     return re.sub(r"_\d+$", "", role_id)
 
 
+# 역할 등록 플레이어 전환 타이밍
+REG_TRANSITION_MAX_WAIT = 5.0    # 전환 진입 후 무조건 다음 플레이어로 넘어가는 하드 데드라인(초)
+REG_CARD_PLACED_ADVANCE = 2.0    # 카드 내려놓기 감지 후 진행까지 대기(초). 하드 데드라인 이내로만 적용.
+
+
 # 비전 감지 여부와 무관하게 본인 카드가 항상 바뀌는 역할
 _SELF_SWAP_ROLES: frozenset[str] = frozenset({
     WerewolfRole.ROBBER,
@@ -73,6 +78,8 @@ class WerewolfSession:
         # 역할 등록 전환: 카드 내려놓기 대기 중인 다음 플레이어 / 폴백 타이머
         self._pending_next_reg_player: str | None = None
         self._reg_transition_task: asyncio.Task | None = None
+        # 전환 진입 시 1회만 정하는 하드 데드라인(루프 시계). 어떤 이벤트도 이 시점을 넘기지 못한다.
+        self._reg_transition_deadline: float = 0.0
         # 현재 플레이어 목록 (AgentContext 빌드용)
         self._players_snapshot: list[dict] = []
         self._seat_positions_fn = seat_positions_fn
@@ -185,6 +192,7 @@ class WerewolfSession:
             WerewolfInputType.START_NOW,
             WerewolfInputType.VOTE_PLAYER,
             WerewolfInputType.VOTE_RESULT_CONFIRM,
+            WerewolfInputType.VOTE_COUNTDOWN_START,
         ):
             await self.send_many(self._fsm.handle_input(input_type, payload, player_id))
             return
@@ -271,17 +279,15 @@ class WerewolfSession:
     async def _start_reg_transition(self, next_player: str) -> None:
         """역할 확인 후 카드 내려놓기 감지 대기 상태로 진입.
 
-        비전이 CARD_PLACED_DOWN 을 감지하면 2초 후 다음 플레이어로 진행.
-        카드가 다시 움직이면 CARD_UNSTABLE → 5초 폴백으로 복귀.
-        비전 미감지 시 5초 폴백 타이머로 강제 진행.
+        카드가 안정되면(CARD_PLACED_DOWN) REG_CARD_PLACED_ADVANCE초 뒤 진행한다.
+        카드가 다시 흔들리면(CARD_UNSTABLE) 이른 진행만 취소하고, 진입 시 정한
+        하드 데드라인(REG_TRANSITION_MAX_WAIT초)까지만 대기한다. 데드라인을 연장하지
+        않으므로 추적 jitter로 CARD_UNSTABLE이 반복돼도 전환이 무한 지연되지 않는다.
         """
         self._pending_next_reg_player = next_player
-        if self._reg_transition_task and not self._reg_transition_task.done():
-            self._reg_transition_task.cancel()
-        # 폴백: 5초 안에 카드를 못 감지하면 강제 진행
-        self._reg_transition_task = asyncio.create_task(
-            self._advance_to_next_reg_player(delay=5.0)
-        )
+        # 진입 시 1회만 정하는 하드 데드라인. 이후 어떤 이벤트도 이 시점을 넘기지 못한다.
+        self._reg_transition_deadline = self._loop.time() + REG_TRANSITION_MAX_WAIT
+        self._schedule_reg_advance(self._reg_transition_deadline)
         # 비전이 role_reg_transition 페이즈에서 카드 안정/불안정을 감지하도록 FusionContext 전송
         self._state_version += 1
         self._send_fusion_context(
@@ -298,6 +304,15 @@ class WerewolfSession:
                 params={},
             ),
             self._state_version,
+        )
+
+    def _schedule_reg_advance(self, target_time: float) -> None:
+        """target_time(루프 시계)에 다음 플레이어로 진행하도록 타이머를 (재)설정한다."""
+        if self._reg_transition_task and not self._reg_transition_task.done():
+            self._reg_transition_task.cancel()
+        delay = max(0.0, target_time - self._loop.time())
+        self._reg_transition_task = asyncio.create_task(
+            self._advance_to_next_reg_player(delay)
         )
 
     async def _advance_to_next_reg_player(self, delay: float) -> None:
@@ -318,24 +333,22 @@ class WerewolfSession:
             pass
 
     async def _handle_card_placed_down(self) -> None:
-        """CARD_PLACED_DOWN 수신 시 호출. 현재 타이머를 취소하고 2초 후 다음 플레이어로 진행."""
+        """CARD_PLACED_DOWN 수신: 카드가 안정됐으니 빠르게 진행한다.
+        단 진행 시점은 하드 데드라인을 넘기지 않는다."""
         if self._pending_next_reg_player is None:
             return
-        if self._reg_transition_task and not self._reg_transition_task.done():
-            self._reg_transition_task.cancel()
-        self._reg_transition_task = asyncio.create_task(
-            self._advance_to_next_reg_player(delay=2.0)
+        target = min(
+            self._loop.time() + REG_CARD_PLACED_ADVANCE,
+            self._reg_transition_deadline,
         )
+        self._schedule_reg_advance(target)
 
     async def _handle_card_unstable(self) -> None:
-        """CARD_UNSTABLE 수신 시 호출. 2초 타이머를 취소하고 5초 폴백으로 복귀."""
+        """CARD_UNSTABLE 수신: 카드가 다시 흔들림 → 이른 진행만 취소하고 하드 데드라인까지 대기.
+        데드라인을 연장하지 않으므로 jitter가 반복돼도 전환이 starve되지 않는다."""
         if self._pending_next_reg_player is None:
             return
-        if self._reg_transition_task and not self._reg_transition_task.done():
-            self._reg_transition_task.cancel()
-        self._reg_transition_task = asyncio.create_task(
-            self._advance_to_next_reg_player(delay=5.0)
-        )
+        self._schedule_reg_advance(self._reg_transition_deadline)
 
     async def _start_game(self, payload: dict) -> None:
         # Benchmark hook.

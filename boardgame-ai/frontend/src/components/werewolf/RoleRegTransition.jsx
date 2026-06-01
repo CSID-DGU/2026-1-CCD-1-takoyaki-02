@@ -79,7 +79,10 @@ function WerewolfBg() {
 export default function RoleRegTransition({ player, send, onComplete }) {
   useEffect(() => {
     send?.('TTS_REQUEST', { text: `${player.playername}님 카드를 본인 앞에 엎어두고 다시 눈을 감아주세요.` })
-    const t = setTimeout(onComplete, 15000)
+    // 전환은 백엔드가 주도한다(카드 내려놓기 감지 또는 하드 데드라인 ~5초 → 다음 플레이어로
+    // player_id 갱신 → WerewolfGame이 화면을 닫음). 이 타이머는 백엔드 신호가 유실됐을 때만
+    // 쓰는 안전장치이므로 하드캡 바로 위(6초)로 둔다.
+    const t = setTimeout(onComplete, 6000)
     return () => clearTimeout(t)
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
