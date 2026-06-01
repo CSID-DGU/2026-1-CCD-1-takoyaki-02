@@ -109,6 +109,8 @@ class YachtSession:
         if input_type == "TTS_REQUEST":
             text = str(payload.get("text") or "").strip()
             if text and self._audio_manager is not None:
+                if bool(payload.get("interrupt_existing")):
+                    await self._audio_manager.interrupt_interruptible("tutorial_step_changed")
                 now = time.monotonic()
                 last_text, last_at = self._last_tts_request
                 if text == last_text and now - last_at < 4.0:

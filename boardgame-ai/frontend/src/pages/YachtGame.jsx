@@ -763,7 +763,7 @@ export default function YachtGame({ players, tutorialMode = false, onExit, onCha
     if (sentTutorialTtsKeys.has(key)) return
     lastTutorialTtsKeyRef.current = key
     sentTutorialTtsKeys.add(key)
-    send('TTS_REQUEST', { text: tutorialText })
+    send('TTS_REQUEST', { text: tutorialText, interrupt_existing: true })
   }, [connected, send, state?.current_player_id, state?.phase, state?.roll_count, tutorialGuideStep, tutorialText])
 
   const startFullGame = () => {
@@ -782,7 +782,7 @@ export default function YachtGame({ players, tutorialMode = false, onExit, onCha
 
   const playTutorialScoreHelpTts = () => {
     if (!tutorialScoreHelpRequired) return
-    send('TTS_REQUEST', { text: TUTORIAL_SCORE_HELP_TTS })
+    send('TTS_REQUEST', { text: TUTORIAL_SCORE_HELP_TTS, interrupt_existing: true })
   }
 
   const toggleBgm = () => {

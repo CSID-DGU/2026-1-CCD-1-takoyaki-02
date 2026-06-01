@@ -313,6 +313,17 @@ class AudioManager:
         await self._interrupt_current("explicit_interrupt")
         await self._maybe_push_next()
 
+    async def interrupt_interruptible(self, reason: str = "explicit_interrupt_all") -> None:
+        """현재 interruptible 재생과 큐의 interruptible 항목을 모두 정리."""
+        self._drop_interruptible_from_queue()
+        if (
+            self._current is not None
+            and self._current.interruptible
+            and self._current.priority != AudioPriority.CRITICAL
+        ):
+            await self._interrupt_current(reason)
+        await self._maybe_push_next()
+
     async def _maybe_push_next(self) -> None:
         """현재 재생 없으면 큐의 다음 항목을 합성·broadcast."""
         async with self._push_lock:
