@@ -366,6 +366,7 @@ class WerewolfSession:
             center_cards=center_cards,
             broadcast=self._broadcast_msg,
             seat_positions=seat_positions,
+            practice_mode=self._practice_mode,
         )
         await self.send_many(self._fsm.start())
 

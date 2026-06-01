@@ -22,6 +22,7 @@ from games.werewolf.ontology import (
     NIGHT_PHASES,
     PASSIVE_NIGHT_PHASES,
     PHASE_TO_ROLE,
+    TUTORIAL_ALWAYS_PHASES,
     WerewolfEventType,
     WerewolfInputType,
     WerewolfPhase,
@@ -61,9 +62,11 @@ class WerewolfFSM(BaseFSM):
         center_cards: list[str],
         broadcast: Callable[[WSMessage], Awaitable[None]],
         seat_positions: dict[str, tuple[float, float]] | None = None,
+        practice_mode: bool = False,
     ) -> None:
         self.state = WerewolfGameState.new(players, center_cards)
         self._broadcast = broadcast
+        self._practice_mode = practice_mode
         self._seat_positions: dict[str, tuple[float, float]] = seat_positions or {}
         self._timer_task: asyncio.Task[None] | None = None
         self._passive_timer_task: asyncio.Task[None] | None = None
@@ -296,6 +299,21 @@ class WerewolfFSM(BaseFSM):
         """플레이어 또는 센터 카드에 해당 역할이 존재하는지 확인한다."""
         return bool(self._players_with_role(role)) or role.value in self.state.center_cards
 
+    def _night_phase_included(self, phase: WerewolfPhase) -> bool:
+        """야간 페이즈 진행 여부 판정.
+
+        일반 모드: 센터 카드 포함 게임에 존재하는 모든 역할을 진행해 어떤 역할이
+        실제로 등록됐는지 들키지 않도록 한다.
+        튜토리얼 모드: 역할이 들켜도 무방하므로, 실제로 등록된(플레이어 보유) 역할만
+        진행하되 늑대팀 패시브 안내(늑대인간·하수인·프리메이슨)는 학습을 위해 항상 표시한다.
+        """
+        role = PHASE_TO_ROLE[phase]
+        if self._practice_mode:
+            if phase in TUTORIAL_ALWAYS_PHASES:
+                return True
+            return bool(self._players_with_role(role))
+        return self._role_in_game(role)
+
     def _make_state_update(self) -> WSMessage:
         return WSMessage(
             msg_type=MsgType.STATE_UPDATE.value,
@@ -314,7 +332,7 @@ class WerewolfFSM(BaseFSM):
                 else NIGHT_PHASES.index(current)
             )
             for next_phase in NIGHT_PHASES[search_from + 1:]:
-                if self._role_in_game(PHASE_TO_ROLE[next_phase]):
+                if self._night_phase_included(next_phase):
                     return self._enter_phase(next_phase)
             return self._enter_phase(WerewolfPhase.DAY_DISCUSSION)
 
