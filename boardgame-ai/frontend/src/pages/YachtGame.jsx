@@ -31,7 +31,7 @@ const TUTORIAL_GUIDE_STEPS = [
   '점수판에서 원하는 점수 칸을 선택하면 이번 턴의 점수가 기록됩니다. 주사위를 더 굴리거나, 원하시는 족보를 선택해주세요.',
 ]
 const TUTORIAL_SCORE_HELP_TTS =
-  '족보를 간단히 설명하겠습니다. Aces부터 Sixes는 해당 숫자와 같은 주사위만 더합니다. 이 상단 점수의 합이 63점 이상이면 상단 보너스 35점을 추가로 받습니다. Full House는 같은 눈 세 개와 같은 눈 두 개를 함께 만드는 족보입니다. Four of a Kind는 같은 눈 네 개 이상을 만드는 족보입니다. Small Straight는 연속된 숫자 네 개, Large Straight는 연속된 숫자 다섯 개를 만드는 족보입니다. Yacht는 주사위 다섯 개가 모두 같은 눈일 때 완성됩니다. Choice는 조건 없이 주사위 다섯 개의 합계를 그대로 기록합니다.'
+  '족보를 간단히 설명하겠습니다. 예를 들어 주사위 눈이 1, 1, 3, 4, 6으로 나왔다면, Aces는 1만 더해서 1 더하기 1, 2점입니다. Sixes는 6만 더해서 6점입니다. 이 상단 점수의 합이 63점 이상이면 상단 보너스 35점을 추가로 받습니다. Full House는 같은 눈 세 개와 같은 눈 두 개를 함께 만드는 족보입니다. Four of a Kind는 같은 눈 네 개 이상을 만드는 족보입니다. Small Straight는 연속된 숫자 네 개, Large Straight는 연속된 숫자 다섯 개를 만드는 족보입니다. Yacht는 주사위 다섯 개가 모두 같은 눈일 때 완성됩니다. Choice는 조건 없이 주사위 다섯 개의 합계를 그대로 기록합니다.'
 const sentTutorialTtsKeys = new Set()
 
 const s = {
@@ -413,6 +413,7 @@ const s = {
     fontSize: 14,
     fontWeight: 700,
     lineHeight: 1.35,
+    whiteSpace: 'pre-line',
   },
   scoreboard: {
     borderCollapse: 'separate',
@@ -1097,7 +1098,7 @@ function ScoreHelp({ onClose }) {
       desc: '선택한 눈과 같은 주사위만 모두 더합니다. Aces는 1만, Sixes는 6만 더합니다.',
       dice: [1, 1, 3, 4, 6],
       active: [0, 1],
-      example: '1 + 1 = 2점',
+      example: 'Aces: 1 + 1 = 2점\nSixes: 6 = 6점',
     },
     {
       name: '상단 보너스',
