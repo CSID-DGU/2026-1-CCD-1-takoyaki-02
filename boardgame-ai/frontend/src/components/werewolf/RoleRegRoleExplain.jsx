@@ -122,8 +122,8 @@ export default function RoleRegRoleExplain({ role, send, onComplete }) {
         flexDirection: 'row',
         alignItems: 'center',
         gap: 48,
-        maxWidth: 860,
-        width: '90%',
+        maxWidth: 940,
+        width: '92%',
         animation: 'cardFadeIn 0.7s ease-out both',
       }}>
         {/* 역할 이미지 */}
@@ -147,7 +147,7 @@ export default function RoleRegRoleExplain({ role, send, onComplete }) {
         {/* 텍스트 */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 20, flex: 1 }}>
           <div style={{
-            fontSize: 32,
+            fontSize: 40,
             fontWeight: 800,
             color: '#F8F1DD',
             textShadow: '0 2px 12px rgba(180,140,40,0.4)',
@@ -188,14 +188,14 @@ const sectionStyle = {
   background: 'rgba(255,255,255,0.05)',
   border: '1px solid rgba(255,255,255,0.1)',
   borderRadius: 12,
-  padding: '12px 16px',
+  padding: '16px 20px',
   display: 'flex',
   flexDirection: 'column',
-  gap: 6,
+  gap: 8,
 }
 
 const labelStyle = {
-  fontSize: 11,
+  fontSize: 14,
   fontWeight: 700,
   letterSpacing: 1.5,
   color: 'rgba(220,185,80,0.7)',
@@ -203,7 +203,7 @@ const labelStyle = {
 }
 
 const bodyStyle = {
-  fontSize: 15,
+  fontSize: 21,
   color: 'rgba(248,241,221,0.82)',
-  lineHeight: 1.7,
+  lineHeight: 1.75,
 }
