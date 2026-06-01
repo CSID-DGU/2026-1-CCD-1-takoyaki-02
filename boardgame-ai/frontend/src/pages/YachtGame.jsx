@@ -215,6 +215,12 @@ const s = {
     lineHeight: 1.42,
     boxShadow: 'var(--shadow-sm)',
   },
+  tutorialBlurredContent: {
+    filter: 'blur(7px)',
+    opacity: 0.34,
+    pointerEvents: 'none',
+    userSelect: 'none',
+  },
   tutorialBubbleText: {
     marginBottom: 14,
   },
@@ -744,6 +750,7 @@ export default function YachtGame({ players, tutorialMode = false, onExit, onCha
     )
   const tutorialGuide = isTutorial ? getTutorialGuide(state, currentPlayer, tutorialGuideStep) : null
   const tutorialText = tutorialGuide?.text || null
+  const tutorialOverlayActive = Boolean(tutorialText && tutorialGuide?.hasNext)
   const visibleStatusMessage =
     isTutorial && ['AWAITING_ROLL', 'AWAITING_KEEP'].includes(state?.phase)
       ? null
@@ -942,36 +949,38 @@ export default function YachtGame({ players, tutorialMode = false, onExit, onCha
         }
 
       `}</style>
-      <div style={s.phaseText}>
-        <span style={s.phaseTitle}>요트다이스</span>
-        <span style={s.phaseActions}>
-          <button
-            type="button"
-            style={s.iconButton(ttsEnabled)}
-            onClick={toggleTts}
-            title={ttsEnabled ? 'TTS 끄기' : 'TTS 켜기'}
-            aria-label={ttsEnabled ? 'TTS 끄기' : 'TTS 켜기'}
-          >
-            <IconVolume size={19} />
-          </button>
-          <button
-            type="button"
-            style={s.iconButton(bgmEnabled)}
-            onClick={toggleBgm}
-            title={bgmEnabled ? '배경음 끄기' : '배경음 켜기'}
-            aria-label={bgmEnabled ? '배경음 끄기' : '배경음 켜기'}
-          >
-            <IconMusic size={19} />
-          </button>
-          <button
-            style={{ ...s.buttonSmall, ...(canUndo ? {} : s.buttonDisabled) }}
-            onClick={() => send('UNDO_ROUND')}
-            disabled={!canUndo}
-          >
-            되돌리기
-          </button>
-          <button style={s.buttonSmall} onClick={exitGame}>나가기</button>
-        </span>
+      <div style={tutorialOverlayActive ? s.tutorialBlurredContent : undefined}>
+        <div style={s.phaseText}>
+          <span style={s.phaseTitle}>요트다이스</span>
+          <span style={s.phaseActions}>
+            <button
+              type="button"
+              style={s.iconButton(ttsEnabled)}
+              onClick={toggleTts}
+              title={ttsEnabled ? 'TTS 끄기' : 'TTS 켜기'}
+              aria-label={ttsEnabled ? 'TTS 끄기' : 'TTS 켜기'}
+            >
+              <IconVolume size={19} />
+            </button>
+            <button
+              type="button"
+              style={s.iconButton(bgmEnabled)}
+              onClick={toggleBgm}
+              title={bgmEnabled ? '배경음 끄기' : '배경음 켜기'}
+              aria-label={bgmEnabled ? '배경음 끄기' : '배경음 켜기'}
+            >
+              <IconMusic size={19} />
+            </button>
+            <button
+              style={{ ...s.buttonSmall, ...(canUndo ? {} : s.buttonDisabled) }}
+              onClick={() => send('UNDO_ROUND')}
+              disabled={!canUndo}
+            >
+              되돌리기
+            </button>
+            <button style={s.buttonSmall} onClick={exitGame}>나가기</button>
+          </span>
+        </div>
       </div>
       <div style={s.shell}>
         <main style={s.main}>
@@ -990,46 +999,51 @@ export default function YachtGame({ players, tutorialMode = false, onExit, onCha
             </div>
           )}
 
-          <div style={s.turnRow}>
-            <div key={turnPulseKey} className={turnPulseKey ? 'yacht-turn-pulse' : undefined} style={s.turnBadge}>
-              {currentPlayer?.playername || '-'} 님 차례
+          <div style={tutorialOverlayActive ? s.tutorialBlurredContent : undefined}>
+            <div style={s.turnRow}>
+              <div key={turnPulseKey} className={turnPulseKey ? 'yacht-turn-pulse' : undefined} style={s.turnBadge}>
+                {currentPlayer?.playername || '-'} 님 차례
+              </div>
+              <div style={s.roundText}>라운드 {round} / 12</div>
             </div>
-            <div style={s.roundText}>라운드 {round} / 12</div>
-          </div>
 
-          <div style={s.clips}>
-            <span>굴림</span>
-            {[0, 1, 2].map(i => <span key={i} style={s.clip(i < state.roll_count)} />)}
-          </div>
+            <div style={s.clips}>
+              <span>굴림</span>
+              {[0, 1, 2].map(i => <span key={i} style={s.clip(i < state.roll_count)} />)}
+            </div>
 
-          <div style={s.diceTray}>
-            {(state.dice_values?.length ? state.dice_values : ['-', '-', '-', '-', '-']).map((value, index) => (
-              <button
-                key={index}
-                style={s.die(Boolean(state.keep_mask?.[index]), canToggleKeep(state))}
-                onClick={() => toggleKeep(index, state, send)}
-                disabled={!canToggleKeep(state)}
-                title="보관"
-              >
-                {value}
-              </button>
-            ))}
-          </div>
+            <div style={s.diceTray}>
+              {(state.dice_values?.length ? state.dice_values : ['-', '-', '-', '-', '-']).map((value, index) => (
+                <button
+                  key={index}
+                  style={s.die(Boolean(state.keep_mask?.[index]), canToggleKeep(state))}
+                  onClick={() => toggleKeep(index, state, send)}
+                  disabled={!canToggleKeep(state)}
+                  title="보관"
+                >
+                  {value}
+                </button>
+              ))}
+            </div>
 
-          <div style={s.actionRow}>
-            <button style={s.buttonSmall} onClick={() => setLeaderboardOpen(true)}>리더보드 보기</button>
-            {canManualDiceInput && (
-              <button style={s.buttonSmall} onClick={openManualDiceInput}>인식이 잘못되었나요?</button>
-            )}
-            {canManualRoll && (
-              <button style={{ ...s.buttonSmall, ...s.primaryButton }} onClick={() => send('ROLL_DICE')}>굴리기</button>
-            )}
-          </div>
+            <div style={s.actionRow}>
+              <button style={s.buttonSmall} onClick={() => setLeaderboardOpen(true)}>리더보드 보기</button>
+              {canManualDiceInput && (
+                <button style={s.buttonSmall} onClick={openManualDiceInput}>인식이 잘못되었나요?</button>
+              )}
+              {canManualRoll && (
+                <button style={{ ...s.buttonSmall, ...s.primaryButton }} onClick={() => send('ROLL_DICE')}>굴리기</button>
+              )}
+            </div>
 
-          {visibleStatusMessage && <div style={s.rollMessage}>{visibleStatusMessage}</div>}
+            {visibleStatusMessage && <div style={s.rollMessage}>{visibleStatusMessage}</div>}
+          </div>
         </main>
 
-        <aside ref={scoreWrapRef} style={s.scoreWrap}>
+        <aside
+          ref={scoreWrapRef}
+          style={tutorialOverlayActive ? { ...s.scoreWrap, ...s.tutorialBlurredContent } : s.scoreWrap}
+        >
           <ScoreTable
             state={state}
             currentOnly
