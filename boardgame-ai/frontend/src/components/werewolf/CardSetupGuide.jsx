@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import { audio as audioApi } from '../../hooks/useAudioPlayer'
 
 const ROLE_NAMES = {
   doppelganger: '도플갱어',
@@ -77,8 +78,11 @@ export default function CardSetupGuide({ roles = [], onComplete, send, wsState, 
     // 페이드 완료 후 다음 문장
     const next    = setTimeout(() => setStep(s => s + 1), typingMs + holdMs + FADE_MS)
 
-    // 건너뛰기 버튼이 호출할 콜백: 현재 타이머 취소 후 즉시 다음 문장으로
+    // 건너뛰기 버튼이 호출할 콜백: 현재 TTS 발화 중단 + 타이머 취소 후 다음 문장으로.
+    // card_setup은 모든 문장이 동일 state_version이라 backend가 자동 인터럽트하지
+    // 않으므로, frontend에서 현재 재생을 직접 fade-out 중단해 다음 TTS와 겹치지 않게 함.
     skipRef.current = () => {
+      audioApi.interrupt()
       clearInterval(typeTimer)
       clearTimeout(fadeOut)
       clearTimeout(next)

@@ -29,12 +29,12 @@ from games.werewolf.ontology import (
 )
 from games.werewolf.state import WerewolfGameState, WerewolfPlayerState
 
-VOTE_COUNTDOWN_SECONDS = 3   # "3,2,1" 카운트다운 시작값
+VOTE_COUNTDOWN_SECONDS = 5   # "5,4,3,2,1" 카운트다운 시작값
 VOTE_LOCK_GRACE = 0.5        # 카운트다운 0 도달 후 지목 유예 시간(초)
 
 
 PASSIVE_PHASE_DURATION = 10  # 패시브 역할 안내 화면 표시 시간(초)
-ACTIVE_PHASE_TIMEOUT = 20    # 액티브 역할 카드 감지 대기 타임아웃(초)
+ACTIVE_PHASE_TIMEOUT = 12    # 액티브 역할 카드 감지 대기 타임아웃(초)
 
 SWAP_ROLES: frozenset[WerewolfRole] = frozenset({
     WerewolfRole.ROBBER,
@@ -606,7 +606,7 @@ class WerewolfFSM(BaseFSM):
             pass
 
     async def _run_vote_countdown(self) -> None:
-        """VOTE_COUNTDOWN 3→0 카운트다운 → VOTE_LOCK_GRACE 유예 → votes_locked=True."""
+        """VOTE_COUNTDOWN 5→0 카운트다운 → VOTE_LOCK_GRACE 유예 → votes_locked=True."""
         try:
             while (
                 self.state.countdown_remaining is not None
