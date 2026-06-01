@@ -770,6 +770,10 @@ export default function YachtGame({ players, tutorialMode = false, onExit, onCha
     send('START_YACHT', { players: normalizePlayers(players), tutorial_mode: false })
   }
 
+  const restartTutorial = () => {
+    send('RESTART')
+  }
+
   const nextTutorialGuide = () => {
     setTutorialGuideStep(step => Math.min(step + 1, TUTORIAL_GUIDE_STEPS.length - 1))
   }
@@ -874,10 +878,11 @@ export default function YachtGame({ players, tutorialMode = false, onExit, onCha
             <div style={s.winner}>튜토리얼 완료</div>
             <div style={s.endText}>
               모든 플레이어가 한 번씩 굴리고 점수를 기록했습니다.
-              이제 정식 게임을 시작할 수 있습니다.
+              튜토리얼 버전으로 한 바퀴 더 진행할까요?
             </div>
             <div style={s.endActions}>
               <button style={s.buttonSmall} onClick={exitGame}>게임 선택화면</button>
+              <button style={s.buttonSmall} onClick={restartTutorial}>튜토리얼 한 번 더</button>
               <button style={{ ...s.buttonSmall, ...s.primaryButton }} onClick={startFullGame}>게임 시작하기</button>
             </div>
           </div>
