@@ -23,15 +23,16 @@ const UPPER = ['ones', 'twos', 'threes', 'fours', 'fives', 'sixes']
 const DISPLAY_CATEGORIES = CATEGORY_LABELS.filter(([key]) => key !== 'bonus').map(([key]) => key)
 const SHOW_MANUAL_ROLL = import.meta.env.VITE_SHOW_MANUAL_ROLL === 'true'
 const SHOW_DICE_MANUAL_INPUT = import.meta.env.VITE_SHOW_DICE_MANUAL_INPUT !== 'false'
-const TUTORIAL_INTRO_TEXT =
-  '요트다이스는 플레이어가 순서대로 주사위 5개를 굴리고, 나온 눈 조합을 가장 유리한 점수 칸에 기록해 총점을 겨루는 게임입니다. 한 턴에는 최대 세 번까지 굴릴 수 있고, 마음에 드는 주사위는 킵한 뒤 나머지만 다시 굴릴 수 있습니다.'
 const TUTORIAL_GUIDE_STEPS = [
-  '주사위 중 마음에 드는 눈이 있다면 그 주사위를 보드 위 주사위 공간으로 옮겨서 킵해주세요. 끝났다면 태블릿의 다음 버튼을 눌러주세요.',
+  '요트다이스는 주사위 조합으로 족보를 만들고, 점수판의 칸을 하나씩 채워나가는 게임입니다. 먼저 점수판 오른쪽 위 물음표 버튼을 눌러 어떤 족보를 만들 수 있는지 확인해보세요.',
+  '원하는 족보에 가까운 눈은 킵해두고, 나머지 주사위만 다시 굴려 더 좋은 조합을 만들 수 있습니다. 킵할 주사위를 보드 위 주사위 공간으로 옮긴 뒤, 끝났다면 태블릿의 다음 버튼을 눌러주세요.',
   '킵했던 주사위도 언제든 굴림 영역으로 옮겨 다시 굴릴 수 있습니다.',
   '주사위는 세 번까지 굴릴 수 있습니다. 다시 굴리거나 그 전에 점수 칸을 선택해 턴을 끝낼 수도 있습니다.',
-  '점수판 오른쪽 위 물음표 버튼에서 족보 설명을 볼 수 있습니다.',
+  '정식 게임은 각 플레이어가 12라운드 동안 점수 칸을 하나씩 채우며 진행합니다. 이 튜토리얼에서는 한 턴의 흐름만 연습합니다.',
   '점수판에서 원하는 점수 칸을 선택하면 이번 턴의 점수가 기록됩니다. 주사위를 더 굴리거나, 원하시는 족보를 선택해주세요.',
 ]
+const TUTORIAL_SCORE_HELP_TTS =
+  '족보를 간단히 설명하겠습니다. 예를 들어 주사위 눈이 1, 1, 3, 4, 6으로 나왔다면, Aces는 1만 더해서 1 더하기 1, 2점입니다. Sixes는 6만 더해서 6점입니다. 이 상단 점수의 합이 63점 이상이면 상단 보너스 35점을 추가로 받습니다. Full House는 같은 눈 세 개와 같은 눈 두 개를 함께 만드는 족보입니다. Four of a Kind는 같은 눈 네 개 이상을 만드는 족보입니다. Small Straight는 연속된 숫자 네 개, Large Straight는 연속된 숫자 다섯 개를 만드는 족보입니다. Yacht는 주사위 다섯 개가 모두 같은 눈일 때 완성됩니다. Choice는 조건 없이 주사위 다섯 개의 합계를 그대로 기록합니다.'
 const sentTutorialTtsKeys = new Set()
 
 const s = {
@@ -215,6 +216,12 @@ const s = {
     lineHeight: 1.42,
     boxShadow: 'var(--shadow-sm)',
   },
+  tutorialBlurredContent: {
+    filter: 'blur(7px)',
+    opacity: 0.34,
+    pointerEvents: 'none',
+    userSelect: 'none',
+  },
   tutorialBubbleText: {
     marginBottom: 14,
   },
@@ -306,6 +313,12 @@ const s = {
     boxShadow: 'var(--shadow-sm)',
     padding: 0,
     flexShrink: 0,
+  },
+  helpButtonRequired: {
+    border: '2px solid var(--yacht)',
+    background: 'var(--yacht)',
+    color: '#17110c',
+    boxShadow: '0 0 0 6px color-mix(in oklch, var(--yacht) 24%, transparent)',
   },
   scoreHelpModal: {
     width: 'min(1120px, calc(100vw - 24px))',
@@ -401,6 +414,7 @@ const s = {
     fontSize: 14,
     fontWeight: 700,
     lineHeight: 1.35,
+    whiteSpace: 'pre-line',
   },
   scoreboard: {
     borderCollapse: 'separate',
@@ -575,7 +589,7 @@ export default function YachtGame({ players, tutorialMode = false, onExit, onCha
   const [manualDiceValues, setManualDiceValues] = useState(['', '', '', '', ''])
   const [manualDiceError, setManualDiceError] = useState('')
   const [tutorialGuideStep, setTutorialGuideStep] = useState(0)
-  const [tutorialIntroSeen, setTutorialIntroSeen] = useState(!tutorialMode)
+  const [tutorialScoreHelpSeen, setTutorialScoreHelpSeen] = useState(false)
   const [ttsEnabled, setTtsEnabled] = useState(true)
   const [bgmEnabled, setBgmEnabled] = useState(true)
   const [turnPulseKey, setTurnPulseKey] = useState(0)
@@ -583,7 +597,6 @@ export default function YachtGame({ players, tutorialMode = false, onExit, onCha
   const [scoreRowPaddingY, setScoreRowPaddingY] = useState(null)
   const scoreWrapRef = useRef(null)
   const startedRef = useRef(false)
-  const introTtsPlayedRef = useRef(false)
   const previousTurnRef = useRef(null)
   const previousRollRef = useRef(null)
   const previousScoresRef = useRef(new Map())
@@ -617,20 +630,6 @@ export default function YachtGame({ players, tutorialMode = false, onExit, onCha
     return () => ro.disconnect()
   }, [])
 
-  useEffect(() => {
-    if (!connected) {
-      introTtsPlayedRef.current = false
-    }
-  }, [connected])
-
-  useEffect(() => {
-    if (!connected) return
-    if (!tutorialMode || tutorialIntroSeen) return
-    if (introTtsPlayedRef.current) return
-    introTtsPlayedRef.current = true
-    send('TTS_REQUEST', { text: TUTORIAL_INTRO_TEXT })
-  }, [connected, send, tutorialIntroSeen, tutorialMode])
-
   // 재연결 시 START_YACHT를 다시 보낼 수 있도록 ref를 리셋.
   // (vite WS 프록시가 IP 접근 환경에서 첫 핸드셰이크를 흘려보내고 재연결하는 케이스 대응)
   useEffect(() => {
@@ -645,6 +644,7 @@ export default function YachtGame({ players, tutorialMode = false, onExit, onCha
     if (previousTutorialResetKeyRef.current === resetKey) return
     previousTutorialResetKeyRef.current = resetKey
     setTutorialGuideStep(0)
+    setTutorialScoreHelpSeen(false)
   }, [state?.current_player_id, state?.phase, state?.tutorial_mode])
 
   // 백엔드가 보낸 hello 메시지 수신을 확인한 뒤에 START_YACHT 송신.
@@ -657,11 +657,10 @@ export default function YachtGame({ players, tutorialMode = false, onExit, onCha
 
   useEffect(() => {
     if (!connected || !helloSeen) return
-    if (tutorialMode && !tutorialIntroSeen) return
     if (startedRef.current) return
     startedRef.current = true
     send('START_YACHT', { players: normalizePlayers(players), tutorial_mode: tutorialMode })
-  }, [connected, helloSeen, players, send, tutorialIntroSeen, tutorialMode])
+  }, [connected, helloSeen, players, send, tutorialMode])
 
   useEffect(() => {
     if (!state?.players?.length) return
@@ -732,18 +731,26 @@ export default function YachtGame({ players, tutorialMode = false, onExit, onCha
   }, [messages, state?.last_message])
   const canUndo = state?.can_undo ?? true
   const isTutorial = Boolean(state?.tutorial_mode)
+  const tutorialScoreHelpRequired =
+    isTutorial &&
+    state?.phase === 'AWAITING_KEEP' &&
+    tutorialGuideStep === 0 &&
+    !tutorialScoreHelpSeen
   const canManualRoll =
     SHOW_MANUAL_ROLL &&
+    !tutorialScoreHelpRequired &&
     ['AWAITING_ROLL', 'AWAITING_KEEP'].includes(state?.phase) &&
     Number(state?.remaining_rolls || 0) > 0
   const canManualDiceInput =
     SHOW_DICE_MANUAL_INPUT &&
+    !tutorialScoreHelpRequired &&
     (
       (state?.phase === 'AWAITING_ROLL' && Number(state?.remaining_rolls || 0) > 0) ||
       ['AWAITING_KEEP', 'AWAITING_SCORE'].includes(state?.phase)
     )
   const tutorialGuide = isTutorial ? getTutorialGuide(state, currentPlayer, tutorialGuideStep) : null
   const tutorialText = tutorialGuide?.text || null
+  const tutorialOverlayActive = Boolean(tutorialText && tutorialGuide?.hasNext)
   const visibleStatusMessage =
     isTutorial && ['AWAITING_ROLL', 'AWAITING_KEEP'].includes(state?.phase)
       ? null
@@ -757,19 +764,30 @@ export default function YachtGame({ players, tutorialMode = false, onExit, onCha
     if (sentTutorialTtsKeys.has(key)) return
     lastTutorialTtsKeyRef.current = key
     sentTutorialTtsKeys.add(key)
-    send('TTS_REQUEST', { text: tutorialText })
+    send('TTS_REQUEST', { text: tutorialText, interrupt_existing: true })
   }, [connected, send, state?.current_player_id, state?.phase, state?.roll_count, tutorialGuideStep, tutorialText])
 
   const startFullGame = () => {
     send('START_YACHT', { players: normalizePlayers(players), tutorial_mode: false })
   }
 
-  const startTutorial = () => {
-    setTutorialIntroSeen(true)
+  const restartTutorial = () => {
+    send('RESTART')
   }
 
   const nextTutorialGuide = () => {
     setTutorialGuideStep(step => Math.min(step + 1, TUTORIAL_GUIDE_STEPS.length - 1))
+  }
+
+  const completeTutorialScoreHelp = () => {
+    if (!tutorialScoreHelpRequired) return
+    setTutorialScoreHelpSeen(true)
+    setTutorialGuideStep(1)
+  }
+
+  const playTutorialScoreHelpTts = () => {
+    if (!tutorialScoreHelpRequired) return
+    send('TTS_REQUEST', { text: TUTORIAL_SCORE_HELP_TTS, interrupt_existing: true })
   }
 
   const toggleBgm = () => {
@@ -813,36 +831,6 @@ export default function YachtGame({ players, tutorialMode = false, onExit, onCha
     audioApi.setTtsEnabled(true)
     send('BGM_STOP')
     onExit?.()
-  }
-
-  if (tutorialMode && !tutorialIntroSeen) {
-    return (
-      <div style={s.page}>
-        <div style={s.introShell}>
-          <div style={s.introKicker}>튜토리얼 모드</div>
-          <div style={s.introTitle}>요트다이스 한 라운드 체험</div>
-          <div style={s.introText}>{TUTORIAL_INTRO_TEXT}</div>
-          <ul style={s.introList}>
-            <li>이 튜토리얼에서는 각 플레이어가 한 번씩 턴을 진행합니다.</li>
-            <li>실제 주사위를 굴리면 카메라가 결과를 인식합니다.</li>
-          </ul>
-          <div style={s.endActions}>
-            <button style={s.buttonSmall} onClick={exitGame}>게임 선택화면</button>
-            <button
-              style={{
-                ...s.buttonSmall,
-                ...s.primaryButton,
-                ...(!connected ? s.buttonDisabled : {}),
-              }}
-              disabled={!connected}
-              onClick={startTutorial}
-            >
-              튜토리얼 시작
-            </button>
-          </div>
-        </div>
-      </div>
-    )
   }
 
   if (!state) {
@@ -891,10 +879,11 @@ export default function YachtGame({ players, tutorialMode = false, onExit, onCha
             <div style={s.winner}>튜토리얼 완료</div>
             <div style={s.endText}>
               모든 플레이어가 한 번씩 굴리고 점수를 기록했습니다.
-              이제 정식 게임을 시작할 수 있습니다.
+              튜토리얼 버전으로 한 바퀴 더 진행할까요?
             </div>
             <div style={s.endActions}>
               <button style={s.buttonSmall} onClick={exitGame}>게임 선택화면</button>
+              <button style={s.buttonSmall} onClick={restartTutorial}>튜토리얼 한 번 더</button>
               <button style={{ ...s.buttonSmall, ...s.primaryButton }} onClick={startFullGame}>게임 시작하기</button>
             </div>
           </div>
@@ -942,36 +931,38 @@ export default function YachtGame({ players, tutorialMode = false, onExit, onCha
         }
 
       `}</style>
-      <div style={s.phaseText}>
-        <span style={s.phaseTitle}>요트다이스</span>
-        <span style={s.phaseActions}>
-          <button
-            type="button"
-            style={s.iconButton(ttsEnabled)}
-            onClick={toggleTts}
-            title={ttsEnabled ? 'TTS 끄기' : 'TTS 켜기'}
-            aria-label={ttsEnabled ? 'TTS 끄기' : 'TTS 켜기'}
-          >
-            <IconVolume size={19} />
-          </button>
-          <button
-            type="button"
-            style={s.iconButton(bgmEnabled)}
-            onClick={toggleBgm}
-            title={bgmEnabled ? '배경음 끄기' : '배경음 켜기'}
-            aria-label={bgmEnabled ? '배경음 끄기' : '배경음 켜기'}
-          >
-            <IconMusic size={19} />
-          </button>
-          <button
-            style={{ ...s.buttonSmall, ...(canUndo ? {} : s.buttonDisabled) }}
-            onClick={() => send('UNDO_ROUND')}
-            disabled={!canUndo}
-          >
-            되돌리기
-          </button>
-          <button style={s.buttonSmall} onClick={exitGame}>나가기</button>
-        </span>
+      <div style={tutorialOverlayActive ? s.tutorialBlurredContent : undefined}>
+        <div style={s.phaseText}>
+          <span style={s.phaseTitle}>요트다이스</span>
+          <span style={s.phaseActions}>
+            <button
+              type="button"
+              style={s.iconButton(ttsEnabled)}
+              onClick={toggleTts}
+              title={ttsEnabled ? 'TTS 끄기' : 'TTS 켜기'}
+              aria-label={ttsEnabled ? 'TTS 끄기' : 'TTS 켜기'}
+            >
+              <IconVolume size={19} />
+            </button>
+            <button
+              type="button"
+              style={s.iconButton(bgmEnabled)}
+              onClick={toggleBgm}
+              title={bgmEnabled ? '배경음 끄기' : '배경음 켜기'}
+              aria-label={bgmEnabled ? '배경음 끄기' : '배경음 켜기'}
+            >
+              <IconMusic size={19} />
+            </button>
+            <button
+              style={{ ...s.buttonSmall, ...(canUndo ? {} : s.buttonDisabled) }}
+              onClick={() => send('UNDO_ROUND')}
+              disabled={!canUndo}
+            >
+              되돌리기
+            </button>
+            <button style={s.buttonSmall} onClick={exitGame}>나가기</button>
+          </span>
+        </div>
       </div>
       <div style={s.shell}>
         <main style={s.main}>
@@ -990,52 +981,61 @@ export default function YachtGame({ players, tutorialMode = false, onExit, onCha
             </div>
           )}
 
-          <div style={s.turnRow}>
-            <div key={turnPulseKey} className={turnPulseKey ? 'yacht-turn-pulse' : undefined} style={s.turnBadge}>
-              {currentPlayer?.playername || '-'} 님 차례
+          <div style={tutorialOverlayActive ? s.tutorialBlurredContent : undefined}>
+            <div style={s.turnRow}>
+              <div key={turnPulseKey} className={turnPulseKey ? 'yacht-turn-pulse' : undefined} style={s.turnBadge}>
+                {currentPlayer?.playername || '-'} 님 차례
+              </div>
+              <div style={s.roundText}>라운드 {round} / 12</div>
             </div>
-            <div style={s.roundText}>라운드 {round} / 12</div>
-          </div>
 
-          <div style={s.clips}>
-            <span>굴림</span>
-            {[0, 1, 2].map(i => <span key={i} style={s.clip(i < state.roll_count)} />)}
-          </div>
+            <div style={s.clips}>
+              <span>굴림</span>
+              {[0, 1, 2].map(i => <span key={i} style={s.clip(i < state.roll_count)} />)}
+            </div>
 
-          <div style={s.diceTray}>
-            {(state.dice_values?.length ? state.dice_values : ['-', '-', '-', '-', '-']).map((value, index) => (
-              <button
-                key={index}
-                style={s.die(Boolean(state.keep_mask?.[index]), canToggleKeep(state))}
-                onClick={() => toggleKeep(index, state, send)}
-                disabled={!canToggleKeep(state)}
-                title="보관"
-              >
-                {value}
-              </button>
-            ))}
-          </div>
+            <div style={s.diceTray}>
+              {(state.dice_values?.length ? state.dice_values : ['-', '-', '-', '-', '-']).map((value, index) => (
+                <button
+                  key={index}
+                  style={s.die(Boolean(state.keep_mask?.[index]), canToggleKeep(state) && !tutorialScoreHelpRequired)}
+                  onClick={() => toggleKeep(index, state, send)}
+                  disabled={!canToggleKeep(state) || tutorialScoreHelpRequired}
+                  title="보관"
+                >
+                  {value}
+                </button>
+              ))}
+            </div>
 
-          <div style={s.actionRow}>
-            <button style={s.buttonSmall} onClick={() => setLeaderboardOpen(true)}>리더보드 보기</button>
-            {canManualDiceInput && (
-              <button style={s.buttonSmall} onClick={openManualDiceInput}>인식이 잘못되었나요?</button>
-            )}
-            {canManualRoll && (
-              <button style={{ ...s.buttonSmall, ...s.primaryButton }} onClick={() => send('ROLL_DICE')}>굴리기</button>
-            )}
-          </div>
+            <div style={s.actionRow}>
+              <button style={s.buttonSmall} onClick={() => setLeaderboardOpen(true)}>리더보드 보기</button>
+              {canManualDiceInput && (
+                <button style={s.buttonSmall} onClick={openManualDiceInput}>인식이 잘못되었나요?</button>
+              )}
+              {canManualRoll && (
+                <button style={{ ...s.buttonSmall, ...s.primaryButton }} onClick={() => send('ROLL_DICE')}>굴리기</button>
+              )}
+            </div>
 
-          {visibleStatusMessage && <div style={s.rollMessage}>{visibleStatusMessage}</div>}
+            {visibleStatusMessage && <div style={s.rollMessage}>{visibleStatusMessage}</div>}
+          </div>
         </main>
 
-        <aside ref={scoreWrapRef} style={s.scoreWrap}>
+        <aside
+          ref={scoreWrapRef}
+          style={tutorialOverlayActive ? { ...s.scoreWrap, ...s.tutorialBlurredContent } : s.scoreWrap}
+        >
           <ScoreTable
             state={state}
             currentOnly
             recentScore={recentScore}
             onScore={(category) => scoreCategory(category, state, send)}
             rowPaddingY={scoreRowPaddingY}
+            scoreDisabled={tutorialScoreHelpRequired}
+            requireHelpOpen={tutorialScoreHelpRequired}
+            onHelpOpen={playTutorialScoreHelpTts}
+            onHelpClose={completeTutorialScoreHelp}
           />
         </aside>
       </div>
@@ -1104,7 +1104,7 @@ function ScoreHelp({ onClose }) {
       desc: '선택한 눈과 같은 주사위만 모두 더합니다. Aces는 1만, Sixes는 6만 더합니다.',
       dice: [1, 1, 3, 4, 6],
       active: [0, 1],
-      example: '1 + 1 = 2점',
+      example: 'Aces: 1 + 1 = 2점\nSixes: 6 = 6점',
     },
     {
       name: '상단 보너스',
@@ -1210,8 +1210,27 @@ function ScoreHelp({ onClose }) {
   )
 }
 
-function ScoreTable({ state, currentOnly = false, compact = false, recentScore, onScore, rowPaddingY }) {
+function ScoreTable({
+  state,
+  currentOnly = false,
+  compact = false,
+  recentScore,
+  onScore,
+  rowPaddingY,
+  scoreDisabled = false,
+  requireHelpOpen = false,
+  onHelpOpen,
+  onHelpClose,
+}) {
   const [scoreHelpOpen, setScoreHelpOpen] = useState(false)
+  const openScoreHelp = () => {
+    setScoreHelpOpen(true)
+    onHelpOpen?.()
+  }
+  const closeScoreHelp = () => {
+    setScoreHelpOpen(false)
+    onHelpClose?.()
+  }
   const players = currentOnly
     ? state.players.filter(player => player.player_id === state.current_player_id)
     : state.players
@@ -1247,9 +1266,9 @@ function ScoreTable({ state, currentOnly = false, compact = false, recentScore, 
               {!compact && (
                 <>
                   <button
-                    style={s.helpButton}
+                    style={requireHelpOpen ? { ...s.helpButton, ...s.helpButtonRequired } : s.helpButton}
                     aria-label="족보 설명"
-                    onClick={() => setScoreHelpOpen(true)}
+                    onClick={openScoreHelp}
                   >
                     ?
                   </button>
@@ -1289,6 +1308,7 @@ function ScoreTable({ state, currentOnly = false, compact = false, recentScore, 
             !compact &&
             player?.player_id === state.current_player_id &&
             available &&
+            !scoreDisabled &&
             state.dice_values?.length
           const displayScore = hasScore ? score : (compact ? '—' : predictedScore(key, state))
           const highlightScore =
@@ -1319,7 +1339,7 @@ function ScoreTable({ state, currentOnly = false, compact = false, recentScore, 
         </tr>
       </tbody>
     </table>
-    {scoreHelpOpen && <ScoreHelp onClose={() => setScoreHelpOpen(false)} />}
+    {scoreHelpOpen && <ScoreHelp onClose={closeScoreHelp} />}
     </>
   )
 }
@@ -1346,15 +1366,24 @@ function getTutorialGuide(state, currentPlayer, guideStep) {
   const name = currentPlayer?.playername || '플레이어'
   if (state.phase === 'AWAITING_ROLL') {
     return {
-      text: `${name}님 차례입니다. 주사위 5개를 굴리면 카메라가 결과를 인식합니다. 주사위를 굴려보세요.`,
+      text: `${name}님 차례입니다. 주사위 5개를 굴리면 카메라가 결과를 인식합니다. 주사위 다섯개를 원형굴림통에 넣고 트레이 안에 굴려주세요.`,
       hasNext: false,
     }
   }
   if (state.phase === 'AWAITING_KEEP') {
     const safeStep = Math.max(0, Math.min(guideStep, TUTORIAL_GUIDE_STEPS.length - 1))
+    const isScoreChoiceStep = safeStep === TUTORIAL_GUIDE_STEPS.length - 1
+    if (isScoreChoiceStep) {
+      const remainingRolls = Number(state.remaining_rolls ?? Math.max(0, 3 - Number(state.roll_count || 0)))
+      const chanceText = { 2: '기회 두 번', 1: '기회 한 번' }[remainingRolls] || '기회 0번'
+      return {
+        text: `${chanceText} 남았습니다. 점수판에서 원하는 점수 칸을 선택하면 이번 턴의 점수가 기록됩니다. 주사위를 더 굴리거나, 원하시는 족보를 선택해주세요.`,
+        hasNext: false,
+      }
+    }
     return {
       text: TUTORIAL_GUIDE_STEPS[safeStep],
-      hasNext: safeStep < TUTORIAL_GUIDE_STEPS.length - 1,
+      hasNext: safeStep > 0 && safeStep < TUTORIAL_GUIDE_STEPS.length - 1,
     }
   }
   if (state.phase === 'AWAITING_SCORE') {

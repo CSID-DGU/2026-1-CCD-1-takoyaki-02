@@ -110,6 +110,8 @@ class YachtSession:
         if input_type == "TTS_REQUEST":
             text = str(payload.get("text") or "").strip()
             if text and self._audio_manager is not None:
+                if bool(payload.get("interrupt_existing")):
+                    await self._audio_manager.interrupt_interruptible("tutorial_step_changed")
                 now = time.monotonic()
                 last_text, last_at = self._last_tts_request
                 if text == last_text and now - last_at < 4.0:
@@ -331,7 +333,7 @@ class YachtSession:
             self.fsm.state.last_message = (
                 f"{self.fsm.state.current_player.playername}님 차례입니다. "
                 "주사위 5개를 굴리면 카메라가 결과를 인식합니다. "
-                "주사위를 굴려보세요."
+                "주사위 다섯개를 원형굴림통에 넣고 트레이 안에 굴려주세요."
             )
         elif self.fsm.state.phase == YachtPhase.AWAITING_KEEP.value:
             remaining = {2: "두 번", 1: "한 번"}.get(max(0, 3 - self.fsm.state.roll_count), "0번")
