@@ -135,7 +135,7 @@ def _set_vote_countdown_state(fsm: WerewolfFSM) -> None:
 
 @pytest.mark.anyio
 async def test_vote_countdown_enter_initializes_flags() -> None:
-    """VOTE_COUNTDOWN 진입(_enter_phase) 시 votes_locked=False, countdown_remaining=초기값."""
+    """VOTE_COUNTDOWN 진입(_enter_phase) 시 votes_locked=False, 카운트다운은 아직 미시작(None)."""
     fsm = _make_fsm(["werewolf", "villager", "villager"])
     fsm.state.phase = WerewolfPhase.DAY_DISCUSSION.value
     fsm._advance_to_next_phase()
@@ -143,7 +143,29 @@ async def test_vote_countdown_enter_initializes_flags() -> None:
 
     assert fsm.state.phase == WerewolfPhase.VOTE_COUNTDOWN.value
     assert fsm.state.votes_locked is False
+    # 안내 TTS 종료 후 VOTE_COUNTDOWN_START 입력으로 시작하므로 진입 직후엔 None.
+    assert fsm.state.countdown_remaining is None
+
+
+@pytest.mark.anyio
+async def test_vote_countdown_start_input_begins_countdown() -> None:
+    """VOTE_COUNTDOWN_START 입력 시 카운트다운이 시작되고, 중복 입력은 무시된다."""
+    fsm = _make_fsm(["werewolf", "villager", "villager"])
+    fsm.state.phase = WerewolfPhase.DAY_DISCUSSION.value
+    fsm._advance_to_next_phase()
+    await asyncio.sleep(0)
+    assert fsm.state.countdown_remaining is None
+
+    fsm.handle_input(WerewolfInputType.VOTE_COUNTDOWN_START, {}, None)
     assert fsm.state.countdown_remaining == VOTE_COUNTDOWN_SECONDS
+
+    # 중복 신호(워치독+TTS 종료 동시 등)는 카운트다운 값을 리셋하지 않는다.
+    fsm.state.countdown_remaining = 2
+    fsm.handle_input(WerewolfInputType.VOTE_COUNTDOWN_START, {}, None)
+    assert fsm.state.countdown_remaining == 2
+
+    if fsm._active_timer_task:
+        fsm._active_timer_task.cancel()
 
 
 @pytest.mark.anyio
@@ -314,6 +336,8 @@ async def test_countdown_timer_decrements_and_locks() -> None:
     ):
         fsm.state.phase = WerewolfPhase.DAY_DISCUSSION.value
         fsm._advance_to_next_phase()
+        # 안내 TTS 종료 신호로 카운트다운을 시작한다.
+        fsm.handle_input(WerewolfInputType.VOTE_COUNTDOWN_START, {}, None)
         # 카운트다운 완료 + grace 대기
         await asyncio.sleep(2.2)
 
