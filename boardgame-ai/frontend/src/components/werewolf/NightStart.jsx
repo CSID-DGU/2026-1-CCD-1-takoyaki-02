@@ -33,23 +33,38 @@ export default function NightStart({ onComplete, send, onExit, isPracticeMode })
     }
     const wolfCutoff = setTimeout(stopWolf, 5000)
     let earlyTtsTimer = null
-    const unsubscribeWolfTtsStart = audio.onNextTtsStarted(() => {
+    let timer = null
+    let unsubscribeEnd = null
+
+    // 안전장치: 안내 TTS가 전혀 시작되지 않으면(합성 실패 등) 무한 대기를 방지.
+    const startWatchdog = setTimeout(onComplete, 10000)
+
+    // night_start 안내 TTS가 "시작"된 시점을 기준으로 전환 로직을 건다.
+    // 마운트 시점에 직전 화면(역할 설명 등)의 TTS가 아직 재생 중이면, 그 종료를
+    // night_start TTS 종료로 오인해 조기 전환되는 문제를 막는다 — 이미 재생 중인
+    // TTS는 start 콜백이 소비된 상태라, 다음 start = night_start TTS가 잡힌다.
+    const unsubscribeStart = audio.onNextTtsStarted(() => {
+      clearTimeout(startWatchdog)
+
+      // 늑대 울음 페이드아웃 (최소 3초 보장)
       const elapsed = performance.now() - wolfStartTime
       if (elapsed >= WOLF_MIN_MS) {
         stopWolf()
       } else {
         earlyTtsTimer = setTimeout(stopWolf, WOLF_MIN_MS - elapsed)
       }
+
+      // 이 안내 TTS가 끝난 뒤 일정 시간 후 다음 화면으로 전환
+      unsubscribeEnd = audio.onNextTtsEnded(() => {
+        timer = setTimeout(onComplete, isPracticeMode ? 5000 : 8000)
+      })
     })
 
-    let timer = null
-    const unsubscribe = audio.onNextTtsEnded(() => {
-      timer = setTimeout(onComplete, isPracticeMode ? 9000 : 8000)
-    })
     return () => {
-      unsubscribe()
-      unsubscribeWolfTtsStart()
+      unsubscribeStart()
+      if (unsubscribeEnd) unsubscribeEnd()
       if (timer !== null) clearTimeout(timer)
+      clearTimeout(startWatchdog)
       clearTimeout(wolfCutoff)
       if (earlyTtsTimer !== null) clearTimeout(earlyTtsTimer)
       if (wolfFadeInterval !== null) clearInterval(wolfFadeInterval)

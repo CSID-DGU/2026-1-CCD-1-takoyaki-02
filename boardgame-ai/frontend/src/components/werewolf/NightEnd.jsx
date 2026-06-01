@@ -12,7 +12,10 @@ export default function NightEnd({ onComplete, send, isPracticeMode }) {
 
     const t2 = setTimeout(() => {
       setShowDiscussion(true)
-      send?.('TTS_REQUEST', { text: '자, 지금부터 토론을 시작합니다. 늑대인간을 찾아내세요.' })
+      const ttsText = isPracticeMode
+        ? '튜토리얼에서는 토론 단계를 건너뛰고, 바로 투표로 넘어갑니다.'
+        : '자, 지금부터 토론을 시작합니다. 늑대인간을 찾아내세요.'
+      send?.('TTS_REQUEST', { text: ttsText })
     }, 8000)
 
     const t3 = setTimeout(onComplete, 13000)
@@ -103,7 +106,11 @@ export default function NightEnd({ onComplete, send, isPracticeMode }) {
           <div style={styles.title}>아침이 밝았습니다</div>
           {!isPracticeMode && <div style={styles.subtitle}>모두 눈을 뜨세요</div>}
           {showDiscussion && (
-            <div style={styles.discussion}>자, 지금부터 토론을 시작합니다. 늑대인간을 찾아내세요.</div>
+            <div style={styles.discussion}>
+              {isPracticeMode
+                ? '튜토리얼에서는 토론을 건너뛰고 바로 투표로 넘어갑니다'
+                : '자, 지금부터 토론을 시작합니다. 늑대인간을 찾아내세요.'}
+            </div>
           )}
         </div>
 

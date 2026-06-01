@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { audio } from '../../hooks/useAudioPlayer'
 
 // 튜토리얼 모드는 눈을 감지 않고 진행하므로 "깨어나세요" 대신 차례 안내,
 // action도 해당 역할 플레이어가 직접 행동을 수행하는 방식으로 설명한다.
@@ -80,6 +81,7 @@ const ROLE_NIGHT_DATA = {
 const PASSIVE_ROLES = new Set(['werewolf', 'minion', 'mason'])
 const PASSIVE_DURATION = 10  // 백엔드 PASSIVE_PHASE_DURATION과 일치
 const ACTIVE_DURATION = 12   // 백엔드 ACTIVE_PHASE_TIMEOUT과 일치
+const PRACTICE_POST_TTS_SECONDS = 5  // 튜토리얼: 안내 TTS 종료 후 자동 전이까지 대기
 
 const KOREAN_NUMS = { 1: '한', 2: '두', 3: '세' }
 function toKoreanTTS(text) {
@@ -91,17 +93,57 @@ export default function NightRoleAnnounce({ roleId, onComplete, onExit, isPracti
   const isPassive = PASSIVE_ROLES.has(roleId)
   const duration = isPassive ? PASSIVE_DURATION : ACTIVE_DURATION
   const [countdown, setCountdown] = useState(duration)
+  // 튜토리얼: 안내 TTS가 끝난 뒤부터 카운트다운/자동 전이를 시작한다.
+  const [practiceCounting, setPracticeCounting] = useState(false)
 
   // 역할 안내 TTS는 ProgressAgent가 담당 — 프론트에서 TTS_REQUEST 중복 발화 제거
 
   useEffect(() => {
-    const dur = PASSIVE_ROLES.has(roleId) ? PASSIVE_DURATION : ACTIVE_DURATION
-    setCountdown(dur)
-    const interval = setInterval(() => {
-      setCountdown(prev => Math.max(0, prev - 1))
-    }, 1000)
-    return () => clearInterval(interval)
-  }, [roleId])
+    // 일반 모드: 백엔드 타이머가 전환을 담당. 여기서는 표시용 카운트다운만 운영.
+    if (!isPracticeMode) {
+      const dur = PASSIVE_ROLES.has(roleId) ? PASSIVE_DURATION : ACTIVE_DURATION
+      setCountdown(dur)
+      const interval = setInterval(() => {
+        setCountdown(prev => Math.max(0, prev - 1))
+      }, 1000)
+      return () => clearInterval(interval)
+    }
+
+    // 튜토리얼 모드: 백엔드 고정 타이머가 없으므로 안내 TTS가 끝까지 재생된 뒤
+    // PRACTICE_POST_TTS_SECONDS 카운트다운 후 onComplete(start_now)로 전이를 주도한다.
+    // (액티브 역할은 그 전에 카드 감지로 전이되면 컴포넌트가 언마운트되어 정리됨.)
+    setPracticeCounting(false)
+    setCountdown(PRACTICE_POST_TTS_SECONDS)
+    let interval = null
+    let completeTimer = null
+    let unsubscribeEnd = null
+
+    const startCountdown = () => {
+      setPracticeCounting(true)
+      interval = setInterval(() => {
+        setCountdown(prev => Math.max(0, prev - 1))
+      }, 1000)
+      completeTimer = setTimeout(onComplete, PRACTICE_POST_TTS_SECONDS * 1000)
+    }
+
+    // 안전장치: 안내 TTS가 전혀 시작되지 않으면(합성 실패 등) 멈추지 않도록 폴백.
+    const startWatchdog = setTimeout(startCountdown, 10000)
+
+    // 안내 TTS가 "시작"된 뒤에 종료를 기다린다. 마운트 시점에 직전 발화가 남아 있어도
+    // 그 종료로 조기 전이되는 것을 막는다(이미 재생 중인 발화는 start 콜백이 소비됨).
+    const unsubscribeStart = audio.onNextTtsStarted(() => {
+      clearTimeout(startWatchdog)
+      unsubscribeEnd = audio.onNextTtsEnded(startCountdown)
+    })
+
+    return () => {
+      clearTimeout(startWatchdog)
+      unsubscribeStart()
+      if (unsubscribeEnd) unsubscribeEnd()
+      if (interval) clearInterval(interval)
+      if (completeTimer) clearTimeout(completeTimer)
+    }
+  }, [roleId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!role) return null
 
@@ -204,7 +246,11 @@ export default function NightRoleAnnounce({ roleId, onComplete, onExit, isPracti
           <div style={{ ...styles.textBlock, animation: 'fadeIn 0.6s ease-out 0.25s both' }}>
             <p style={styles.announceText}>{displayAnnounce}</p>
             <p style={styles.actionText}>{displayAction}</p>
-            <p style={styles.countdownText}>{countdown}초 후 자동으로 넘어갑니다</p>
+            {(!isPracticeMode || practiceCounting) ? (
+              <p style={styles.countdownText}>{countdown}초 후 자동으로 넘어갑니다</p>
+            ) : (
+              <p style={styles.countdownText}>안내가 끝나면 다음으로 넘어갑니다</p>
+            )}
           </div>
 
           {/* 건너뛰기 버튼 */}
