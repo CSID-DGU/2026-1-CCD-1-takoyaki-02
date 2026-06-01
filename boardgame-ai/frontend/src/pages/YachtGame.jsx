@@ -23,10 +23,8 @@ const UPPER = ['ones', 'twos', 'threes', 'fours', 'fives', 'sixes']
 const DISPLAY_CATEGORIES = CATEGORY_LABELS.filter(([key]) => key !== 'bonus').map(([key]) => key)
 const SHOW_MANUAL_ROLL = import.meta.env.VITE_SHOW_MANUAL_ROLL === 'true'
 const SHOW_DICE_MANUAL_INPUT = import.meta.env.VITE_SHOW_DICE_MANUAL_INPUT !== 'false'
-const TUTORIAL_INTRO_TEXT =
-  '요트다이스는 플레이어가 순서대로 주사위 5개를 굴리고, 나온 눈 조합을 가장 유리한 점수 칸에 기록해 총점을 겨루는 게임입니다. 한 턴에는 최대 세 번까지 굴릴 수 있고, 마음에 드는 주사위는 킵한 뒤 나머지만 다시 굴릴 수 있습니다.'
 const TUTORIAL_GUIDE_STEPS = [
-  '주사위 중 마음에 드는 눈이 있다면 그 주사위를 보드 위 주사위 공간으로 옮겨서 킵해주세요. 끝났다면 태블릿의 다음 버튼을 눌러주세요.',
+  '요트다이스는 주사위 조합으로 족보를 만들고, 점수판의 칸을 하나씩 채워나가는 게임입니다. 원하는 족보에 가까운 눈은 킵해두고, 나머지 주사위만 다시 굴려 더 좋은 조합을 만들 수 있습니다. 킵할 주사위를 보드 위 주사위 공간으로 옮긴 뒤, 끝났다면 태블릿의 다음 버튼을 눌러주세요.',
   '킵했던 주사위도 언제든 굴림 영역으로 옮겨 다시 굴릴 수 있습니다.',
   '주사위는 세 번까지 굴릴 수 있습니다. 다시 굴리거나 그 전에 점수 칸을 선택해 턴을 끝낼 수도 있습니다.',
   '점수판 오른쪽 위 물음표 버튼에서 족보 설명을 볼 수 있습니다.',
@@ -581,7 +579,6 @@ export default function YachtGame({ players, tutorialMode = false, onExit, onCha
   const [manualDiceValues, setManualDiceValues] = useState(['', '', '', '', ''])
   const [manualDiceError, setManualDiceError] = useState('')
   const [tutorialGuideStep, setTutorialGuideStep] = useState(0)
-  const [tutorialIntroSeen, setTutorialIntroSeen] = useState(!tutorialMode)
   const [ttsEnabled, setTtsEnabled] = useState(true)
   const [bgmEnabled, setBgmEnabled] = useState(true)
   const [turnPulseKey, setTurnPulseKey] = useState(0)
@@ -589,7 +586,6 @@ export default function YachtGame({ players, tutorialMode = false, onExit, onCha
   const [scoreRowPaddingY, setScoreRowPaddingY] = useState(null)
   const scoreWrapRef = useRef(null)
   const startedRef = useRef(false)
-  const introTtsPlayedRef = useRef(false)
   const previousTurnRef = useRef(null)
   const previousRollRef = useRef(null)
   const previousScoresRef = useRef(new Map())
@@ -623,20 +619,6 @@ export default function YachtGame({ players, tutorialMode = false, onExit, onCha
     return () => ro.disconnect()
   }, [])
 
-  useEffect(() => {
-    if (!connected) {
-      introTtsPlayedRef.current = false
-    }
-  }, [connected])
-
-  useEffect(() => {
-    if (!connected) return
-    if (!tutorialMode || tutorialIntroSeen) return
-    if (introTtsPlayedRef.current) return
-    introTtsPlayedRef.current = true
-    send('TTS_REQUEST', { text: TUTORIAL_INTRO_TEXT })
-  }, [connected, send, tutorialIntroSeen, tutorialMode])
-
   // 재연결 시 START_YACHT를 다시 보낼 수 있도록 ref를 리셋.
   // (vite WS 프록시가 IP 접근 환경에서 첫 핸드셰이크를 흘려보내고 재연결하는 케이스 대응)
   useEffect(() => {
@@ -663,11 +645,10 @@ export default function YachtGame({ players, tutorialMode = false, onExit, onCha
 
   useEffect(() => {
     if (!connected || !helloSeen) return
-    if (tutorialMode && !tutorialIntroSeen) return
     if (startedRef.current) return
     startedRef.current = true
     send('START_YACHT', { players: normalizePlayers(players), tutorial_mode: tutorialMode })
-  }, [connected, helloSeen, players, send, tutorialIntroSeen, tutorialMode])
+  }, [connected, helloSeen, players, send, tutorialMode])
 
   useEffect(() => {
     if (!state?.players?.length) return
@@ -771,10 +752,6 @@ export default function YachtGame({ players, tutorialMode = false, onExit, onCha
     send('START_YACHT', { players: normalizePlayers(players), tutorial_mode: false })
   }
 
-  const startTutorial = () => {
-    setTutorialIntroSeen(true)
-  }
-
   const nextTutorialGuide = () => {
     setTutorialGuideStep(step => Math.min(step + 1, TUTORIAL_GUIDE_STEPS.length - 1))
   }
@@ -820,36 +797,6 @@ export default function YachtGame({ players, tutorialMode = false, onExit, onCha
     audioApi.setTtsEnabled(true)
     send('BGM_STOP')
     onExit?.()
-  }
-
-  if (tutorialMode && !tutorialIntroSeen) {
-    return (
-      <div style={s.page}>
-        <div style={s.introShell}>
-          <div style={s.introKicker}>튜토리얼 모드</div>
-          <div style={s.introTitle}>요트다이스 한 라운드 체험</div>
-          <div style={s.introText}>{TUTORIAL_INTRO_TEXT}</div>
-          <ul style={s.introList}>
-            <li>이 튜토리얼에서는 각 플레이어가 한 번씩 턴을 진행합니다.</li>
-            <li>실제 주사위를 굴리면 카메라가 결과를 인식합니다.</li>
-          </ul>
-          <div style={s.endActions}>
-            <button style={s.buttonSmall} onClick={exitGame}>게임 선택화면</button>
-            <button
-              style={{
-                ...s.buttonSmall,
-                ...s.primaryButton,
-                ...(!connected ? s.buttonDisabled : {}),
-              }}
-              disabled={!connected}
-              onClick={startTutorial}
-            >
-              튜토리얼 시작
-            </button>
-          </div>
-        </div>
-      </div>
-    )
   }
 
   if (!state) {
