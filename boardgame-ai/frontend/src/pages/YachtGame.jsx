@@ -24,10 +24,10 @@ const DISPLAY_CATEGORIES = CATEGORY_LABELS.filter(([key]) => key !== 'bonus').ma
 const SHOW_MANUAL_ROLL = import.meta.env.VITE_SHOW_MANUAL_ROLL === 'true'
 const SHOW_DICE_MANUAL_INPUT = import.meta.env.VITE_SHOW_DICE_MANUAL_INPUT !== 'false'
 const TUTORIAL_GUIDE_STEPS = [
-  '요트다이스는 주사위 조합으로 족보를 만들고, 점수판의 칸을 하나씩 채워나가는 게임입니다. 원하는 족보에 가까운 눈은 킵해두고, 나머지 주사위만 다시 굴려 더 좋은 조합을 만들 수 있습니다. 킵할 주사위를 보드 위 주사위 공간으로 옮긴 뒤, 끝났다면 태블릿의 다음 버튼을 눌러주세요.',
+  '요트다이스는 주사위 조합으로 족보를 만들고, 점수판의 칸을 하나씩 채워나가는 게임입니다. 먼저 점수판 오른쪽 위 물음표 버튼을 눌러 어떤 족보를 만들 수 있는지 확인해보세요.',
+  '원하는 족보에 가까운 눈은 킵해두고, 나머지 주사위만 다시 굴려 더 좋은 조합을 만들 수 있습니다. 킵할 주사위를 보드 위 주사위 공간으로 옮긴 뒤, 끝났다면 태블릿의 다음 버튼을 눌러주세요.',
   '킵했던 주사위도 언제든 굴림 영역으로 옮겨 다시 굴릴 수 있습니다.',
   '주사위는 세 번까지 굴릴 수 있습니다. 다시 굴리거나 그 전에 점수 칸을 선택해 턴을 끝낼 수도 있습니다.',
-  '점수판 오른쪽 위 물음표 버튼에서 족보 설명을 볼 수 있습니다.',
   '점수판에서 원하는 점수 칸을 선택하면 이번 턴의 점수가 기록됩니다. 주사위를 더 굴리거나, 원하시는 족보를 선택해주세요.',
 ]
 const sentTutorialTtsKeys = new Set()
@@ -311,6 +311,12 @@ const s = {
     padding: 0,
     flexShrink: 0,
   },
+  helpButtonRequired: {
+    border: '2px solid var(--yacht)',
+    background: 'var(--yacht)',
+    color: '#17110c',
+    boxShadow: '0 0 0 6px color-mix(in oklch, var(--yacht) 24%, transparent)',
+  },
   scoreHelpModal: {
     width: 'min(1120px, calc(100vw - 24px))',
     maxHeight: 'calc(100vh - 24px)',
@@ -325,6 +331,13 @@ const s = {
     overflowY: 'auto',
     maxHeight: 'calc(100vh - 92px)',
     color: 'var(--fg-soft)',
+  },
+  scoreHelpIntro: {
+    margin: '0 0 16px',
+    color: 'var(--fg-soft)',
+    fontSize: 17,
+    fontWeight: 650,
+    lineHeight: 1.45,
   },
   scoreHelpGrid: {
     display: 'grid',
@@ -579,6 +592,7 @@ export default function YachtGame({ players, tutorialMode = false, onExit, onCha
   const [manualDiceValues, setManualDiceValues] = useState(['', '', '', '', ''])
   const [manualDiceError, setManualDiceError] = useState('')
   const [tutorialGuideStep, setTutorialGuideStep] = useState(0)
+  const [tutorialScoreHelpSeen, setTutorialScoreHelpSeen] = useState(false)
   const [ttsEnabled, setTtsEnabled] = useState(true)
   const [bgmEnabled, setBgmEnabled] = useState(true)
   const [turnPulseKey, setTurnPulseKey] = useState(0)
@@ -633,6 +647,7 @@ export default function YachtGame({ players, tutorialMode = false, onExit, onCha
     if (previousTutorialResetKeyRef.current === resetKey) return
     previousTutorialResetKeyRef.current = resetKey
     setTutorialGuideStep(0)
+    setTutorialScoreHelpSeen(false)
   }, [state?.current_player_id, state?.phase, state?.tutorial_mode])
 
   // 백엔드가 보낸 hello 메시지 수신을 확인한 뒤에 START_YACHT 송신.
@@ -719,12 +734,19 @@ export default function YachtGame({ players, tutorialMode = false, onExit, onCha
   }, [messages, state?.last_message])
   const canUndo = state?.can_undo ?? true
   const isTutorial = Boolean(state?.tutorial_mode)
+  const tutorialScoreHelpRequired =
+    isTutorial &&
+    state?.phase === 'AWAITING_KEEP' &&
+    tutorialGuideStep === 0 &&
+    !tutorialScoreHelpSeen
   const canManualRoll =
     SHOW_MANUAL_ROLL &&
+    !tutorialScoreHelpRequired &&
     ['AWAITING_ROLL', 'AWAITING_KEEP'].includes(state?.phase) &&
     Number(state?.remaining_rolls || 0) > 0
   const canManualDiceInput =
     SHOW_DICE_MANUAL_INPUT &&
+    !tutorialScoreHelpRequired &&
     (
       (state?.phase === 'AWAITING_ROLL' && Number(state?.remaining_rolls || 0) > 0) ||
       ['AWAITING_KEEP', 'AWAITING_SCORE'].includes(state?.phase)
@@ -754,6 +776,12 @@ export default function YachtGame({ players, tutorialMode = false, onExit, onCha
 
   const nextTutorialGuide = () => {
     setTutorialGuideStep(step => Math.min(step + 1, TUTORIAL_GUIDE_STEPS.length - 1))
+  }
+
+  const completeTutorialScoreHelp = () => {
+    if (!tutorialScoreHelpRequired) return
+    setTutorialScoreHelpSeen(true)
+    setTutorialGuideStep(1)
   }
 
   const toggleBgm = () => {
@@ -963,9 +991,9 @@ export default function YachtGame({ players, tutorialMode = false, onExit, onCha
               {(state.dice_values?.length ? state.dice_values : ['-', '-', '-', '-', '-']).map((value, index) => (
                 <button
                   key={index}
-                  style={s.die(Boolean(state.keep_mask?.[index]), canToggleKeep(state))}
+                  style={s.die(Boolean(state.keep_mask?.[index]), canToggleKeep(state) && !tutorialScoreHelpRequired)}
                   onClick={() => toggleKeep(index, state, send)}
-                  disabled={!canToggleKeep(state)}
+                  disabled={!canToggleKeep(state) || tutorialScoreHelpRequired}
                   title="보관"
                 >
                   {value}
@@ -997,6 +1025,9 @@ export default function YachtGame({ players, tutorialMode = false, onExit, onCha
             recentScore={recentScore}
             onScore={(category) => scoreCategory(category, state, send)}
             rowPaddingY={scoreRowPaddingY}
+            scoreDisabled={tutorialScoreHelpRequired}
+            requireHelpOpen={tutorialScoreHelpRequired}
+            onHelpClose={completeTutorialScoreHelp}
           />
         </aside>
       </div>
@@ -1057,7 +1088,7 @@ export default function YachtGame({ players, tutorialMode = false, onExit, onCha
   )
 }
 
-function ScoreHelp({ onClose }) {
+function ScoreHelp({ onClose, tutorialMode = false }) {
   const rows = [
     {
       name: 'Aces-Sixes',
@@ -1135,6 +1166,11 @@ function ScoreHelp({ onClose }) {
           <button style={s.close} onClick={onClose}>x</button>
         </div>
         <div style={s.scoreHelpBody}>
+          {tutorialMode && (
+            <div style={s.scoreHelpIntro}>
+              점수판의 각 줄은 이번 턴에 만들 수 있는 족보입니다. 위쪽 칸은 같은 숫자를 모아 점수를 만들고, 아래쪽 칸은 풀 하우스, 스트레이트, 요트처럼 특정 조합을 완성하면 점수를 얻습니다.
+            </div>
+          )}
           <div style={s.scoreHelpGrid}>
             {rows.map(row => (
               <div key={row.name} style={s.scoreHelpCard}>
@@ -1171,8 +1207,25 @@ function ScoreHelp({ onClose }) {
   )
 }
 
-function ScoreTable({ state, currentOnly = false, compact = false, recentScore, onScore, rowPaddingY }) {
+function ScoreTable({
+  state,
+  currentOnly = false,
+  compact = false,
+  recentScore,
+  onScore,
+  rowPaddingY,
+  scoreDisabled = false,
+  requireHelpOpen = false,
+  onHelpClose,
+}) {
   const [scoreHelpOpen, setScoreHelpOpen] = useState(false)
+  const openScoreHelp = () => {
+    setScoreHelpOpen(true)
+  }
+  const closeScoreHelp = () => {
+    setScoreHelpOpen(false)
+    onHelpClose?.()
+  }
   const players = currentOnly
     ? state.players.filter(player => player.player_id === state.current_player_id)
     : state.players
@@ -1208,9 +1261,9 @@ function ScoreTable({ state, currentOnly = false, compact = false, recentScore, 
               {!compact && (
                 <>
                   <button
-                    style={s.helpButton}
+                    style={requireHelpOpen ? { ...s.helpButton, ...s.helpButtonRequired } : s.helpButton}
                     aria-label="족보 설명"
-                    onClick={() => setScoreHelpOpen(true)}
+                    onClick={openScoreHelp}
                   >
                     ?
                   </button>
@@ -1250,6 +1303,7 @@ function ScoreTable({ state, currentOnly = false, compact = false, recentScore, 
             !compact &&
             player?.player_id === state.current_player_id &&
             available &&
+            !scoreDisabled &&
             state.dice_values?.length
           const displayScore = hasScore ? score : (compact ? '—' : predictedScore(key, state))
           const highlightScore =
@@ -1280,7 +1334,7 @@ function ScoreTable({ state, currentOnly = false, compact = false, recentScore, 
         </tr>
       </tbody>
     </table>
-    {scoreHelpOpen && <ScoreHelp onClose={() => setScoreHelpOpen(false)} />}
+    {scoreHelpOpen && <ScoreHelp tutorialMode={requireHelpOpen} onClose={closeScoreHelp} />}
     </>
   )
 }
@@ -1315,7 +1369,7 @@ function getTutorialGuide(state, currentPlayer, guideStep) {
     const safeStep = Math.max(0, Math.min(guideStep, TUTORIAL_GUIDE_STEPS.length - 1))
     return {
       text: TUTORIAL_GUIDE_STEPS[safeStep],
-      hasNext: safeStep < TUTORIAL_GUIDE_STEPS.length - 1,
+      hasNext: safeStep > 0 && safeStep < TUTORIAL_GUIDE_STEPS.length - 1,
     }
   }
   if (state.phase === 'AWAITING_SCORE') {
