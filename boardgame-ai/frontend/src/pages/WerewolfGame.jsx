@@ -216,7 +216,20 @@ export default function WerewolfGame({ players, onChangePlayers, onChangeGame, o
     }
 
     if (ph === 'night_end') {
-      return <NightEnd onComplete={() => setDisplayedPhase('day_discussion')} send={send} isPracticeMode={isPracticeMode} />
+      return (
+        <NightEnd
+          onComplete={() => {
+            if (isPracticeMode) {
+              // 튜토리얼: 토론(day_discussion) 단계를 건너뛰고 바로 투표로 전이
+              send('start_now', {})
+            } else {
+              setDisplayedPhase('day_discussion')
+            }
+          }}
+          send={send}
+          isPracticeMode={isPracticeMode}
+        />
+      )
     }
 
     if (ph === 'day_discussion') {
