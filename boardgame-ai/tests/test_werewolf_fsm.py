@@ -13,7 +13,12 @@ from games.werewolf.ontology import WerewolfEventType, WerewolfInputType, Werewo
 from games.werewolf.state import WerewolfPlayerState
 
 
-def _make_fsm(roles: list[str], broadcast=None) -> WerewolfFSM:
+def _make_fsm(
+    roles: list[str],
+    broadcast=None,
+    center_cards: list[str] | None = None,
+    practice_mode: bool = False,
+) -> WerewolfFSM:
     if broadcast is None:
 
         async def _noop(_msg):
@@ -26,8 +31,9 @@ def _make_fsm(roles: list[str], broadcast=None) -> WerewolfFSM:
     ]
     return WerewolfFSM(
         players=players,
-        center_cards=["villager", "villager", "villager"],
+        center_cards=center_cards or ["villager", "villager", "villager"],
         broadcast=broadcast,
+        practice_mode=practice_mode,
     )
 
 
@@ -241,6 +247,60 @@ def test_vote_result_confirm_only_when_locked() -> None:
     msgs = fsm.handle_input(WerewolfInputType.VOTE_RESULT_CONFIRM, {}, None)
     assert msgs
     assert fsm.state.phase != WerewolfPhase.VOTE_COUNTDOWN.value
+
+
+# ── 튜토리얼 야간 페이즈 필터링 ───────────────────────────────────────────────
+
+
+def test_normal_mode_visits_center_only_role_phase() -> None:
+    """일반 모드: 센터 카드에만 있는 역할의 야간 페이즈도 진행한다(역할 노출 방지)."""
+    fsm = _make_fsm(["werewolf", "villager"], center_cards=["seer", "villager", "villager"])
+    # seer를 보유한 플레이어는 없지만 센터에 있으므로 일반 모드는 진행
+    assert fsm._night_phase_included(WerewolfPhase.NIGHT_SEER) is True
+
+
+def test_tutorial_mode_skips_center_only_active_role() -> None:
+    """튜토리얼 모드: 플레이어가 보유하지 않고 센터에만 있는 액티브 역할은 건너뛴다."""
+    fsm = _make_fsm(
+        ["werewolf", "villager"],
+        center_cards=["seer", "villager", "villager"],
+        practice_mode=True,
+    )
+    assert fsm._night_phase_included(WerewolfPhase.NIGHT_SEER) is False
+
+
+def test_tutorial_mode_includes_registered_active_role() -> None:
+    """튜토리얼 모드: 플레이어가 보유한 액티브 역할은 진행한다."""
+    fsm = _make_fsm(["seer", "villager"], practice_mode=True)
+    assert fsm._night_phase_included(WerewolfPhase.NIGHT_SEER) is True
+
+
+def test_tutorial_mode_always_includes_werewolf_team_passive() -> None:
+    """튜토리얼 모드: 등록 여부와 무관하게 늑대팀 패시브 안내는 항상 진행한다."""
+    # 늑대/하수인/프리메이슨 누구도 보유하지 않고 센터에도 없는 구성
+    fsm = _make_fsm(
+        ["seer", "villager"],
+        center_cards=["villager", "villager", "robber"],
+        practice_mode=True,
+    )
+    assert fsm._night_phase_included(WerewolfPhase.NIGHT_WEREWOLF) is True
+    assert fsm._night_phase_included(WerewolfPhase.NIGHT_MINION) is True
+    assert fsm._night_phase_included(WerewolfPhase.NIGHT_MASON) is True
+
+
+@pytest.mark.anyio
+async def test_tutorial_advance_skips_center_only_seer() -> None:
+    """튜토리얼 모드 전체 전이: 센터 전용 seer를 건너뛰고 day_discussion까지 진행."""
+    fsm = _make_fsm(
+        ["robber", "villager"],
+        center_cards=["seer", "villager", "villager"],
+        practice_mode=True,
+    )
+    # NIGHT_MASON 다음은 센터 전용 seer를 건너뛰고 등록된 robber로 진행해야 함
+    fsm.state.phase = WerewolfPhase.NIGHT_MASON.value
+    with patch("games.werewolf.fsm.ACTIVE_PHASE_TIMEOUT", 60):
+        fsm._advance_to_next_phase()
+    assert fsm.state.phase == WerewolfPhase.NIGHT_ROBBER.value
 
 
 @pytest.mark.anyio

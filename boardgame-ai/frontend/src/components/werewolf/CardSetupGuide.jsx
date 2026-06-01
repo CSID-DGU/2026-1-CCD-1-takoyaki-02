@@ -538,14 +538,14 @@ const s = {
     flexDirection: 'column',
     alignItems: 'center',
     gap: 20,
-    maxWidth: 860,
-    width: '90%',
+    maxWidth: 940,
+    width: '92%',
     marginBottom: 60,
     animation: 'roleSlideIn 0.45s ease both',
   },
 
   roleCounter: {
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: 700,
     letterSpacing: 2,
     color: 'rgba(220,185,120,0.55)',
@@ -586,7 +586,7 @@ const s = {
   },
 
   roleName: {
-    fontSize: 34,
+    fontSize: 40,
     fontWeight: 800,
     color: '#F8F1DD',
     textShadow: '0 0 24px rgba(220,185,120,0.45)',
@@ -596,21 +596,21 @@ const s = {
     background: 'rgba(255,255,255,0.05)',
     border: '1px solid rgba(255,255,255,0.08)',
     borderRadius: 12,
-    padding: '12px 16px',
+    padding: '16px 20px',
     display: 'flex',
     flexDirection: 'column',
-    gap: 7,
+    gap: 8,
   },
 
   roleSectionTitle: {
-    fontSize: 12,
+    fontSize: 14,
     fontWeight: 700,
     letterSpacing: 1,
     color: 'rgba(220,185,80,0.75)',
   },
 
   roleSectionBody: {
-    fontSize: 17,
+    fontSize: 21,
     color: 'rgba(248,241,221,0.85)',
     lineHeight: 1.75,
   },

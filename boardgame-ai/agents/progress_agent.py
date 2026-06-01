@@ -33,12 +33,20 @@ _WEREWOLF_SCRIPTS: dict[str, str] = {
     # vote_countdown: VoteCountdown.jsx 마운트 시 직접 발화 — FUSION_CONTEXT 타이밍 불일치 방지.
 }
 
-# 튜토리얼 모드 — 눈 감기 관련 안내 제거
+# 튜토리얼 모드 — 눈을 감지 않고 진행하므로 "깨어나세요" 대신 차례 안내,
+# 각 역할 플레이어가 직접 행동을 수행하는 방식으로 발화. NightRoleAnnounce.jsx의
+# tutorialAnnounce/tutorialAction 문구와 일치시킨다.
 _WEREWOLF_PRACTICE_SCRIPTS: dict[str, str] = {
-    **_WEREWOLF_SCRIPTS,
-    "night_start":    "밤이 되었습니다.",
-    "night_werewolf": "늑대인간은 깨어나세요. 서로를 확인하세요.",
-    "night_mason":    "프리메이슨은 깨어나세요. 서로를 확인하세요.",
+    "night_start":        "밤이 되었습니다. 튜토리얼 모드에서는 눈을 감지 않고 진행합니다. 차례가 되면 해당 역할 플레이어가 행동을 수행하면 됩니다.",
+    "night_doppelganger": "도플갱어 차례입니다. 도플갱어 플레이어는 다른 플레이어 1명의 카드를 확인하고 그 역할을 따라 행동합니다.",
+    "night_werewolf":     "늑대인간 차례입니다. 늑대인간 플레이어끼리 손을 들어 서로가 누구인지 확인합니다.",
+    "night_minion":       "하수인 차례입니다. 하수인 플레이어는 늑대인간이 누구인지 확인합니다.",
+    "night_mason":        "프리메이슨 차례입니다. 프리메이슨 플레이어끼리 서로가 누구인지 확인합니다.",
+    "night_seer":         "예언자 차례입니다. 예언자 플레이어는 다른 플레이어 1명 또는 중앙 카드 2장을 확인합니다.",
+    "night_robber":       "강도 차례입니다. 강도 플레이어는 다른 플레이어 1명의 카드를 자신의 카드와 바꾼 뒤, 새 카드를 확인합니다.",
+    "night_troublemaker": "말썽쟁이 차례입니다. 말썽쟁이 플레이어는 자신을 제외한 두 플레이어의 카드를 서로 바꿉니다.",
+    "night_drunk":        "주정뱅이 차례입니다. 주정뱅이 플레이어는 중앙 카드 1장과 자신의 카드를 바꿉니다. 새 카드는 확인하지 않습니다.",
+    "night_insomniac":    "불면증환자 차례입니다. 불면증환자 플레이어는 마지막으로 자신의 카드를 확인합니다.",
 }
 
 _SCRIPTS: dict[str, dict[str, str]] = {

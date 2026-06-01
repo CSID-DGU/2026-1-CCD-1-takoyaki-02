@@ -1,67 +1,85 @@
 import { useState, useEffect } from 'react'
 
+// 튜토리얼 모드는 눈을 감지 않고 진행하므로 "깨어나세요" 대신 차례 안내,
+// action도 해당 역할 플레이어가 직접 행동을 수행하는 방식으로 설명한다.
 const ROLE_NIGHT_DATA = {
   doppelganger: {
     name: '도플갱어',
     image: '/roles/doppelganger.png',
     announce: '도플갱어는 깨어나세요.',
     action: '다른 플레이어 1명의 카드를 확인하세요.\n그 역할이 됩니다.',
+    tutorialAnnounce: '도플갱어 차례입니다.',
+    tutorialAction: '도플갱어 플레이어는 다른 플레이어 1명의\n카드를 확인하고 그 역할을 따라 행동합니다.',
   },
   werewolf: {
     name: '늑대인간',
     image: '/roles/werewolf.png',
     announce: '늑대인간은 깨어나세요.',
     action: '서로를 확인하고 다시 눈을 감으세요.',
-    tutorialAction: '서로를 확인하세요.',
+    tutorialAnnounce: '늑대인간 차례입니다.',
+    tutorialAction: '늑대인간 플레이어끼리 손을 들어\n서로가 누구인지 확인합니다.',
   },
   minion: {
     name: '하수인',
     image: '/roles/minion.png',
     announce: '하수인은 깨어나세요.',
     action: '늑대인간들은 엄지를 들어올려\n자신을 알려주세요.',
+    tutorialAnnounce: '하수인 차례입니다.',
+    tutorialAction: '하수인 플레이어는 늑대인간이\n누구인지 확인합니다.',
   },
   mason: {
     name: '프리메이슨',
     image: '/roles/mason.png',
     announce: '프리메이슨은 깨어나세요.',
     action: '서로를 확인하고 다시 눈을 감으세요.',
-    tutorialAction: '서로를 확인하세요.',
+    tutorialAnnounce: '프리메이슨 차례입니다.',
+    tutorialAction: '프리메이슨 플레이어끼리\n서로가 누구인지 확인합니다.',
   },
   seer: {
     name: '예언자',
     image: '/roles/seer.png',
     announce: '예언자는 깨어나세요.',
     action: '다른 플레이어 1명 또는\n중앙 카드 2장을 확인할 수 있습니다.',
+    tutorialAnnounce: '예언자 차례입니다.',
+    tutorialAction: '예언자 플레이어는 다른 플레이어 1명 또는\n중앙 카드 2장을 확인합니다.',
   },
   robber: {
     name: '강도',
     image: '/roles/robber.png',
     announce: '강도는 깨어나세요.',
     action: '다른 플레이어 1명의 카드와\n자신의 카드를 교환할 수 있습니다.',
+    tutorialAnnounce: '강도 차례입니다.',
+    tutorialAction: '강도 플레이어는 다른 플레이어 1명의 카드를\n자신의 카드와 바꾼 뒤, 새 카드를 확인합니다.',
   },
   troublemaker: {
     name: '말썽쟁이',
     image: '/roles/troublemaker.png',
     announce: '말썽쟁이는 깨어나세요.',
     action: '자신을 제외한 두 플레이어의\n카드를 서로 교환하세요.',
+    tutorialAnnounce: '말썽쟁이 차례입니다.',
+    tutorialAction: '말썽쟁이 플레이어는 자신을 제외한\n두 플레이어의 카드를 서로 바꿉니다.',
   },
   drunk: {
     name: '주정뱅이',
     image: '/roles/drunk.png',
     announce: '주정뱅이는 깨어나세요.',
     action: '중앙 카드 1장을 가져와\n자신의 카드와 교환하세요.\n새 카드는 볼 수 없습니다.',
+    tutorialAnnounce: '주정뱅이 차례입니다.',
+    tutorialAction: '주정뱅이 플레이어는 중앙 카드 1장과\n자신의 카드를 바꿉니다.\n새 카드는 확인하지 않습니다.',
   },
   insomniac: {
     name: '불면증환자',
     image: '/roles/insomniac.png',
     announce: '불면증환자는 깨어나세요.',
     action: '자신의 카드를 확인하세요.',
+    tutorialAnnounce: '불면증환자 차례입니다.',
+    tutorialAction: '불면증환자 플레이어는 마지막으로\n자신의 카드를 확인합니다.',
   },
 }
 
 const PASSIVE_ROLES = new Set(['werewolf', 'minion', 'mason'])
-const PASSIVE_DURATION = 10
-const ACTIVE_DURATION = 20
+const PASSIVE_DURATION = 10  // 백엔드 PASSIVE_PHASE_DURATION과 일치
+const ACTIVE_DURATION = 12   // 백엔드 ACTIVE_PHASE_TIMEOUT과 일치
 
 const KOREAN_NUMS = { 1: '한', 2: '두', 3: '세' }
 function toKoreanTTS(text) {
@@ -87,6 +105,7 @@ export default function NightRoleAnnounce({ roleId, onComplete, onExit, isPracti
 
   if (!role) return null
 
+  const displayAnnounce = isPracticeMode ? (role.tutorialAnnounce ?? role.announce) : role.announce
   const displayAction = isPracticeMode ? (role.tutorialAction ?? role.action) : role.action
 
   return (
@@ -183,7 +202,7 @@ export default function NightRoleAnnounce({ roleId, onComplete, onExit, isPracti
           </div>
 
           <div style={{ ...styles.textBlock, animation: 'fadeIn 0.6s ease-out 0.25s both' }}>
-            <p style={styles.announceText}>{role.announce}</p>
+            <p style={styles.announceText}>{displayAnnounce}</p>
             <p style={styles.actionText}>{displayAction}</p>
             <p style={styles.countdownText}>{countdown}초 후 자동으로 넘어갑니다</p>
           </div>
