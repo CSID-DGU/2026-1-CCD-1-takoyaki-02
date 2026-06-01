@@ -30,6 +30,8 @@ const TUTORIAL_GUIDE_STEPS = [
   '주사위는 세 번까지 굴릴 수 있습니다. 다시 굴리거나 그 전에 점수 칸을 선택해 턴을 끝낼 수도 있습니다.',
   '점수판에서 원하는 점수 칸을 선택하면 이번 턴의 점수가 기록됩니다. 주사위를 더 굴리거나, 원하시는 족보를 선택해주세요.',
 ]
+const TUTORIAL_SCORE_HELP_TTS =
+  '족보를 간단히 설명하겠습니다. Aces부터 Sixes는 해당 숫자와 같은 주사위만 더합니다. 이 상단 점수의 합이 63점 이상이면 상단 보너스 35점을 추가로 받습니다. Full House는 같은 눈 세 개와 같은 눈 두 개를 함께 만드는 족보입니다. Four of a Kind는 같은 눈 네 개 이상을 만드는 족보입니다. Small Straight는 연속된 숫자 네 개, Large Straight는 연속된 숫자 다섯 개를 만드는 족보입니다. Yacht는 주사위 다섯 개가 모두 같은 눈일 때 완성됩니다. Choice는 조건 없이 주사위 다섯 개의 합계를 그대로 기록합니다.'
 const sentTutorialTtsKeys = new Set()
 
 const s = {
@@ -331,13 +333,6 @@ const s = {
     overflowY: 'auto',
     maxHeight: 'calc(100vh - 92px)',
     color: 'var(--fg-soft)',
-  },
-  scoreHelpIntro: {
-    margin: '0 0 16px',
-    color: 'var(--fg-soft)',
-    fontSize: 17,
-    fontWeight: 650,
-    lineHeight: 1.45,
   },
   scoreHelpGrid: {
     display: 'grid',
@@ -784,6 +779,11 @@ export default function YachtGame({ players, tutorialMode = false, onExit, onCha
     setTutorialGuideStep(1)
   }
 
+  const playTutorialScoreHelpTts = () => {
+    if (!tutorialScoreHelpRequired) return
+    send('TTS_REQUEST', { text: TUTORIAL_SCORE_HELP_TTS })
+  }
+
   const toggleBgm = () => {
     const next = !bgmEnabled
     setBgmEnabled(next)
@@ -1027,6 +1027,7 @@ export default function YachtGame({ players, tutorialMode = false, onExit, onCha
             rowPaddingY={scoreRowPaddingY}
             scoreDisabled={tutorialScoreHelpRequired}
             requireHelpOpen={tutorialScoreHelpRequired}
+            onHelpOpen={playTutorialScoreHelpTts}
             onHelpClose={completeTutorialScoreHelp}
           />
         </aside>
@@ -1088,7 +1089,7 @@ export default function YachtGame({ players, tutorialMode = false, onExit, onCha
   )
 }
 
-function ScoreHelp({ onClose, tutorialMode = false }) {
+function ScoreHelp({ onClose }) {
   const rows = [
     {
       name: 'Aces-Sixes',
@@ -1166,11 +1167,6 @@ function ScoreHelp({ onClose, tutorialMode = false }) {
           <button style={s.close} onClick={onClose}>x</button>
         </div>
         <div style={s.scoreHelpBody}>
-          {tutorialMode && (
-            <div style={s.scoreHelpIntro}>
-              점수판의 각 줄은 이번 턴에 만들 수 있는 족보입니다. 위쪽 칸은 같은 숫자를 모아 점수를 만들고, 아래쪽 칸은 풀 하우스, 스트레이트, 요트처럼 특정 조합을 완성하면 점수를 얻습니다.
-            </div>
-          )}
           <div style={s.scoreHelpGrid}>
             {rows.map(row => (
               <div key={row.name} style={s.scoreHelpCard}>
@@ -1216,11 +1212,13 @@ function ScoreTable({
   rowPaddingY,
   scoreDisabled = false,
   requireHelpOpen = false,
+  onHelpOpen,
   onHelpClose,
 }) {
   const [scoreHelpOpen, setScoreHelpOpen] = useState(false)
   const openScoreHelp = () => {
     setScoreHelpOpen(true)
+    onHelpOpen?.()
   }
   const closeScoreHelp = () => {
     setScoreHelpOpen(false)
@@ -1334,7 +1332,7 @@ function ScoreTable({
         </tr>
       </tbody>
     </table>
-    {scoreHelpOpen && <ScoreHelp tutorialMode={requireHelpOpen} onClose={closeScoreHelp} />}
+    {scoreHelpOpen && <ScoreHelp onClose={closeScoreHelp} />}
     </>
   )
 }
