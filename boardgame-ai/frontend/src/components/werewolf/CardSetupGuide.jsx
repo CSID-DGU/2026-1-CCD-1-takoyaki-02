@@ -16,6 +16,81 @@ const ROLE_NAMES = {
   villager:     '마을주민',
 }
 
+const ROLE_INFO = {
+  doppelganger: {
+    name: '도플갱어', image: '/roles/doppelganger.png',
+    gradient: 'linear-gradient(135deg, #4a1a6b, #2a0a3a)',
+    action: '밤에 깨어나 다른 플레이어 한 명의 카드를 확인합니다. 확인한 즉시 그 역할이 되어 해당 역할의 행동을 수행합니다.',
+    winCondition: '복사한 역할의 팀이 승리하면 함께 승리합니다.',
+  },
+  werewolf: {
+    name: '늑대인간', image: '/roles/werewolf.png',
+    gradient: 'linear-gradient(135deg, #6b1a1a, #3a0a0a)',
+    action: '밤에 깨어나 동료 늑대인간과 눈을 맞춥니다. 혼자인 경우 중앙 카드 한 장을 몰래 확인할 수 있습니다.',
+    winCondition: '투표 결과 늑대인간 팀 중 아무도 처형되지 않으면 늑대인간 팀 승리입니다.',
+  },
+  minion: {
+    name: '하수인', image: '/roles/minion.png',
+    gradient: 'linear-gradient(135deg, #5a1a7a, #2a0a4a)',
+    action: '밤에 깨어나 늑대인간이 누구인지 확인합니다. 단, 늑대인간은 하수인이 누구인지 모릅니다.',
+    winCondition: '늑대인간이 처형되지 않으면 늑대인간 팀 승리입니다. 단, 늑대인간이 없는데 자신이 처형되면 마을 팀이 승리합니다.',
+  },
+  mason: {
+    name: '프리메이슨', image: '/roles/mason.png',
+    gradient: 'linear-gradient(135deg, #1a3a5a, #0a1a3a)',
+    action: '밤에 깨어나 동료 프리메이슨과 눈을 맞춥니다. 서로가 같은 편임을 확인합니다.',
+    winCondition: '마을 팀이 늑대인간을 처형하면 승리합니다. 서로를 신뢰하며 함께 늑대인간을 찾으세요.',
+  },
+  seer: {
+    name: '예언자', image: '/roles/seer.png',
+    gradient: 'linear-gradient(135deg, #1a3a7a, #0a1a4a)',
+    action: '밤에 깨어나 다른 플레이어 한 명의 카드를 확인하거나, 중앙에 놓인 카드 중 두 장을 확인할 수 있습니다.',
+    winCondition: '마을 팀이 늑대인간을 처형하면 승리합니다.',
+  },
+  robber: {
+    name: '강도', image: '/roles/robber.png',
+    gradient: 'linear-gradient(135deg, #3a3a1a, #1a1a0a)',
+    action: '밤에 깨어나 다른 플레이어 한 명의 카드와 자신의 카드를 교환합니다. 가져온 새 카드를 확인합니다.',
+    winCondition: '교환 후 자신의 최종 역할 팀이 승리하면 함께 승리합니다.',
+  },
+  troublemaker: {
+    name: '말썽쟁이', image: '/roles/troublemaker.png',
+    gradient: 'linear-gradient(135deg, #1a5a4a, #0a2a2a)',
+    action: '밤에 깨어나 자신을 제외한 두 플레이어의 카드를 서로 몰래 교환합니다.',
+    winCondition: '마을 팀이 늑대인간을 처형하면 승리합니다.',
+  },
+  drunk: {
+    name: '주정뱅이', image: '/roles/drunk.png',
+    gradient: 'linear-gradient(135deg, #5a3a1a, #2a1a0a)',
+    action: '밤에 깨어나 중앙 카드 중 한 장을 가져와 자신의 카드와 교환합니다. 새로 받은 카드가 무엇인지 알 수 없습니다.',
+    winCondition: '자신의 최종 역할 팀이 승리하면 함께 승리합니다.',
+  },
+  insomniac: {
+    name: '불면증환자', image: '/roles/insomniac.png',
+    gradient: 'linear-gradient(135deg, #1a2a5a, #0a0a2a)',
+    action: '모든 야간 행동이 끝난 후 마지막으로 깨어나 자신의 현재 카드를 확인합니다.',
+    winCondition: '마을 팀이 늑대인간을 처형하면 승리합니다.',
+  },
+  tanner: {
+    name: '무두장이', image: '/roles/tanner.png',
+    gradient: 'linear-gradient(135deg, #3a2a1a, #1a0a0a)',
+    action: '야간 행동이 없습니다. 낮에 토론에서 의심받도록 유도하여 처형되는 것이 목표입니다.',
+    winCondition: '투표로 자신이 처형되면 무두장이 단독 승리합니다.',
+  },
+  hunter: {
+    name: '사냥꾼', image: '/roles/hunter.png',
+    gradient: 'linear-gradient(135deg, #1a4a1a, #0a2a0a)',
+    action: '야간 행동이 없습니다. 낮 토론에서 의심스러운 플레이어를 지목해두세요.',
+    winCondition: '마을 팀이 늑대인간을 처형하면 승리합니다. 자신이 처형될 경우 지목한 플레이어도 함께 처형됩니다.',
+  },
+  villager: {
+    name: '마을주민', image: '/roles/villager.png',
+    gradient: 'linear-gradient(135deg, #1a5a1a, #0a2a0a)',
+    action: '야간 행동이 없습니다. 눈을 감고 조용히 기다립니다.',
+    winCondition: '마을 팀이 늑대인간을 처형하면 승리합니다.',
+  },
+}
+
 const SENTENCES_NORMAL = [
   { text: '이번 게임에 사용할 역할 카드입니다.',                               showCards: true },
   { text: '모든 카드를 역할이 보이지 않게 뒤집어주세요.',                       holdMs: 10000 },
@@ -35,21 +110,31 @@ const SENTENCES_PRACTICE = [
   { text: '튜토리얼 모드에서는 눈을 감지 않고 진행하겠습니다.' },
 ]
 
-const CHAR_MS = 60    // 글자당 타이핑 속도 (ms)
-const HOLD_MS = 5000  // 타이핑 완료 후 대기 시간 (ms) — 개별 holdMs로 오버라이드 가능
-const FADE_MS = 600   // 페이드 전환 시간 (ms)
+const KOREAN_ORDINALS = ['첫 번째', '두 번째', '세 번째', '네 번째', '다섯 번째', '여섯 번째', '일곱 번째', '여덟 번째', '아홉 번째', '열 번째', '열한 번째', '열두 번째']
+
+const CHAR_MS = 60
+const HOLD_MS = 5000
+const FADE_MS = 600
+const ROLE_EXPLAIN_DELAY_MS = 4000
 const CONFIRM_TEXT = '모든 준비가 완료 되었으면 OK 싸인을 해주세요.'
 
 export default function CardSetupGuide({ roles = [], onComplete, send, wsState, onExit, isPracticeMode }) {
   const SENTENCES = isPracticeMode ? SENTENCES_PRACTICE : SENTENCES_NORMAL
-  const [step, setStep]             = useState(0)
-  const [typed, setTyped]           = useState('')
-  const [visible, setVisible]       = useState(false)
-  const [confirming, setConfirming] = useState(false)
-  const prevGestureRef = useRef(wsState?.gesture_confirmed ?? null)
-  const skipRef        = useRef(null)
+  const [step, setStep]                         = useState(0)
+  const [typed, setTyped]                       = useState('')
+  const [visible, setVisible]                   = useState(false)
+  const [confirming, setConfirming]             = useState(false)
+  const [roleExplainIdx, setRoleExplainIdx]     = useState(null)
+  const prevGestureRef  = useRef(wsState?.gesture_confirmed ?? null)
+  const skipRef         = useRef(null)
+  const roleTimer4sRef  = useRef(null)
 
+  // 중복 제거한 역할 목록 (역할 설명은 역할 종류당 1회)
+  const uniqueRoles = [...new Set(roles)]
+
+  // 문장 진행 페이즈
   useEffect(() => {
+    if (roleExplainIdx !== null) return
     if (step >= SENTENCES.length) {
       setConfirming(true)
       return
@@ -59,10 +144,8 @@ export default function CardSetupGuide({ roles = [], onComplete, send, wsState, 
     setTyped('')
     setVisible(true)
 
-    // 문장 시작 시 TTS 재생 (tts 필드가 있으면 우선 사용 — 숫자를 한국어 고유어로 읽히도록)
     send?.('TTS_REQUEST', { text: sentence.tts ?? sentence.text })
 
-    // 타이핑 애니메이션
     let charIdx = 0
     const typeTimer = setInterval(() => {
       charIdx++
@@ -73,14 +156,18 @@ export default function CardSetupGuide({ roles = [], onComplete, send, wsState, 
     const typingMs = sentence.text.length * CHAR_MS
     const holdMs   = sentence.holdMs ?? HOLD_MS
 
-    // 타이핑 완료 + holdMs 후 페이드 아웃
-    const fadeOut = setTimeout(() => setVisible(false), typingMs + holdMs)
-    // 페이드 완료 후 다음 문장
-    const next    = setTimeout(() => setStep(s => s + 1), typingMs + holdMs + FADE_MS)
+    // 스텝 0 완료 후 튜토리얼 모드에서 역할 설명 페이즈로 전환
+    const goNext = () => {
+      if (isPracticeMode && step === 0 && uniqueRoles.length > 0) {
+        setRoleExplainIdx(0)
+      } else {
+        setStep(s => s + 1)
+      }
+    }
 
-    // 건너뛰기 버튼이 호출할 콜백: 현재 TTS 발화 중단 + 타이머 취소 후 다음 문장으로.
-    // card_setup은 모든 문장이 동일 state_version이라 backend가 자동 인터럽트하지
-    // 않으므로, frontend에서 현재 재생을 직접 fade-out 중단해 다음 TTS와 겹치지 않게 함.
+    const fadeOut = setTimeout(() => setVisible(false), typingMs + holdMs)
+    const next    = setTimeout(goNext, typingMs + holdMs + FADE_MS)
+
     skipRef.current = () => {
       audioApi.interrupt()
       clearInterval(typeTimer)
@@ -88,7 +175,7 @@ export default function CardSetupGuide({ roles = [], onComplete, send, wsState, 
       clearTimeout(next)
       setTyped(sentence.text)
       setVisible(false)
-      setTimeout(() => setStep(s => s + 1), FADE_MS)
+      setTimeout(goNext, FADE_MS)
     }
 
     return () => {
@@ -97,7 +184,57 @@ export default function CardSetupGuide({ roles = [], onComplete, send, wsState, 
       clearTimeout(next)
       skipRef.current = null
     }
-  }, [step])
+  }, [step, roleExplainIdx])
+
+  // 역할 설명 페이즈
+  useEffect(() => {
+    if (roleExplainIdx === null) return
+
+    // 모든 역할 설명 완료 → 스텝 1부터 재개
+    if (roleExplainIdx >= uniqueRoles.length) {
+      setRoleExplainIdx(null)
+      setStep(1)
+      return
+    }
+
+    const roleId = uniqueRoles[roleExplainIdx]
+    const info   = ROLE_INFO[roleId]
+
+    if (!info) {
+      setRoleExplainIdx(i => i + 1)
+      return
+    }
+
+    const korNum  = KOREAN_ORDINALS[roleExplainIdx] ?? `${roleExplainIdx + 1}번째`
+    const ttsText = `${korNum} 역할, ${info.name}. ${info.action} ${info.winCondition}`
+    send?.('TTS_REQUEST', { text: ttsText })
+
+    const unregisterTts = audioApi.onNextTtsEnded(() => {
+      roleTimer4sRef.current = setTimeout(() => {
+        roleTimer4sRef.current = null
+        setRoleExplainIdx(i => i + 1)
+      }, ROLE_EXPLAIN_DELAY_MS)
+    })
+
+    skipRef.current = () => {
+      unregisterTts()
+      if (roleTimer4sRef.current) {
+        clearTimeout(roleTimer4sRef.current)
+        roleTimer4sRef.current = null
+      }
+      audioApi.interrupt()
+      setRoleExplainIdx(i => i + 1)
+    }
+
+    return () => {
+      unregisterTts()
+      if (roleTimer4sRef.current) {
+        clearTimeout(roleTimer4sRef.current)
+        roleTimer4sRef.current = null
+      }
+      skipRef.current = null
+    }
+  }, [roleExplainIdx])
 
   // 확인 단계 진입: 타이핑 애니메이션 + TTS + 제스처 가드 초기화
   useEffect(() => {
@@ -124,7 +261,10 @@ export default function CardSetupGuide({ roles = [], onComplete, send, wsState, 
     prevGestureRef.current = cur
   }, [wsState?.gesture_confirmed, confirming])
 
-  const sentence = step < SENTENCES.length ? SENTENCES[step] : null
+  const sentence        = step < SENTENCES.length ? SENTENCES[step] : null
+  const currentRoleInfo = roleExplainIdx !== null && roleExplainIdx < uniqueRoles.length
+    ? ROLE_INFO[uniqueRoles[roleExplainIdx]]
+    : null
 
   return (
     <>
@@ -139,6 +279,10 @@ export default function CardSetupGuide({ roles = [], onComplete, send, wsState, 
           100% { transform: translateX(-8%); }
         }
         @keyframes cursorBlink { 0%,100%{opacity:1} 50%{opacity:0} }
+        @keyframes roleSlideIn {
+          from { opacity: 0; transform: translateY(20px); }
+          to   { opacity: 1; transform: translateY(0); }
+        }
       `}</style>
 
       <div style={s.page} onClick={confirming ? onComplete : undefined}>
@@ -199,39 +343,65 @@ export default function CardSetupGuide({ roles = [], onComplete, send, wsState, 
           pointerEvents:'none',
         }} />
 
-        {/* 중앙 콘텐츠 */}
-        <div style={{
-          ...s.inner,
-          opacity: visible ? 1 : 0,
-          transition: `opacity ${FADE_MS}ms ease`,
-        }}>
-          <p style={s.sentence}>
-            {typed}
-            {!confirming && sentence && <span style={s.cursor}>|</span>}
-          </p>
-
-
-          {confirming && typed.length >= CONFIRM_TEXT.length && (
-            <p style={s.hint}>화면을 터치하거나 OK 싸인을 해주세요</p>
-          )}
-
-          {sentence?.showCards && roles.length > 0 && (
-            <div style={s.cardGrid}>
-              {roles.map((roleId, i) => (
-                <div key={i} style={s.cardItem}>
-                  <div style={s.cardImgBox}>
-                    <img
-                      src={`/roles/${roleId}.png`}
-                      alt={ROLE_NAMES[roleId] || roleId}
-                      style={s.cardImg}
-                    />
-                  </div>
-                  <div style={s.cardName}>{ROLE_NAMES[roleId] || roleId}</div>
-                </div>
-              ))}
+        {/* 역할 설명 페이즈 */}
+        {roleExplainIdx !== null && currentRoleInfo && (
+          <div style={s.roleWrap} key={roleExplainIdx}>
+            <div style={s.roleCounter}>
+              역할 소개 {roleExplainIdx + 1} / {uniqueRoles.length}
             </div>
-          )}
-        </div>
+            <div style={s.roleBody}>
+              <div style={{ ...s.roleImgBox, background: currentRoleInfo.gradient }}>
+                <img src={currentRoleInfo.image} alt={currentRoleInfo.name} style={s.roleImg} />
+              </div>
+              <div style={s.roleTextCol}>
+                <div style={s.roleName}>{currentRoleInfo.name}</div>
+                <div style={s.roleSection}>
+                  <div style={s.roleSectionTitle}>🌙 야간 행동</div>
+                  <div style={s.roleSectionBody}>{currentRoleInfo.action}</div>
+                </div>
+                <div style={s.roleSection}>
+                  <div style={s.roleSectionTitle}>🏆 승리 조건</div>
+                  <div style={s.roleSectionBody}>{currentRoleInfo.winCondition}</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* 문장 진행 페이즈 */}
+        {roleExplainIdx === null && (
+          <div style={{
+            ...s.inner,
+            opacity: visible ? 1 : 0,
+            transition: `opacity ${FADE_MS}ms ease`,
+          }}>
+            <p style={s.sentence}>
+              {typed}
+              {!confirming && sentence && <span style={s.cursor}>|</span>}
+            </p>
+
+            {confirming && typed.length >= CONFIRM_TEXT.length && (
+              <p style={s.hint}>화면을 터치하거나 OK 싸인을 해주세요</p>
+            )}
+
+            {sentence?.showCards && roles.length > 0 && (
+              <div style={s.cardGrid}>
+                {roles.map((roleId, i) => (
+                  <div key={i} style={s.cardItem}>
+                    <div style={s.cardImgBox}>
+                      <img
+                        src={`/roles/${roleId}.png`}
+                        alt={ROLE_NAMES[roleId] || roleId}
+                        style={s.cardImg}
+                      />
+                    </div>
+                    <div style={s.cardName}>{ROLE_NAMES[roleId] || roleId}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </>
   )
@@ -358,6 +528,91 @@ const s = {
     color: 'rgba(248,241,221,0.38)',
     textAlign: 'center',
     letterSpacing: 0.5,
+  },
+
+  // 역할 설명 페이즈 스타일
+  roleWrap: {
+    position: 'relative',
+    zIndex: 1,
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    gap: 20,
+    maxWidth: 860,
+    width: '90%',
+    marginBottom: 60,
+    animation: 'roleSlideIn 0.45s ease both',
+  },
+
+  roleCounter: {
+    fontSize: 13,
+    fontWeight: 700,
+    letterSpacing: 2,
+    color: 'rgba(220,185,120,0.55)',
+    textTransform: 'uppercase',
+  },
+
+  roleBody: {
+    display: 'flex',
+    alignItems: 'flex-start',
+    gap: 28,
+    width: '100%',
+  },
+
+  roleImgBox: {
+    width: 150,
+    height: 190,
+    borderRadius: 14,
+    overflow: 'hidden',
+    border: '2px solid rgba(255,255,255,0.15)',
+    flexShrink: 0,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    boxShadow: '0 8px 32px rgba(0,0,0,0.55)',
+  },
+
+  roleImg: {
+    width: '100%',
+    height: '100%',
+    objectFit: 'contain',
+  },
+
+  roleTextCol: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 14,
+    flex: 1,
+  },
+
+  roleName: {
+    fontSize: 34,
+    fontWeight: 800,
+    color: '#F8F1DD',
+    textShadow: '0 0 24px rgba(220,185,120,0.45)',
+  },
+
+  roleSection: {
+    background: 'rgba(255,255,255,0.05)',
+    border: '1px solid rgba(255,255,255,0.08)',
+    borderRadius: 12,
+    padding: '12px 16px',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 7,
+  },
+
+  roleSectionTitle: {
+    fontSize: 12,
+    fontWeight: 700,
+    letterSpacing: 1,
+    color: 'rgba(220,185,80,0.75)',
+  },
+
+  roleSectionBody: {
+    fontSize: 17,
+    color: 'rgba(248,241,221,0.85)',
+    lineHeight: 1.75,
   },
 }
 
