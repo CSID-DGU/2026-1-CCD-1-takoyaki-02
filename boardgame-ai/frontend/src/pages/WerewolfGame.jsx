@@ -359,6 +359,8 @@ export default function WerewolfGame({ players, onChangePlayers, onChangeGame, o
           onComplete={() => {
             const { confirmRoleId, confirmPlayerId, transitionPlayer } = roleExplainState
             setRoleExplainState(null)
+            setDetectedRoleId(null)
+            setRoleRegTimedOut(false)
             if (transitionPlayer) {
               setRoleTransitionPlayer(transitionPlayer)
               setShowRoleTransition(true)
