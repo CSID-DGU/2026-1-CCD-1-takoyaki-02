@@ -21,6 +21,9 @@ const ROLES = [
 
 const TEAMS = ['전체', '마을 팀', '늑대 팀', '중립 팀']
 
+// 프리메이슨은 항상 쌍으로 등장 — 1장만 선택 불가 (0장 또는 2장)
+const MASON_IDS = ['mason_1', 'mason_2']
+
 const KOREAN_NUMBERS = [
   '하나', '둘', '셋', '넷', '다섯', '여섯', '일곱', '여덟', '아홉', '열',
   '열하나', '열둘', '열셋', '열넷', '열다섯', '열여섯', '열일곱', '열여덟', '열아홉', '스물',
@@ -52,6 +55,14 @@ export default function RoleRegistration({ players = [], onStart, onExit, send, 
 
   const toggle = (id) => {
     setSelected((prev) => {
+      // 프리메이슨: 쌍으로만 토글 (1장만 선택되는 상태 방지)
+      if (MASON_IDS.includes(id)) {
+        const hasMason = MASON_IDS.some((m) => prev.includes(m))
+        if (hasMason) return prev.filter((x) => !MASON_IDS.includes(x))
+        // 두 장이 모두 들어갈 공간이 있을 때만 추가
+        if (prev.length + MASON_IDS.length > needed) return prev
+        return [...prev, ...MASON_IDS]
+      }
       if (prev.includes(id)) return prev.filter((x) => x !== id)
       if (prev.length >= needed) return prev
       return [...prev, id]
