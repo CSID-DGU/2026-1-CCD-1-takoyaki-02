@@ -82,6 +82,67 @@ async def test_yacht_session_score_selection_clears_dice_undo_history():
 
 
 @pytest.mark.anyio
+async def test_manual_dice_input_after_unreadable_roll_counts_as_roll():
+    """인식 실패(ROLL_UNREADABLE) 후 수동 입력은 정식 굴림 1회로 카운트되고
+    AWAITING_KEEP으로 복귀해 남은 굴림 기회를 보존해야 한다.
+
+    이전에는 AWAITING_SCORE에 머물러 굴림 기회가 사라지고, 비전이
+    ROLL_CONFIRMED를 거부하는 단계라 다시 굴려도 인식되지 않았다.
+    """
+    ws = FakeWebSocket()
+    session = YachtSession(ws)
+
+    await session.start_game({"players": [{"player_id": "p1", "playername": "p1"}]})
+
+    # 첫 굴림이 일부 인식 실패 → AWAITING_SCORE로 강제 진입, 굴림 미카운트.
+    await session.dispatch_vision_event(
+        GameEvent(
+            event_type=YachtEventType.ROLL_UNREADABLE.value,
+            actor_id="p1",
+            confidence=0.6,
+            frame_id=1,
+            data={"dice_values": [1, None, 3, 4, None], "unknown_indices": [1, 4]},
+        )
+    )
+    unreadable = _latest_state(ws)
+    assert unreadable["phase"] == "AWAITING_SCORE"
+    assert unreadable["roll_count"] == 0
+
+    # 수동 입력으로 눈을 확정 → 굴림 1회 카운트 + AWAITING_KEEP 복귀.
+    await session.handle_client_message(
+        {"input_type": "MANUAL_DICE_INPUT", "data": {"dice_values": [1, 2, 3, 4, 5]}}
+    )
+    resolved = _latest_state(ws)
+    assert resolved["phase"] == "AWAITING_KEEP"
+    assert resolved["roll_count"] == 1
+    assert resolved["remaining_rolls"] == 2
+    assert resolved["dice_values"] == [1, 2, 3, 4, 5]
+    assert resolved["unreadable_roll"] is None
+    assert resolved["can_undo"] is True
+
+
+@pytest.mark.anyio
+async def test_manual_dice_input_in_awaiting_keep_only_corrects_values():
+    """정상 인식 후(AWAITING_KEEP) 수동 입력은 눈만 정정하고 굴림은 카운트하지 않는다."""
+    ws = FakeWebSocket()
+    session = YachtSession(ws)
+
+    await session.start_game({"players": [{"player_id": "p1", "playername": "p1"}]})
+    await session.handle_client_message(
+        {"input_type": "ROLL_DICE", "data": {"dice_values": [1, 1, 3, 4, 6]}}
+    )
+    assert _latest_state(ws)["roll_count"] == 1
+
+    await session.handle_client_message(
+        {"input_type": "MANUAL_DICE_INPUT", "data": {"dice_values": [2, 2, 3, 4, 6]}}
+    )
+    corrected = _latest_state(ws)
+    assert corrected["phase"] == "AWAITING_KEEP"
+    assert corrected["roll_count"] == 1
+    assert corrected["dice_values"] == [2, 2, 3, 4, 6]
+
+
+@pytest.mark.anyio
 async def test_yacht_tutorial_mode_accepts_vision_rolls():
     ws = FakeWebSocket()
     session = YachtSession(ws)

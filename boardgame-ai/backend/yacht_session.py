@@ -207,7 +207,19 @@ class YachtSession:
 
             with self._fsm_lock:
                 previous_state = deepcopy(self.fsm.state)
-                if self.fsm.state.phase in (
+                if self.fsm.state.unreadable_roll is not None:
+                    # 인식 실패로 점수 단계(AWAITING_SCORE)에 강제 진입한 굴림을
+                    # 수동 입력으로 확정한다. 단순히 눈만 덮어쓰면 굴림이 카운트되지
+                    # 않은 채 AWAITING_SCORE에 머물러 (1) 남은 굴림 기회가 사라지고
+                    # (2) 비전이 ROLL_CONFIRMED를 거부하는 단계라 다시 굴려도 인식이
+                    # 안 된다. 정식 해소 경로로 보내 이 굴림을 1회로 카운트하고
+                    # AWAITING_KEEP으로 복귀시켜 남은 굴림 기회를 보존한다.
+                    messages = self.fsm._handle_unreadable_resolution(
+                        {"dice_values": [int(v) for v in dice_values]}
+                    )
+                    if self._roll_was_recorded(previous_state):
+                        self.undo_stack.append(previous_state)
+                elif self.fsm.state.phase in (
                     YachtPhase.AWAITING_KEEP.value,
                     YachtPhase.AWAITING_SCORE.value,
                 ):
