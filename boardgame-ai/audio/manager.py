@@ -339,6 +339,15 @@ class AudioManager:
             item = self._queue.pop(next_idx)
             self._current = item
 
+        try:
+            from benchmarks.common.trace_setup import bench_log
+            import time as _t
+            bench_log().info(
+                "audio_dequeue %s %s %.6f",
+                item.msg.msg_type, item.playback_id, _t.time(),
+            )
+        except Exception:
+            pass
         await self._broadcast_item(item)
 
     def _select_next_index(self) -> int | None:

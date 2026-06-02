@@ -23,6 +23,7 @@ export function useWebSocket(path, options = {}) {
   const [messages, setMessages] = useState([])
   const ws = useRef(null)
   const onAudioRef = useRef(onAudioMessage)
+  const benchSeq = useRef(0)
   useEffect(() => { onAudioRef.current = onAudioMessage }, [onAudioMessage])
 
   useEffect(() => {
@@ -62,12 +63,25 @@ export function useWebSocket(path, options = {}) {
           const msg = JSON.parse(e.data)
           setMessages(prev => [msg, ...prev].slice(0, 20))
           if (msg.msg_type === 'state_update') {
+            const receivedAt = performance.now()
+            const state_version = (msg.state ?? msg.payload)?.state_version ?? -1
+            const seq = ++benchSeq.current
             setState(msg.state ?? msg.payload)
             // Benchmark hook: UI paint 완료 시각 (state_version별).
             if (window._bench) {
-              const state_version = (msg.state ?? msg.payload)?.state_version ?? -1
               requestAnimationFrame(() => {
-                try { window._bench.log('ui_painted', state_version, performance.now()) } catch (_) {}
+                const paintedAt = performance.now()
+                try {
+                  window._bench.log(
+                    'ui_update_latency',
+                    state_version,
+                    seq,
+                    receivedAt,
+                    paintedAt,
+                    paintedAt - receivedAt,
+                  )
+                  window._bench.log('ui_painted', state_version, paintedAt)
+                } catch (_) {}
               })
             }
           }
