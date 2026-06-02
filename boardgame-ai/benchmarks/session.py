@@ -170,6 +170,10 @@ class BenchmarkSession:
         if isinstance(cl, dict) and "by_channel" in cl:
             lines.append("## ① 음성 채널별 응답 시간 (enqueue → broadcast)")
             lines.append("")
+            lines.append("> 큐 직렬화 대기 포함 — 앞선 오디오 재생이 끝나야 다음 항목이")
+            lines.append("> broadcast되므로 cached 항목도 큐가 밀리면 latency가 커진다.")
+            lines.append("> 순수 합성/조회 비용은 synth_ms(JSON) 참고.")
+            lines.append("")
             lines.append("| 채널 | count | p50 (ms) | p95 (ms) | p99 (ms) |")
             lines.append("|---|---:|---:|---:|---:|")
             for ch, data in cl["by_channel"].items():
@@ -198,7 +202,7 @@ class BenchmarkSession:
             s = fps["fps_summary"]
             lines.append(
                 f"- 목표 {fps.get('target_fps')} fps / 실제 평균 {s['mean']:.1f} fps "
-                f"(p5 {fps['fps_summary'].get('min', 0):.0f}, "
+                f"(p5 {s.get('p5', 0):.0f}, min {s.get('min', 0):.0f}, "
                 f"drop {fps.get('drop_rate', 0)*100:.1f}%)"
             )
             for seg in fps.get("by_segment", []):
