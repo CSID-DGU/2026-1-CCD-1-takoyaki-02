@@ -36,56 +36,46 @@ def analyze(log_path: Path) -> dict:
             except ValueError:
                 pass
 
-    # 2. tts_synth_done은 cache key 기준이라 직접 playback_id 매칭 어려움.
-    # 시간순으로 가장 가까운 audio_enqueue tts_play에 attach.
-    synth_events: list[dict] = []
+    # 2. audio_broadcast로 backend 송신 ts + 직전 tts_synth_done 매칭.
+    # tts_synth_done은 playback_id가 없지만(캐시 key 기준), _broadcast_item에서
+    # cache_hit/synthesize(→ tts_synth_done 로깅) 직후 곧바로 audio_broadcast를
+    # 로깅한다. 따라서 로그 순서상 각 tts_play broadcast 직전의 synth_done이
+    # 바로 그 broadcast의 것 — 이 인접성으로 1:1 매칭(순차 pop 드리프트 제거).
+    broadcast: dict[str, float] = {}
+    broadcast_synth: dict[str, dict] = {}
+    last_synth: dict | None = None
     for e in events:
         if e["event"] == "tts_synth_done":
             kv = e["kv"]
             try:
-                synth_events.append({
-                    "log_ts": e["log_ts"],
+                last_synth = {
                     "hit": kv.get("hit", "0") == "1",
                     "layer": kv.get("layer", "?"),
                     "elapsed_ms": float(kv.get("elapsed_ms", 0)),
-                })
+                }
             except ValueError:
-                pass
-
-    # 3. audio_play_start로 frontend 첫 음 ts.
-    # Frontend는 performance.now() ms 단위라 backend time.time() s와 직접 비교 불가.
-    # 차선책: audio_broadcast→audio_play_start 간 elapsed를 frontend timeline에서 계산.
-    # 일단 enqueue→broadcast (백엔드 내부 latency)만 v1으로 측정.
-    broadcast: dict[str, float] = {}
-    for e in events:
-        if e["event"] == "audio_broadcast" and len(e["args"]) >= 3:
+                last_synth = None
+        elif e["event"] == "audio_broadcast" and len(e["args"]) >= 3:
             # msg_type pbid ts
-            pbid, ts = e["args"][1], e["args"][2]
+            msg_type, pbid, ts = e["args"][0], e["args"][1], e["args"][2]
             try:
                 broadcast[pbid] = float(ts)
             except ValueError:
-                pass
+                continue
+            if msg_type == "tts_play" and last_synth is not None:
+                broadcast_synth[pbid] = last_synth
+            # 매칭 후 소비 — 다음 broadcast가 같은 synth를 재사용하지 않도록.
+            last_synth = None
 
-    # 4. 채널별 분류 + latency 집계
+    # 3. 채널별 분류 + latency 집계.
+    # 주의: enqueue→broadcast는 큐 직렬화 대기를 포함한다. 이전 오디오 재생이
+    # 끝나야(_maybe_push_next) 다음 항목이 broadcast되므로, cached 항목도 큐가
+    # 밀려 있으면 latency가 커진다 — 순수 합성/조회 비용은 synth_ms를 참고.
     by_channel: dict[str, dict] = {
         "sfx": {"latencies_ms": [], "count": 0},
         "tts_cached": {"latencies_ms": [], "count": 0, "synth_ms": []},
         "tts_synth": {"latencies_ms": [], "count": 0, "synth_ms": []},
     }
-
-    # 시간순 합성 이벤트 stream — 매 tts_play enqueue에 가장 가까운 직후 synth를 매칭
-    synth_iter = iter(synth_events)
-    pending_synth: dict | None = None
-    def next_synth():
-        nonlocal pending_synth
-        if pending_synth:
-            s = pending_synth
-            pending_synth = None
-            return s
-        try:
-            return next(synth_iter)
-        except StopIteration:
-            return None
 
     for pbid, info in enqueue.items():
         msg_type = info["msg_type"]
@@ -99,7 +89,7 @@ def analyze(log_path: Path) -> dict:
             by_channel["sfx"]["latencies_ms"].append(latency_ms)
             by_channel["sfx"]["count"] += 1
         elif msg_type == "tts_play":
-            synth = next_synth()
+            synth = broadcast_synth.get(pbid)
             if synth and synth["hit"]:
                 by_channel["tts_cached"]["latencies_ms"].append(latency_ms)
                 by_channel["tts_cached"]["synth_ms"].append(synth["elapsed_ms"])

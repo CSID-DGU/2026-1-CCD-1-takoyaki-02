@@ -44,6 +44,15 @@ def analyze(log_path: Path, target_fps: int = TARGET_FPS) -> dict:
         bucket = int(ts - start_ts)
         buckets[bucket] = buckets.get(bucket, 0) + 1
 
+    # 마지막 bucket은 1초 미만의 부분 구간(예: 342.6초 → bucket 342는 0.6초뿐)이라
+    # 프레임 수가 적게 잡혀 min/평균을 왜곡한다. 측정에서 제외.
+    # (drop_rate는 전체 frame/시간 비율이므로 영향 없음 — 별도 계산.)
+    partial_bucket = int(total_sec)
+    full_buckets = {b: v for b, v in buckets.items() if b != partial_bucket}
+    # 제외 후 남는 게 없으면(측정이 1초 미만) 원본 유지.
+    if full_buckets:
+        buckets = full_buckets
+
     fps_per_sec = list(buckets.values())
 
     # Segmented (5분 단위)
