@@ -203,7 +203,7 @@ export default function RoleRegConfirm({ player, detectedRoleId, lowConfidence =
         ? '역할 인식이 확실하지 않습니다. 태블릿 화면에서 역할이 맞는지 확인하고, 틀리면 꼭 수정해 주세요.'
         : '태블릿 화면에서 역할이 맞는지 확인하고, 틀리면 수정해 주세요.'
     } else {
-      text = '역할을 인식하지 못했습니다. 태블릿 화면에서 본인 역할을 직접 선택해 주세요.'
+      text = '역할을 인식하지 못했습니다. 카드를 내려놓고 태블릿 화면에서 본인 역할을 직접 선택해 주세요.'
     }
     send('TTS_REQUEST', { text })
   }, []) // eslint-disable-line react-hooks/exhaustive-deps

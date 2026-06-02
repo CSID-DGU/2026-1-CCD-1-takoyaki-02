@@ -20,9 +20,7 @@ from vision.werewolf.schemas import TrackedCard
 # ── 픽스처 헬퍼 ────────────────────────────────────────────────────────────────
 
 
-def _ctx_role_reg(
-    player_id: str = "p_1", in_game_roles: list[str] | None = None
-) -> FusionContext:
+def _ctx_role_reg(player_id: str = "p_1", in_game_roles: list[str] | None = None) -> FusionContext:
     return FusionContext(
         fsm_state="role_registration",
         game_type="werewolf",
@@ -68,8 +66,11 @@ def _hand_at(cx: float = 0.45, cy: float = 0.45) -> HandDet:
     )
 
 
-def _frame(hands: list[HandDet] | None = None) -> FramePerception:
-    return FramePerception(frame_id=0, ts=0.0, image_hw=(1080, 1920), hands=hands or [])
+# 기본 ts는 진입 유예(_ROLE_REG_GRACE_SEC) 이후 시점으로 둔다. 그래야 None을 기대하는
+# 테스트가 grace 단락이 아니라 의도한 조건으로 검증된다. grace 자체를 검증하는 테스트만
+# 작은 ts(예: 0.0)를 명시해 유예 구간에 진입한다.
+def _frame(hands: list[HandDet] | None = None, ts: float = 100.0) -> FramePerception:
+    return FramePerception(frame_id=0, ts=ts, image_hw=(1080, 1920), hands=hands or [])
 
 
 class _MockTracker:
@@ -180,12 +181,8 @@ def test_role_detected_off_list_role_excluded() -> None:
 
 def test_role_detected_in_game_role_picked_over_off_list() -> None:
     """게임에 포함된 역할만 후보가 된다 — off-list 카드가 더 커도 in-game 카드를 고른다."""
-    off_list_large = _card(
-        cls_name="Hunter", bbox_w=0.30, bbox_h=0.40, track_id=2, player_id="p_2"
-    )
-    in_game_small = _card(
-        cls_name="Seer", bbox_w=0.10, bbox_h=0.14, track_id=1, player_id="p_1"
-    )
+    off_list_large = _card(cls_name="Hunter", bbox_w=0.30, bbox_h=0.40, track_id=2, player_id="p_2")
+    in_game_small = _card(cls_name="Seer", bbox_w=0.10, bbox_h=0.14, track_id=1, player_id="p_1")
     tracker = _MockTracker([off_list_large, in_game_small])
     rules = WerewolfRules(tracker)
     ctx = _ctx_role_reg(in_game_roles=["seer", "werewolf", "villager"])
@@ -206,9 +203,7 @@ def test_role_detected_picks_largest_face_up_card() -> None:
     small_misdetect = _card(
         cls_name="Werewolf", bbox_w=0.05, bbox_h=0.07, track_id=2, player_id="p_2"
     )
-    large_held = _card(
-        cls_name="Seer", bbox_w=0.20, bbox_h=0.28, track_id=1, player_id="p_1"
-    )
+    large_held = _card(cls_name="Seer", bbox_w=0.20, bbox_h=0.28, track_id=1, player_id="p_1")
     tracker = _MockTracker([small_misdetect, large_held])
     rules = WerewolfRules(tracker)
     ctx = _ctx_role_reg("p_1")
@@ -484,11 +479,9 @@ def test_role_detected_in_final_role_reveal() -> None:
         allowed_actors=["p_1"],
         expected_events=[ROLE_DETECTED],
     )
-    perception = _frame(hands=[_hand_at(0.45, 0.45)])
-
-    # 1프레임: 플레이어 진입 → reset_stable_frames로 stable_frames=0 → 아직 발화 안 함.
-    assert rules.build_candidates(ctx, perception) == []
-    # 실제 CardTracker처럼 카드가 안정 추적돼 stable_frames 누적된 뒤엔 발화.
+    # 1프레임: 플레이어 진입 → reset_stable_frames로 stable_frames=0, 진입 유예 시작 → 발화 안 함.
+    assert rules.build_candidates(ctx, _frame(hands=[_hand_at(0.45, 0.45)], ts=0.0)) == []
+    # 실제 CardTracker처럼 카드가 안정 추적되고 진입 유예가 지난 뒤엔 발화.
     card.stable_frames = 15
-    cands = rules.build_candidates(ctx, perception)
+    cands = rules.build_candidates(ctx, _frame(hands=[_hand_at(0.45, 0.45)]))
     assert any(c[0] == ROLE_DETECTED and c[1]["actor_id"] == "p_1" for c in cands)

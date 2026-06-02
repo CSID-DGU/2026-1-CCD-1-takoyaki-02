@@ -16,6 +16,7 @@ import VoteResult from '../components/werewolf/VoteResult'
 import GameEndWW from '../components/werewolf/GameEndWW'
 import FinalRoleReveal from '../components/werewolf/FinalRoleReveal'
 import PhaseTransition from '../components/werewolf/PhaseTransition'
+import WerewolfLoading from '../components/werewolf/WerewolfLoading'
 
 const NIGHT_PHASE_ROLES = {
   night_doppelganger: 'doppelganger',
@@ -387,10 +388,10 @@ export default function WerewolfGame({ players, onChangePlayers, onChangeGame, o
               setPendingConfirm(true)
             }
             send('CONFIRM_ROLE', { role: confirmRoleId }, confirmPlayerId)
-            // 튜토리얼은 RoleRegTransition을 띄우지 않으므로 REG_TRANSITION_ADVANCE가
-            // 자동 전송되지 않는다. 기본 모드와 동일한 3초 후 수동으로 전송.
+            // 튜토리얼은 RoleRegTransition(눈 감기 안내)을 띄우지 않으므로 긴 텀이 불필요.
+            // 역할 설명 화면에서 이미 충분히 머물렀으니 짧게 전환한다(검은 대기 화면 최소화).
             if (!transitionPlayer) {
-              setTimeout(() => send('REG_TRANSITION_ADVANCE', {}), 3000)
+              setTimeout(() => send('REG_TRANSITION_ADVANCE', {}), 700)
             }
           }}
         />
@@ -447,9 +448,10 @@ export default function WerewolfGame({ players, onChangePlayers, onChangeGame, o
       )
     }
 
-    // CONFIRM_ROLE 전송 후 다음 단계 전환 대기 — RoleRegShowCard 재마운트(TTS 재발화) 방지
+    // CONFIRM_ROLE 전송 후 다음 단계 전환 대기 — RoleRegShowCard 재마운트(TTS 재발화) 방지.
+    // 테마 로딩 화면으로 잠깐만 노출된다(전환 텀은 onComplete에서 짧게 설정).
     if (pendingConfirm) {
-      return <div style={loadingStyle}>잠시만 기다려주세요...</div>
+      return <WerewolfLoading message="잠시만 기다려주세요" />
     }
 
     // 카드 스캔 화면
@@ -466,7 +468,7 @@ export default function WerewolfGame({ players, onChangePlayers, onChangeGame, o
       )
     }
 
-    return <div style={loadingStyle}>역할 등록 준비 중...</div>
+    return <WerewolfLoading message="역할 등록 준비 중" />
   }
 
   // ── 초기: 역할 선택 ────────────────────────────────────────────────────
@@ -482,6 +484,8 @@ export default function WerewolfGame({ players, onChangePlayers, onChangeGame, o
         send('START_ROLE_REGISTRATION', {
           selected_roles: roles.map(normalizeRoleId),
           player_order: playerOrder,
+          // 룰/진행 에이전트 TTS가 플레이어 ID 대신 이름을 말하도록 이름 매핑을 함께 전달.
+          players: players.map(p => ({ player_id: p.player_id, playername: p.playername })),
           practice_mode: isPracticeMode ?? false,
         })
       }}

@@ -27,7 +27,9 @@ export default function NightEnd({ onComplete, send, isPracticeMode }) {
         const unsubStart = audio.onNextTtsStarted(() => {
           const unsubEnd = audio.onNextTtsEnded(() => {
             clearTimeout(fallback)
-            setTimeout(onComplete, 1500)
+            // 토론 단계를 건너뛰고 바로 투표로 가므로, 규칙 설명이 끝난 뒤 한 박자
+            // 쉬어 투표 안내 음성과 겹치거나 너무 급하게 넘어가지 않도록 한다.
+            setTimeout(onComplete, 3200)
           })
           cleanups.push(unsubEnd)
         })
