@@ -46,8 +46,8 @@ def _normalize_role(role_id: str) -> str:
 
 
 # 역할 등록 플레이어 전환 타이밍
-REG_TRANSITION_MAX_WAIT = 5.0    # 전환 진입 후 무조건 다음 플레이어로 넘어가는 하드 데드라인(초)
-REG_CARD_PLACED_ADVANCE = 2.0    # 카드 내려놓기 감지 후 진행까지 대기(초). 하드 데드라인 이내로만 적용.
+REG_TRANSITION_MAX_WAIT = 12.0   # 프론트의 TTS 종료+3초 진행 신호가 유실됐을 때만 쓰는 안전 데드라인(초)
+REG_CARD_PLACED_ADVANCE = 2.0    # (미사용) 카드 내려놓기 기반 조기 진행은 안내 TTS+3초 페이싱으로 대체됨
 
 
 # 비전 감지 여부와 무관하게 본인 카드가 항상 바뀌는 역할
@@ -146,6 +146,10 @@ class WerewolfSession:
 
         if input_type == "CONFIRM_ROLE":
             await self._confirm_role(player_id, payload)
+            return
+
+        if input_type == "REG_TRANSITION_ADVANCE":
+            await self._advance_reg_transition_now()
             return
 
         if input_type == "CARD_SETUP_DONE":
@@ -300,15 +304,15 @@ class WerewolfSession:
             })
 
     async def _start_reg_transition(self, next_player: str) -> None:
-        """역할 확인 후 카드 내려놓기 감지 대기 상태로 진입.
+        """역할 확인 후 다음 플레이어 전환 대기 상태로 진입.
 
-        카드가 안정되면(CARD_PLACED_DOWN) REG_CARD_PLACED_ADVANCE초 뒤 진행한다.
-        카드가 다시 흔들리면(CARD_UNSTABLE) 이른 진행만 취소하고, 진입 시 정한
-        하드 데드라인(REG_TRANSITION_MAX_WAIT초)까지만 대기한다. 데드라인을 연장하지
-        않으므로 추적 jitter로 CARD_UNSTABLE이 반복돼도 전환이 무한 지연되지 않는다.
+        진행 페이싱은 프론트(RoleRegTransition)가 주도한다. 프론트는 "카드를 본인 앞에
+        엎어두고 다시 눈을 감아주세요" 안내 TTS가 끝나고 3초 뒤 REG_TRANSITION_ADVANCE를
+        보내고, 그때 다음 플레이어로 진행한다. 아래 데드라인은 그 신호가 유실됐을 때만 쓰는
+        안전장치이다.
         """
         self._pending_next_reg_player = next_player
-        # 진입 시 1회만 정하는 하드 데드라인. 이후 어떤 이벤트도 이 시점을 넘기지 못한다.
+        # 프론트 진행 신호가 유실됐을 때만 발동하는 안전 데드라인.
         self._reg_transition_deadline = self._loop.time() + REG_TRANSITION_MAX_WAIT
         self._schedule_reg_advance(self._reg_transition_deadline)
         # 비전이 role_reg_transition 페이즈에서 카드 안정/불안정을 감지하도록 FusionContext 전송
@@ -358,23 +362,21 @@ class WerewolfSession:
         except asyncio.CancelledError:
             pass
 
-    async def _handle_card_placed_down(self) -> None:
-        """CARD_PLACED_DOWN 수신: 카드가 안정됐으니 빠르게 진행한다.
-        단 진행 시점은 하드 데드라인을 넘기지 않는다."""
+    async def _advance_reg_transition_now(self) -> None:
+        """프론트가 안내 TTS 종료 + 3초 경과를 알림(REG_TRANSITION_ADVANCE) → 즉시 진행."""
         if self._pending_next_reg_player is None:
             return
-        target = min(
-            self._loop.time() + REG_CARD_PLACED_ADVANCE,
-            self._reg_transition_deadline,
-        )
-        self._schedule_reg_advance(target)
+        self._schedule_reg_advance(self._loop.time())
+
+    async def _handle_card_placed_down(self) -> None:
+        """CARD_PLACED_DOWN 수신. 전환 페이싱은 프론트의 안내 TTS+3초 신호로 통일했으므로
+        카드 내려놓기 감지로는 조기 진행하지 않는다(안내 TTS가 잘리는 것을 방지)."""
+        return
 
     async def _handle_card_unstable(self) -> None:
-        """CARD_UNSTABLE 수신: 카드가 다시 흔들림 → 이른 진행만 취소하고 하드 데드라인까지 대기.
-        데드라인을 연장하지 않으므로 jitter가 반복돼도 전환이 starve되지 않는다."""
-        if self._pending_next_reg_player is None:
-            return
-        self._schedule_reg_advance(self._reg_transition_deadline)
+        """CARD_UNSTABLE 수신. 전환 페이싱은 프론트의 안내 TTS+3초 신호로 통일했으므로
+        카드 흔들림 감지는 진행 타이밍에 영향을 주지 않는다(예약된 진행을 되돌리지 않도록 무시)."""
+        return
 
     async def _start_game(self, payload: dict) -> None:
         # Benchmark hook.

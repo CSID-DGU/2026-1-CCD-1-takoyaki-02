@@ -116,6 +116,8 @@ const CHAR_MS = 60
 const HOLD_MS = 5000
 const FADE_MS = 600
 const ROLE_EXPLAIN_DELAY_MS = 4000
+// TTS 시작/종료 신호가 끝내 오지 않는 경우(합성 실패·TTS 비활성 등)의 안전장치.
+const ROLE_EXPLAIN_SAFETY_MS = 30000
 const CONFIRM_TEXT = '모든 준비가 완료 되었으면 OK 싸인을 해주세요.'
 
 export default function CardSetupGuide({ roles = [], onComplete, send, wsState, onExit, isPracticeMode }) {
@@ -207,31 +209,52 @@ export default function CardSetupGuide({ roles = [], onComplete, send, wsState, 
 
     const korNum  = KOREAN_ORDINALS[roleExplainIdx] ?? `${roleExplainIdx + 1}번째`
     const ttsText = `${korNum} 역할, ${info.name}. ${info.action} ${info.winCondition}`
-    send?.('TTS_REQUEST', { text: ttsText })
 
-    const unregisterTts = audioApi.onNextTtsEnded(() => {
+    let unregisterEnd = null
+    let safetyTimer = null
+
+    const advanceAfterDelay = () => {
       roleTimer4sRef.current = setTimeout(() => {
         roleTimer4sRef.current = null
         setRoleExplainIdx(i => i + 1)
       }, ROLE_EXPLAIN_DELAY_MS)
+    }
+
+    // 이 역할의 TTS가 실제로 재생을 시작한 뒤에야 종료를 기다린다.
+    // (직전 문장/역할의 TTS 종료 이벤트에 걸려 조기 전환되는 것을 방지)
+    const unregisterStart = audioApi.onNextTtsStarted(() => {
+      unregisterEnd = audioApi.onNextTtsEnded(advanceAfterDelay)
     })
 
-    skipRef.current = () => {
-      unregisterTts()
+    send?.('TTS_REQUEST', { text: ttsText })
+
+    // TTS 시작/종료 신호가 끝내 오지 않아도 멈추지 않도록.
+    safetyTimer = setTimeout(() => {
+      safetyTimer = null
+      setRoleExplainIdx(i => i + 1)
+    }, ROLE_EXPLAIN_SAFETY_MS)
+
+    const cleanup = () => {
+      unregisterStart()
+      unregisterEnd?.()
+      if (safetyTimer) {
+        clearTimeout(safetyTimer)
+        safetyTimer = null
+      }
       if (roleTimer4sRef.current) {
         clearTimeout(roleTimer4sRef.current)
         roleTimer4sRef.current = null
       }
+    }
+
+    skipRef.current = () => {
+      cleanup()
       audioApi.interrupt()
       setRoleExplainIdx(i => i + 1)
     }
 
     return () => {
-      unregisterTts()
-      if (roleTimer4sRef.current) {
-        clearTimeout(roleTimer4sRef.current)
-        roleTimer4sRef.current = null
-      }
+      cleanup()
       skipRef.current = null
     }
   }, [roleExplainIdx])
