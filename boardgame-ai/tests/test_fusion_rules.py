@@ -66,7 +66,10 @@ def _hand_at(cx: float = 0.45, cy: float = 0.45) -> HandDet:
     )
 
 
-def _frame(hands: list[HandDet] | None = None, ts: float = 0.0) -> FramePerception:
+# 기본 ts는 진입 유예(_ROLE_REG_GRACE_SEC) 이후 시점으로 둔다. 그래야 None을 기대하는
+# 테스트가 grace 단락이 아니라 의도한 조건으로 검증된다. grace 자체를 검증하는 테스트만
+# 작은 ts(예: 0.0)를 명시해 유예 구간에 진입한다.
+def _frame(hands: list[HandDet] | None = None, ts: float = 100.0) -> FramePerception:
     return FramePerception(frame_id=0, ts=ts, image_hw=(1080, 1920), hands=hands or [])
 
 
@@ -95,8 +98,7 @@ def test_role_detected_happy_path() -> None:
     tracker = _MockTracker([_card()])
     rules = WerewolfRules(tracker)
     ctx = _ctx_role_reg()
-    # 진입 유예(_ROLE_REG_GRACE_SEC) 이후 시점이어야 발화. _reg_entry_ts 기본 0.0.
-    perception = _frame(hands=[_hand_at(0.45, 0.45)], ts=2.0)
+    perception = _frame(hands=[_hand_at(0.45, 0.45)])
 
     result = rules._check_role_detected(ctx, perception, tracker.get_tracked_cards())
 
@@ -113,7 +115,7 @@ def test_role_detected_no_hand_still_fires() -> None:
     tracker = _MockTracker([_card()])
     rules = WerewolfRules(tracker)
     ctx = _ctx_role_reg()
-    perception = _frame(hands=[], ts=2.0)  # 진입 유예 이후
+    perception = _frame(hands=[])
 
     assert rules._check_role_detected(ctx, perception, tracker.get_tracked_cards()) is not None
 
@@ -125,7 +127,7 @@ def test_role_detected_hand_far_still_fires() -> None:
     ctx = _ctx_role_reg()
     far_hand = _hand_at(cx=0.90, cy=0.45)
 
-    perception = _frame(hands=[far_hand], ts=2.0)  # 진입 유예 이후
+    perception = _frame(hands=[far_hand])
     assert rules._check_role_detected(ctx, perception, tracker.get_tracked_cards()) is not None
 
 
@@ -135,7 +137,7 @@ def test_role_detected_small_bbox_still_fires() -> None:
     tracker = _MockTracker([small_card])
     rules = WerewolfRules(tracker)
     ctx = _ctx_role_reg()
-    perception = _frame(hands=[_hand_at()], ts=2.0)  # 진입 유예 이후
+    perception = _frame(hands=[_hand_at()])
 
     assert rules._check_role_detected(ctx, perception, tracker.get_tracked_cards()) is not None
 
@@ -145,7 +147,7 @@ def test_role_detected_high_conf_not_low_flag() -> None:
     tracker = _MockTracker([_card(conf=0.8)])
     rules = WerewolfRules(tracker)
     ctx = _ctx_role_reg()
-    perception = _frame(hands=[_hand_at()], ts=2.0)  # 진입 유예 이후
+    perception = _frame(hands=[_hand_at()])
 
     result = rules._check_role_detected(ctx, perception, tracker.get_tracked_cards())
     assert result is not None
@@ -158,7 +160,7 @@ def test_role_detected_low_conf_still_fires_with_flag() -> None:
     tracker = _MockTracker([_card(conf=0.4)])
     rules = WerewolfRules(tracker)
     ctx = _ctx_role_reg()
-    perception = _frame(hands=[_hand_at()], ts=2.0)  # 진입 유예 이후
+    perception = _frame(hands=[_hand_at()])
 
     result = rules._check_role_detected(ctx, perception, tracker.get_tracked_cards())
     assert result is not None
@@ -184,7 +186,7 @@ def test_role_detected_in_game_role_picked_over_off_list() -> None:
     tracker = _MockTracker([off_list_large, in_game_small])
     rules = WerewolfRules(tracker)
     ctx = _ctx_role_reg(in_game_roles=["seer", "werewolf", "villager"])
-    perception = _frame(hands=[_hand_at()], ts=2.0)  # 진입 유예 이후
+    perception = _frame(hands=[_hand_at()])
 
     result = rules._check_role_detected(ctx, perception, tracker.get_tracked_cards())
     assert result is not None
@@ -205,7 +207,7 @@ def test_role_detected_picks_largest_face_up_card() -> None:
     tracker = _MockTracker([small_misdetect, large_held])
     rules = WerewolfRules(tracker)
     ctx = _ctx_role_reg("p_1")
-    perception = _frame(hands=[_hand_at()], ts=2.0)  # 진입 유예 이후
+    perception = _frame(hands=[_hand_at()])
 
     result = rules._check_role_detected(ctx, perception, tracker.get_tracked_cards())
     assert result is not None
@@ -228,7 +230,7 @@ def test_role_detected_exactly_2_stable_frames_passes() -> None:
     tracker = _MockTracker([_card(stable_frames=2)])
     rules = WerewolfRules(tracker)
     ctx = _ctx_role_reg()
-    perception = _frame(hands=[_hand_at()], ts=2.0)  # 진입 유예 이후
+    perception = _frame(hands=[_hand_at()])
 
     assert rules._check_role_detected(ctx, perception, tracker.get_tracked_cards()) is not None
 
@@ -258,7 +260,7 @@ def test_role_detected_fires_only_once_per_player() -> None:
     tracker = _MockTracker([_card()])
     rules = WerewolfRules(tracker)
     ctx = _ctx_role_reg("p_1")
-    perception = _frame(hands=[_hand_at()], ts=2.0)  # 진입 유예 이후
+    perception = _frame(hands=[_hand_at()])
 
     r1 = rules._check_role_detected(ctx, perception, tracker.get_tracked_cards())
     r2 = rules._check_role_detected(ctx, perception, tracker.get_tracked_cards())
@@ -481,5 +483,5 @@ def test_role_detected_in_final_role_reveal() -> None:
     assert rules.build_candidates(ctx, _frame(hands=[_hand_at(0.45, 0.45)], ts=0.0)) == []
     # 실제 CardTracker처럼 카드가 안정 추적되고 진입 유예가 지난 뒤엔 발화.
     card.stable_frames = 15
-    cands = rules.build_candidates(ctx, _frame(hands=[_hand_at(0.45, 0.45)], ts=2.0))
+    cands = rules.build_candidates(ctx, _frame(hands=[_hand_at(0.45, 0.45)]))
     assert any(c[0] == ROLE_DETECTED and c[1]["actor_id"] == "p_1" for c in cands)
