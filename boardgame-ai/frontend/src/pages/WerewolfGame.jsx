@@ -387,6 +387,11 @@ export default function WerewolfGame({ players, onChangePlayers, onChangeGame, o
               setPendingConfirm(true)
             }
             send('CONFIRM_ROLE', { role: confirmRoleId }, confirmPlayerId)
+            // 튜토리얼은 RoleRegTransition을 띄우지 않으므로 REG_TRANSITION_ADVANCE가
+            // 자동 전송되지 않는다. 기본 모드와 동일한 3초 후 수동으로 전송.
+            if (!transitionPlayer) {
+              setTimeout(() => send('REG_TRANSITION_ADVANCE', {}), 3000)
+            }
           }}
         />
       )
