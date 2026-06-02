@@ -20,9 +20,7 @@ from vision.werewolf.schemas import TrackedCard
 # ── 픽스처 헬퍼 ────────────────────────────────────────────────────────────────
 
 
-def _ctx_role_reg(
-    player_id: str = "p_1", in_game_roles: list[str] | None = None
-) -> FusionContext:
+def _ctx_role_reg(player_id: str = "p_1", in_game_roles: list[str] | None = None) -> FusionContext:
     return FusionContext(
         fsm_state="role_registration",
         game_type="werewolf",
@@ -181,12 +179,8 @@ def test_role_detected_off_list_role_excluded() -> None:
 
 def test_role_detected_in_game_role_picked_over_off_list() -> None:
     """게임에 포함된 역할만 후보가 된다 — off-list 카드가 더 커도 in-game 카드를 고른다."""
-    off_list_large = _card(
-        cls_name="Hunter", bbox_w=0.30, bbox_h=0.40, track_id=2, player_id="p_2"
-    )
-    in_game_small = _card(
-        cls_name="Seer", bbox_w=0.10, bbox_h=0.14, track_id=1, player_id="p_1"
-    )
+    off_list_large = _card(cls_name="Hunter", bbox_w=0.30, bbox_h=0.40, track_id=2, player_id="p_2")
+    in_game_small = _card(cls_name="Seer", bbox_w=0.10, bbox_h=0.14, track_id=1, player_id="p_1")
     tracker = _MockTracker([off_list_large, in_game_small])
     rules = WerewolfRules(tracker)
     ctx = _ctx_role_reg(in_game_roles=["seer", "werewolf", "villager"])
@@ -207,9 +201,7 @@ def test_role_detected_picks_largest_face_up_card() -> None:
     small_misdetect = _card(
         cls_name="Werewolf", bbox_w=0.05, bbox_h=0.07, track_id=2, player_id="p_2"
     )
-    large_held = _card(
-        cls_name="Seer", bbox_w=0.20, bbox_h=0.28, track_id=1, player_id="p_1"
-    )
+    large_held = _card(cls_name="Seer", bbox_w=0.20, bbox_h=0.28, track_id=1, player_id="p_1")
     tracker = _MockTracker([small_misdetect, large_held])
     rules = WerewolfRules(tracker)
     ctx = _ctx_role_reg("p_1")
