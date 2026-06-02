@@ -73,7 +73,13 @@ class VisionPipeline:
         self._gesture_clf = GestureClassifier()
         self._hand_tracker = HandTracker()
         self._prev_gestures: dict[int, str | None] = {}
-        self._byte_tracker = ByteTracker()
+        # min_hits=1: 검출된 주사위를 1프레임 만에 확정해 트랙으로 반환한다.
+        # 기본값 2는 "연속 2프레임 매칭"을 요구하는데, YOLO가 일부 주사위를
+        # 프레임마다 들쭉날쭉 잡으면 hit_streak가 계속 0으로 리셋돼 그 주사위가
+        # 영영 확정되지 않는다(로그에 5개 중 3~4개만 찍히고 굴림 미발화).
+        # 굴림 finalize는 별도로 stable_frames>=15 + 변화점수 게이트가 막아주므로
+        # 1프레임 확정으로 낮춰도 단발 오검출이 가짜 굴림을 일으키지는 않는다.
+        self._byte_tracker = ByteTracker(min_hits=1)
         self._dot_counter = DotCounter()
         self._dice_manager = DiceManager(
             motion_threshold=float(DEFAULT_PARAMS["motion_threshold_norm"]),
