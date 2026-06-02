@@ -507,7 +507,11 @@ class WerewolfSession:
         phase_end_warning = None
         if fusion_ctx.fsm_state == WerewolfPhase.DAY_DISCUSSION:
             timeout = 300.0
-        elif fusion_ctx.fsm_state in PASSIVE_NIGHT_PHASES and not self._practice_mode:
+        elif (
+            fusion_ctx.fsm_state in PASSIVE_NIGHT_PHASES
+            and fusion_ctx.fsm_state != WerewolfPhase.NIGHT_START
+            and not self._practice_mode
+        ):
             timeout = float(PASSIVE_PHASE_DURATION)
             phase_end_warning = "눈을 다시 감아주세요."
         elif fusion_ctx.fsm_state in ACTIVE_NIGHT_PHASES and not self._practice_mode:

@@ -1,30 +1,67 @@
 import { useEffect, useState } from 'react'
+import { audio } from '../../hooks/useAudioPlayer'
+
+const PRACTICE_RULE_TTS =
+  '낮 시간은 밤 시간 동안 어떤 행동들이 있었는지 추론하며 늑대인간을 찾아내는 시간입니다. ' +
+  '투표를 통해 처단할 플레이어를 결정합니다. ' +
+  '플레이어 중 늑대인간이 아무도 없다면 아무도 처단해서는 안 됩니다. ' +
+  '단, 늑대인간이 없어도 하수인이 있다면 하수인을 처단해야 마을주민팀이 승리합니다. ' +
+  '늑대인간과 하수인이 모두 있다면 하수인이 아닌 늑대인간을 처단해야 마을주민팀이 승리합니다. ' +
+  '이때 하수인은 늑대인간 대신 본인이 처단당하도록 유도하여 늑대인간팀이 승리하도록 돕습니다. ' +
+  '그리고 늑대인간의 존재 여부와 상관 없이 무두장이가 처단된다면 무두장이 혼자 승리합니다.'
 
 export default function NightEnd({ onComplete, send, isPracticeMode }) {
   const [showDiscussion, setShowDiscussion] = useState(false)
 
   useEffect(() => {
-    // PhaseTransition(dawn)이 2500ms이므로 4000ms부터 TTS 시작
-    const t1 = setTimeout(() => {
-      const ttsText = isPracticeMode ? '아침이 밝았습니다.' : '아침이 밝았습니다. 모두 눈을 뜨세요.'
-      send?.('TTS_REQUEST', { text: ttsText })
-    }, 4000)
+    const cleanups = []
 
-    const t2 = setTimeout(() => {
-      setShowDiscussion(true)
-      const ttsText = isPracticeMode
-        ? '튜토리얼에서는 토론 단계를 건너뛰고, 바로 투표로 넘어갑니다.'
-        : '자, 지금부터 토론을 시작합니다. 늑대인간을 찾아내세요.'
-      send?.('TTS_REQUEST', { text: ttsText })
-    }, 8000)
+    if (isPracticeMode) {
+      // 아침이 TTS 종료 → 규칙 설명 TTS 종료 → onComplete 순으로 진행
+      const startRuleExplanation = () => {
+        setShowDiscussion(true)
+        send?.('TTS_REQUEST', { text: PRACTICE_RULE_TTS })
+        // 규칙 TTS가 시작되지 않을 경우 폴백
+        const fallback = setTimeout(onComplete, 25000)
+        cleanups.push(() => clearTimeout(fallback))
+        const unsubStart = audio.onNextTtsStarted(() => {
+          const unsubEnd = audio.onNextTtsEnded(() => {
+            clearTimeout(fallback)
+            setTimeout(onComplete, 1500)
+          })
+          cleanups.push(unsubEnd)
+        })
+        cleanups.push(unsubStart)
+      }
 
-    const t3 = setTimeout(onComplete, 13000)
-
-    return () => {
-      clearTimeout(t1)
-      clearTimeout(t2)
-      clearTimeout(t3)
+      // PhaseTransition(dawn) 2500ms 이후 아침이 TTS 시작
+      const t1 = setTimeout(() => {
+        send?.('TTS_REQUEST', { text: '아침이 밝았습니다.' })
+        // 아침이 TTS가 시작되지 않을 경우 폴백
+        const fallback1 = setTimeout(startRuleExplanation, 8000)
+        cleanups.push(() => clearTimeout(fallback1))
+        const unsubStart = audio.onNextTtsStarted(() => {
+          clearTimeout(fallback1)
+          const unsubEnd = audio.onNextTtsEnded(() => setTimeout(startRuleExplanation, 800))
+          cleanups.push(unsubEnd)
+        })
+        cleanups.push(unsubStart)
+      }, 4000)
+      cleanups.push(() => clearTimeout(t1))
+    } else {
+      // 일반 모드: 기존 고정 타이머 유지
+      const t1 = setTimeout(() => {
+        send?.('TTS_REQUEST', { text: '아침이 밝았습니다. 모두 눈을 뜨세요.' })
+      }, 4000)
+      const t2 = setTimeout(() => {
+        setShowDiscussion(true)
+        send?.('TTS_REQUEST', { text: '자, 지금부터 토론을 시작합니다. 늑대인간을 찾아내세요.' })
+      }, 8000)
+      const t3 = setTimeout(onComplete, 13000)
+      cleanups.push(() => clearTimeout(t1), () => clearTimeout(t2), () => clearTimeout(t3))
     }
+
+    return () => cleanups.forEach(fn => fn())
   }, [])
 
   return (
@@ -107,9 +144,17 @@ export default function NightEnd({ onComplete, send, isPracticeMode }) {
           {!isPracticeMode && <div style={styles.subtitle}>모두 눈을 뜨세요</div>}
           {showDiscussion && (
             <div style={styles.discussion}>
-              {isPracticeMode
-                ? '튜토리얼에서는 토론을 건너뛰고 바로 투표로 넘어갑니다'
-                : '자, 지금부터 토론을 시작합니다. 늑대인간을 찾아내세요.'}
+              {isPracticeMode ? (
+                <>
+                  <div>밤 동안의 행동을 추론하며 누가 늑대인간인지 찾아내세요.</div>
+                  <div style={{ marginTop: 10, fontSize: 16, opacity: 0.8 }}>
+                    · 늑대인간이 없다면 아무도 처단하지 마세요<br />
+                    · 늑대인간이 없어도 하수인이 있다면 하수인을 처단해야 마을주민팀이 승리합니다<br />
+                    · 늑대인간과 하수인이 모두 있다면 하수인이 아닌 늑대인간을 처단해야 마을주민팀이 승리합니다<br />
+                    · 무두장이가 처단되면 무두장이 혼자 승리합니다
+                  </div>
+                </>
+              ) : '자, 지금부터 토론을 시작합니다. 늑대인간을 찾아내세요.'}
             </div>
           )}
         </div>
