@@ -46,8 +46,8 @@ def _normalize_role(role_id: str) -> str:
 
 
 # 역할 등록 플레이어 전환 타이밍
-REG_TRANSITION_MAX_WAIT = 12.0   # 프론트의 TTS 종료+3초 진행 신호가 유실됐을 때만 쓰는 안전 데드라인(초)
-REG_CARD_PLACED_ADVANCE = 2.0    # (미사용) 카드 내려놓기 기반 조기 진행은 안내 TTS+3초 페이싱으로 대체됨
+REG_TRANSITION_MAX_WAIT = 9.0    # 프론트 진행 신호(TTS 종료+3초)와 카드 감지가 모두 유실됐을 때의 안전 데드라인(초)
+REG_CARD_PLACED_ADVANCE = 3.0    # 카드 내려놓기 감지 후 진행까지 유예(초). 안내 TTS가 잘리지 않도록 두며, 데드라인 이내로만 적용.
 
 
 # 비전 감지 여부와 무관하게 본인 카드가 항상 바뀌는 역할
@@ -357,6 +357,7 @@ class WerewolfSession:
             self._role_reg["player_index"] = self._role_reg["player_order"].index(next_player)
             self._role_reg["player_id"] = next_player
             self._role_reg["detected_role"] = None
+            self._role_reg["detected_low_confidence"] = False
             await self._push_role_reg_context(next_player)
             await self._broadcast_role_reg()
         except asyncio.CancelledError:
@@ -369,13 +370,20 @@ class WerewolfSession:
         self._schedule_reg_advance(self._loop.time())
 
     async def _handle_card_placed_down(self) -> None:
-        """CARD_PLACED_DOWN 수신. 전환 페이싱은 프론트의 안내 TTS+3초 신호로 통일했으므로
-        카드 내려놓기 감지로는 조기 진행하지 않는다(안내 TTS가 잘리는 것을 방지)."""
-        return
+        """CARD_PLACED_DOWN 수신: 카드를 안정적으로 내려놓았으니 다음 플레이어로 진행한다.
+        안내 TTS가 잘리지 않도록 REG_CARD_PLACED_ADVANCE초 유예를 두며, 진행 시점은
+        진입 시 정한 하드 데드라인(REG_TRANSITION_MAX_WAIT)을 넘기지 않는다."""
+        if self._pending_next_reg_player is None:
+            return
+        target = min(
+            self._loop.time() + REG_CARD_PLACED_ADVANCE,
+            self._reg_transition_deadline,
+        )
+        self._schedule_reg_advance(target)
 
     async def _handle_card_unstable(self) -> None:
-        """CARD_UNSTABLE 수신. 전환 페이싱은 프론트의 안내 TTS+3초 신호로 통일했으므로
-        카드 흔들림 감지는 진행 타이밍에 영향을 주지 않는다(예약된 진행을 되돌리지 않도록 무시)."""
+        """CARD_UNSTABLE 수신. 카드가 다시 흔들려도 이미 예약된 진행은 되돌리지 않는다.
+        (추적 jitter로 CARD_UNSTABLE이 반복돼도 전환이 무한 지연되는 것을 방지)"""
         return
 
     async def _start_game(self, payload: dict) -> None:
@@ -455,26 +463,23 @@ class WerewolfSession:
         if self._role_reg is not None:
             if self._role_reg["detected_role"] is not None:
                 return
-            # 다른 플레이어의 카드가 감지된 경우 등록하지 않고 경고만 발화
-            card_player_id = (event.data or {}).get("card_player_id")
-            active_player_id = self._role_reg.get("player_id")
-            if card_player_id and active_player_id and card_player_id != active_player_id:
-                if self._agent is not None:
-                    await self._agent.on_game_event(GameEvent(
-                        event_type=event.event_type,
-                        actor_id=card_player_id,
-                        confidence=event.confidence,
-                        frame_id=event.frame_id,
-                        data={},
-                    ))
-                return
+            # 등록 단계에는 활성 플레이어 1명만 카드를 카메라에 보여주므로, 좌석 매칭이
+            # 어긋나도(card_player_id 불일치/None) 감지된 역할을 활성 플레이어로 그대로 등록한다.
+            # 좌석 기반 거부 게이트는 인식률을 크게 떨어뜨려 제거했다(인식 테스트 모듈과 동일 동작).
             self._role_reg["detected_role"] = role
+            # 저신뢰 감지면 프론트가 자동 확인을 끄고 수정 화면에 머물도록 플래그 전달.
+            self._role_reg["detected_low_confidence"] = bool(
+                (event.data or {}).get("low_confidence", False)
+            )
             await self._broadcast_role_reg()
             return
         if self._role_reveal is not None:
             if self._role_reveal["detected_role"] is not None:
                 return
             self._role_reveal["detected_role"] = role
+            self._role_reveal["detected_low_confidence"] = bool(
+                (event.data or {}).get("low_confidence", False)
+            )
             await self._broadcast_role_reveal()
             return
 
@@ -482,6 +487,11 @@ class WerewolfSession:
 
     async def _push_role_reg_context(self, player_id: str) -> None:
         self._state_version += 1
+        # 이 게임에 포함된 역할로만 인식 후보를 제한 (비전이 게임 외 역할로 오분류해도 배제).
+        in_game_roles = sorted({
+            _normalize_role(str(r)).lower()
+            for r in (self._role_reg or {}).get("all_roles", [])
+        })
         ctx = FusionContext(
             fsm_state="role_registration",
             game_type="werewolf_practice" if self._practice_mode else "werewolf",
@@ -496,7 +506,7 @@ class WerewolfSession:
             valid_targets=None,
             zones={},
             anchors={},
-            params={"stabilization_frames": 1},
+            params={"stabilization_frames": 1, "in_game_roles": in_game_roles},
         )
         self._send_fusion_context(ctx, self._state_version)
         await self._notify_agent_state_change(ctx)
@@ -591,6 +601,7 @@ class WerewolfSession:
             self._role_reveal["player_index"] = next_index
             self._role_reveal["player_id"] = next_player
             self._role_reveal["detected_role"] = None
+            self._role_reveal["detected_low_confidence"] = False
             await self._push_role_reveal_context(next_player)
             await self._broadcast_role_reveal()
         else:
@@ -602,6 +613,16 @@ class WerewolfSession:
 
     async def _push_role_reveal_context(self, player_id: str) -> None:
         self._state_version += 1
+        # 최종 공개도 이 게임의 역할 풀(플레이어 카드 + 센터 카드)로만 인식 후보를 제한.
+        in_game_roles: list[str] = []
+        if self._fsm is not None:
+            in_game_roles = sorted({
+                _normalize_role(str(r)).lower()
+                for r in (
+                    [p.original_role for p in self._fsm.state.players]
+                    + list(self._fsm.state.center_cards)
+                )
+            })
         ctx = FusionContext(
             fsm_state="final_role_reveal",
             game_type="werewolf_practice" if self._practice_mode else "werewolf",
@@ -616,7 +637,7 @@ class WerewolfSession:
             valid_targets=None,
             zones={},
             anchors={},
-            params={"stabilization_frames": 1},
+            params={"stabilization_frames": 1, "in_game_roles": in_game_roles},
         )
         self._send_fusion_context(ctx, self._state_version)
 
@@ -652,6 +673,7 @@ class WerewolfSession:
         self._role_reg["player_index"] = prev_index
         self._role_reg["player_id"] = prev_player
         self._role_reg["detected_role"] = None
+        self._role_reg["detected_low_confidence"] = False
         await self._push_role_reg_context(prev_player)
         await self._broadcast_role_reg()
 
