@@ -63,8 +63,7 @@ _RAY_MAX_T = 1.5              # ray cast 최대 거리 (정규화)
 _SEAT_POINT_PERP_DIST = 0.18
 
 # 역할 등록 단계 전용 파라미터
-_ROLE_REG_MIN_BBOX_SHORT = 0.06  # 카드 bbox 단변 최소값 (정규화). 멀리 있는 작은 카드 제외.
-_ROLE_REG_HAND_DIST = 0.12       # 손목-카드 중심 최대 거리. 손으로 집어든 카드만 인식.
+_ROLE_REG_HAND_DIST = 0.12       # 손목-카드 중심 최대 거리 (현재 미사용).
 
 # 역할 등록 전환(카드 내려놓기) 전용 파라미터
 _PLACED_DOWN_STABLE_FRAMES = 10  # 후면 카드가 이 프레임 이상 안정돼야 감지 (frame_skip=2 기준 ≈ 1초)
@@ -168,10 +167,8 @@ class WerewolfRules:
     ) -> tuple[str, dict, float] | None:
         """역할 등록 단계: 다음 조건을 모두 만족하는 카드가 있으면 ROLE_DETECTED 발화.
 
-          1. face_up 이고 역할 클래스명이 확인된 카드
-          2. bbox 단변이 _ROLE_REG_MIN_BBOX_SHORT 이상 (테이블에 놓인 작은 카드 제외)
-          3. 손목이 카드 중심으로부터 _ROLE_REG_HAND_DIST 이내 (손으로 집어든 카드만)
-          4. stable_frames >= 15 (frame_skip=2 기준 ≈ 1.5초 안정 인식)
+          1. face_up 이고 역할 클래스명이 확인된 카드 (Card_Back 제외)
+          2. stable_frames >= 3 (frame_skip=2 기준 ≈ 0.3초 안정 인식)
 
         active_player(현재 등록 중인 플레이어)당 1회만 발화. 역할명은 소문자로 정규화.
         """
@@ -183,11 +180,7 @@ class WerewolfRules:
                 continue
             if card.cls_name is None or card.cls_name == _BACK_CLASS:
                 continue
-            if min(card.bbox.w, card.bbox.h) < _ROLE_REG_MIN_BBOX_SHORT:
-                continue
-            if not _any_hand_near_card(perception.hands, card.bbox, _ROLE_REG_HAND_DIST):
-                continue
-            if card.stable_frames < 5:
+            if card.stable_frames < 3:
                 continue
             # 다른 플레이어의 카드가 감지된 경우: card_player_id를 포함해 세션이 경고 처리
             self._reported_roles.add(actor_id)
