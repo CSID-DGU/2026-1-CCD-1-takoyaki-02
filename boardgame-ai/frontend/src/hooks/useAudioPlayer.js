@@ -16,7 +16,7 @@ import { useEffect, useRef } from 'react'
 const FADE_OUT_MS = 150 // 인터럽트 시 음량 감쇠 시간. 너무 길면 다음 발화 지연됨.
 
 const player = {
-  current: null,       // {playback_id, type, t0, fadeTimer}
+  current: null,       // {playback_id, type, t0, playStartAt, fadeTimer}
   audio: null,         // 단일 재사용 Audio 인스턴스 (TTS/SFX 공용)
   unlocked: false,
   ttsEnabled: true,
@@ -72,8 +72,13 @@ async function playMessage(msg) {
   const payload = msg.payload || {}
   const audio_url = payload.audio_url
   const playback_id = payload.playback_id || `pb_${Math.random().toString(36).slice(2, 10)}`
+  const receivedAt = payload.__bench_received_at ?? performance.now()
+  const receiveToStartMs = performance.now() - receivedAt
 
   if (msg.msg_type === 'tts_play' && !player.ttsEnabled) {
+    if (window._bench) {
+      try { window._bench.log('audio_play_skipped', msg.msg_type, playback_id, performance.now()) } catch (_) {}
+    }
     sendAck(playback_id, 'skipped', Date.now() / 1000)
     const cbs = [...player.ttsEndCallbacks]
     player.ttsEndCallbacks.clear()
@@ -83,6 +88,9 @@ async function playMessage(msg) {
 
   if (!audio_url) {
     // 합성 실패한 text-only — ack만 보내 backend 큐 진행.
+    if (window._bench) {
+      try { window._bench.log('audio_play_end', msg.msg_type, playback_id, 'error', performance.now(), 0) } catch (_) {}
+    }
     sendAck(playback_id, 'error', Date.now() / 1000)
     return
   }
@@ -91,10 +99,19 @@ async function playMessage(msg) {
   el.volume = 1.0
   el.src = audio_url
   const t0 = Date.now() / 1000
-  player.current = { playback_id, type: msg.msg_type, t0, fadeTimer: null }
+  const playStartAt = performance.now()
+  player.current = { playback_id, type: msg.msg_type, t0, playStartAt, fadeTimer: null }
   // Benchmark hook: 첫 음 재생 시작 시각 (사용자 체감 기준점).
   if (window._bench) {
-    try { window._bench.log('audio_play_start', msg.msg_type, playback_id, performance.now()) } catch (_) {}
+    try {
+      window._bench.log(
+        'audio_play_start',
+        msg.msg_type,
+        playback_id,
+        playStartAt,
+        receiveToStartMs,
+      )
+    } catch (_) {}
   }
 
   if (msg.msg_type === 'tts_play') {
@@ -112,6 +129,10 @@ async function playMessage(msg) {
     if (player.current.type === 'tts_play') {
       player.duckGainDb = 0
       applyBgmGain()
+    }
+    if (window._bench) {
+      const endedAt = performance.now()
+      try { window._bench.log('audio_play_end', msg.msg_type, playback_id, status, endedAt, endedAt - playStartAt) } catch (_) {}
     }
     player.current = null
     sendAck(playback_id, status, t0)
@@ -158,6 +179,10 @@ function fadeOutInterrupt(playback_id) {
   const el = player.audio
   if (!el) {
     // 안전망
+    if (window._bench) {
+      const endedAt = performance.now()
+      try { window._bench.log('audio_play_end', cur.type, cur.playback_id, 'interrupted', endedAt, endedAt - (cur.playStartAt ?? endedAt)) } catch (_) {}
+    }
     player.current = null
     sendAck(cur.playback_id, 'interrupted', cur.t0)
     return
@@ -184,6 +209,10 @@ function fadeOutInterrupt(playback_id) {
       if (cur.type === 'tts_play') {
         player.duckGainDb = 0
         applyBgmGain()
+      }
+      if (window._bench) {
+        const endedAt = performance.now()
+        try { window._bench.log('audio_play_end', cur.type, cur.playback_id, 'interrupted', endedAt, endedAt - (cur.playStartAt ?? startTime)) } catch (_) {}
       }
       player.current = null
       sendAck(cur.playback_id, 'interrupted', cur.t0)
@@ -218,9 +247,17 @@ function enqueue(msg) {
     return
   }
   if (t !== 'tts_play' && t !== 'sfx_play') return
+  const payload = msg.payload || {}
+  if (window._bench) {
+    const playback_id = payload.playback_id || '-'
+    try { window._bench.log('audio_msg_received', t, playback_id, performance.now()) } catch (_) {}
+  }
+  msg.payload = { ...payload, __bench_received_at: performance.now() }
   if (t === 'tts_play' && !player.ttsEnabled) {
-    const payload = msg.payload || {}
     const playback_id = payload.playback_id || `pb_${Math.random().toString(36).slice(2, 10)}`
+    if (window._bench) {
+      try { window._bench.log('audio_play_skipped', t, playback_id, performance.now()) } catch (_) {}
+    }
     sendAck(playback_id, 'skipped', Date.now() / 1000)
     return
   }
