@@ -3,8 +3,11 @@ import { audio as audioApi } from '../../hooks/useAudioPlayer'
 
 // 안내 TTS가 끝난 뒤 다음 페이지로 넘어가기까지의 대기 시간.
 const TTS_END_DELAY_MS = 3000
-// TTS 시작/종료 신호가 끝내 오지 않을 때(합성 실패·TTS 비활성 등)의 안전 진행.
-const SAFETY_MS = 15000
+// TTS가 끝내 "시작"되지 않을 때(합성 실패·TTS 비활성·autoplay 차단)의 짧은 폴백.
+// TTS가 실제로 재생되면 이 타이머는 취소되고 TTS 종료 + 3초 경로로 진행한다.
+const NO_TTS_FALLBACK_MS = 4000
+// TTS가 시작은 했으나 종료 신호가 끝내 오지 않을 때의 절대 안전 진행.
+const SAFETY_MS = 9000
 
 function WerewolfBg() {
   return (
@@ -97,9 +100,13 @@ export default function RoleRegTransition({ player, send, onComplete }) {
 
     let delayTimer = null
     let unregisterEnd = null
+    let ttsStarted = false
     // 이 화면의 TTS가 실제로 재생을 시작한 뒤에야 종료를 기다린다.
     // (직전 화면의 TTS 종료 이벤트에 걸려 조기 진행되는 것을 방지)
     const unregisterStart = audioApi.onNextTtsStarted(() => {
+      ttsStarted = true
+      // TTS가 실제로 재생됐으므로 "TTS 미시작" 폴백은 취소하고 종료+3초 경로로 진행한다.
+      clearTimeout(noTtsFallback)
       unregisterEnd = audioApi.onNextTtsEnded(() => {
         delayTimer = setTimeout(advance, TTS_END_DELAY_MS)
       })
@@ -107,7 +114,12 @@ export default function RoleRegTransition({ player, send, onComplete }) {
 
     send?.('TTS_REQUEST', { text: `${player.playername}님 카드를 본인 앞에 엎어두고 다시 눈을 감아주세요.` })
 
-    // TTS 시작/종료 신호가 끝내 오지 않아도 진행되도록 하는 안전장치.
+    // TTS가 끝내 시작되지 않으면(합성 실패·TTS 비활성·autoplay 차단) 짧게 폴백 진행.
+    // TTS 콜백 체인이 발화하지 않는 환경에서도 전환이 멈추지 않도록 보장한다.
+    const noTtsFallback = setTimeout(() => {
+      if (!ttsStarted) advance()
+    }, NO_TTS_FALLBACK_MS)
+    // TTS가 시작은 했으나 종료 신호가 끝내 오지 않는 경우의 절대 안전장치.
     const safety = setTimeout(advance, SAFETY_MS)
     // 백엔드 전환 신호까지 유실된 극단적 상황의 로컬 폴백.
     const localFallback = setTimeout(onComplete, SAFETY_MS + 5000)
@@ -116,6 +128,7 @@ export default function RoleRegTransition({ player, send, onComplete }) {
       unregisterStart()
       unregisterEnd?.()
       if (delayTimer) clearTimeout(delayTimer)
+      clearTimeout(noTtsFallback)
       clearTimeout(safety)
       clearTimeout(localFallback)
     }

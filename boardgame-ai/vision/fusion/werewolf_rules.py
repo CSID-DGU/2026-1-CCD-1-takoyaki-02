@@ -64,6 +64,9 @@ _SEAT_POINT_PERP_DIST = 0.18
 
 # 역할 등록 단계 전용 파라미터
 _ROLE_REG_HAND_DIST = 0.12       # 손목-카드 중심 최대 거리 (현재 미사용).
+# 역할 등록 시 이 신뢰도 미만이면 "저신뢰"로 표시해 자동 확인을 막고 수정 화면에 머문다.
+# (차단이 아니라 플래그 — 0.5 미만이어도 게임 내 최선 후보를 제안한다)
+_ROLE_REG_CONFIDENT_CONF = 0.5
 
 # 역할 등록 전환(카드 내려놓기) 전용 파라미터
 _PLACED_DOWN_STABLE_FRAMES = 10  # 후면 카드가 이 프레임 이상 안정돼야 감지 (frame_skip=2 기준 ≈ 1초)
@@ -165,35 +168,62 @@ class WerewolfRules:
         perception: FramePerception,
         tracked: list[TrackedCard],
     ) -> tuple[str, dict, float] | None:
-        """역할 등록 단계: 다음 조건을 모두 만족하는 카드가 있으면 ROLE_DETECTED 발화.
+        """역할 등록 단계: 활성 플레이어가 카메라에 들어 보인 카드를 ROLE_DETECTED로 발화.
 
+        후보 조건(모두 충족):
           1. face_up 이고 역할 클래스명이 확인된 카드 (Card_Back 제외)
-          2. stable_frames >= 3 (frame_skip=2 기준 ≈ 0.3초 안정 인식)
+          2. 이 게임에 포함된 역할(ctx.params["in_game_roles"]) — 비어 있으면 제한 없음
+          3. stable_frames >= 2 (안정 인식)
 
-        active_player(현재 등록 중인 플레이어)당 1회만 발화. 역할명은 소문자로 정규화.
+        후보가 여럿이면 bbox 면적이 가장 큰 카드를 고른다. 카메라에 가깝게 들어 보인
+        카드가 화면에서 가장 크므로, 테이블에 놓인(작게 잡히는) 다른 카드가 오분류돼도
+        활성 플레이어가 보인 카드를 우선한다. 절대 크기 임계 대신 상대 크기를 쓰므로
+        카메라 거리에 강건하다.
+
+        신뢰도가 _ROLE_REG_CONFIDENT_CONF 미만이어도 차단하지 않고 게임 내 최선 후보를
+        제안하되, low_confidence=True 를 실어 보내 프론트가 자동 확인을 끄고 수정 화면에
+        머물게 한다. active_player당 1회만 발화. 역할명은 소문자로 정규화.
         """
         actor_id = ctx.active_player
         if not actor_id or actor_id in self._reported_roles:
             return None
+
+        in_game_roles = {
+            str(r).lower() for r in (ctx.params or {}).get("in_game_roles", [])
+        }
+
+        best_card: TrackedCard | None = None
+        best_area = 0.0
         for card in tracked:
             if not card.face_up:
                 continue
             if card.cls_name is None or card.cls_name == _BACK_CLASS:
                 continue
+            # 이 게임에 포함된 역할로만 후보 제한 (욜로 top-1이 게임 외 역할이면 제외).
+            if in_game_roles and card.cls_name.lower() not in in_game_roles:
+                continue
             if card.stable_frames < 2:
                 continue
-            # 다른 플레이어의 카드가 감지된 경우: card_player_id를 포함해 세션이 경고 처리
-            self._reported_roles.add(actor_id)
-            return (
-                ROLE_DETECTED,
-                {
-                    "actor_id": actor_id,
-                    "role": card.cls_name.lower(),
-                    "card_player_id": card.player_id,
-                },
-                0.9,
-            )
-        return None
+            area = card.bbox.w * card.bbox.h
+            if area > best_area:
+                best_area = area
+                best_card = card
+
+        if best_card is None:
+            return None
+
+        # card_player_id는 세션 경고용 메타. 등록은 활성 플레이어 기준으로 진행.
+        self._reported_roles.add(actor_id)
+        return (
+            ROLE_DETECTED,
+            {
+                "actor_id": actor_id,
+                "role": best_card.cls_name.lower(),
+                "card_player_id": best_card.player_id,
+                "low_confidence": best_card.bbox.conf < _ROLE_REG_CONFIDENT_CONF,
+            },
+            0.9,
+        )
 
     def _check_card_placed_down(
         self,

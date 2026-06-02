@@ -181,7 +181,7 @@ const ROLES = [
   },
 ]
 
-export default function RoleRegConfirm({ player, detectedRoleId, allRoles = [], onConfirm, wsState, isPracticeMode }) {
+export default function RoleRegConfirm({ player, detectedRoleId, lowConfidence = false, allRoles = [], onConfirm, send, wsState, isPracticeMode }) {
   const isInGame = (roleId) =>
     allRoles.length === 0 || allRoles.includes(roleId.replace(/_\d+$/, ''))
   const detected = detectedRoleId ? (ROLES.find(r => r.id === detectedRoleId) ?? ROLES[1]) : null
@@ -191,9 +191,27 @@ export default function RoleRegConfirm({ player, detectedRoleId, allRoles = [], 
   const selectedRef = useRef(selected)
   selectedRef.current = selected
 
-  // 7초 카운트다운 → 자동 확인 (역할이 선택된 경우에만)
+  // 확인 화면 진입 시 안내 TTS — 자동 확인으로 넘어가기 전, 태블릿에서 역할이 맞는지
+  // 확인하고 틀리면 수정하도록 유도한다(고신뢰 오인식이 그대로 확정되는 것을 줄이기 위함).
+  // ⚠️ 다른 플레이어가 눈 감고 듣고 있으므로 역할명은 절대 음성으로 말하지 않는다 —
+  // 역할 확인은 오직 화면으로만. TTS는 "화면을 보고 확인/수정하라"는 안내까지만.
   useEffect(() => {
-    if (!detected) return
+    if (!send) return
+    let text
+    if (detected) {
+      text = lowConfidence
+        ? '역할 인식이 확실하지 않습니다. 태블릿 화면에서 역할이 맞는지 확인하고, 틀리면 꼭 수정해 주세요.'
+        : '태블릿 화면에서 역할이 맞는지 확인하고, 틀리면 수정해 주세요.'
+    } else {
+      text = '역할을 인식하지 못했습니다. 태블릿 화면에서 본인 역할을 직접 선택해 주세요.'
+    }
+    send('TTS_REQUEST', { text })
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // 7초 카운트다운 → 자동 확인 (역할이 선택됐고, 신뢰도가 충분한 경우에만).
+  // 저신뢰 감지면 자동 확인을 끄고 사용자가 직접 확인/수정하도록 화면에 머문다.
+  useEffect(() => {
+    if (!detected || lowConfidence) return
     const interval = setInterval(() => {
       setCountdown(prev => {
         if (prev <= 1) {
@@ -233,7 +251,14 @@ export default function RoleRegConfirm({ player, detectedRoleId, allRoles = [], 
 
       {/* 상단: 플레이어 이름 + 버튼 */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0, position: 'relative', zIndex: 1 }}>
-        <div style={{ fontSize: 20, fontWeight: 700, color: '#F8F1DD' }}>플레이어 {player?.playername}님</div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <div style={{ fontSize: 20, fontWeight: 700, color: '#F8F1DD' }}>플레이어 {player?.playername}님</div>
+          {detected && lowConfidence && (
+            <div style={{ fontSize: 13, color: '#F0C040', fontWeight: 600 }}>
+              인식 신뢰도가 낮습니다 — 역할이 맞는지 확인하고 필요하면 수정해주세요.
+            </div>
+          )}
+        </div>
         <button
           onClick={() => { if (selected) onConfirm(selected) }}
           style={{
@@ -250,7 +275,7 @@ export default function RoleRegConfirm({ player, detectedRoleId, allRoles = [], 
             boxShadow: selected ? '0 4px 0 #8A6A2A' : 'none',
           }}
         >
-          확인 / 다음 → {countdown > 0 && detected && <span style={{ fontSize: 13, opacity: 0.65 }}>({countdown})</span>}
+          확인 / 다음 → {countdown > 0 && detected && !lowConfidence && <span style={{ fontSize: 13, opacity: 0.65 }}>({countdown})</span>}
         </button>
       </div>
 

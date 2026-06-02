@@ -20,13 +20,16 @@ from vision.werewolf.schemas import TrackedCard
 # ── 픽스처 헬퍼 ────────────────────────────────────────────────────────────────
 
 
-def _ctx_role_reg(player_id: str = "p_1") -> FusionContext:
+def _ctx_role_reg(
+    player_id: str = "p_1", in_game_roles: list[str] | None = None
+) -> FusionContext:
     return FusionContext(
         fsm_state="role_registration",
         game_type="werewolf",
         active_player=player_id,
         allowed_actors=[player_id],
         expected_events=[ROLE_DETECTED],
+        params={"in_game_roles": in_game_roles} if in_game_roles is not None else {},
     )
 
 
@@ -39,15 +42,17 @@ def _card(
     bbox_w: float = 0.15,
     bbox_h: float = 0.20,
     track_id: int = 1,
+    conf: float = 0.9,
+    player_id: str = "p_1",
 ) -> TrackedCard:
     x1 = bbox_cx - bbox_w / 2
     y1 = bbox_cy - bbox_h / 2
     return TrackedCard(
         track_id=track_id,
-        bbox=BBox(x1, y1, x1 + bbox_w, y1 + bbox_h, 0.9, cls_name),
+        bbox=BBox(x1, y1, x1 + bbox_w, y1 + bbox_h, conf, cls_name),
         cls_name=cls_name,
         face_up=face_up,
-        player_id="p_1",
+        player_id=player_id,
         card_index=0,
         stable_frames=stable_frames,
     )
@@ -88,7 +93,7 @@ class _MockTracker:
 
 
 def test_role_detected_happy_path() -> None:
-    """face_up + 충분한 bbox + 손 근접 + stable_frames >= 15 → ROLE_DETECTED 발화."""
+    """face_up + 신뢰도 >= 0.5 + stable_frames >= 2 → ROLE_DETECTED 발화."""
     tracker = _MockTracker([_card()])
     rules = WerewolfRules(tracker)
     ctx = _ctx_role_reg()
@@ -104,42 +109,31 @@ def test_role_detected_happy_path() -> None:
     assert conf > 0
 
 
-def test_role_detected_no_hand_blocks() -> None:
-    """손이 없으면 발화 안 됨."""
+def test_role_detected_no_hand_still_fires() -> None:
+    """손 근접 조건은 제거됨 — 손이 없어도 발화한다."""
     tracker = _MockTracker([_card()])
     rules = WerewolfRules(tracker)
     ctx = _ctx_role_reg()
     perception = _frame(hands=[])
 
-    assert rules._check_role_detected(ctx, perception, tracker.get_tracked_cards()) is None
+    assert rules._check_role_detected(ctx, perception, tracker.get_tracked_cards()) is not None
 
 
-def test_role_detected_hand_too_far_blocks() -> None:
-    """손목이 카드 중심에서 0.12 초과이면 발화 안 됨."""
+def test_role_detected_hand_far_still_fires() -> None:
+    """손 근접 조건은 제거됨 — 손목이 카드에서 멀어도 발화한다."""
     tracker = _MockTracker([_card(bbox_cx=0.45, bbox_cy=0.45)])
     rules = WerewolfRules(tracker)
     ctx = _ctx_role_reg()
-    far_hand = _hand_at(cx=0.90, cy=0.45)  # 거리 ≈ 0.45 >> 0.12
+    far_hand = _hand_at(cx=0.90, cy=0.45)
 
     perception = _frame(hands=[far_hand])
-    assert rules._check_role_detected(ctx, perception, tracker.get_tracked_cards()) is None
+    assert rules._check_role_detected(ctx, perception, tracker.get_tracked_cards()) is not None
 
 
-def test_role_detected_small_bbox_blocks() -> None:
-    """bbox 단변 < 0.06 이면 발화 안 됨 (테이블에 놓인 멀리 있는 카드)."""
-    small_card = _card(bbox_w=0.04, bbox_h=0.05)  # min(0.04, 0.05) = 0.04 < 0.06
+def test_role_detected_small_bbox_still_fires() -> None:
+    """절대 bbox 크기 조건은 제거됨 — 작게 잡혀도(카메라가 멀어도) 발화한다."""
+    small_card = _card(bbox_w=0.04, bbox_h=0.05)
     tracker = _MockTracker([small_card])
-    rules = WerewolfRules(tracker)
-    ctx = _ctx_role_reg()
-    perception = _frame(hands=[_hand_at()])
-
-    assert rules._check_role_detected(ctx, perception, tracker.get_tracked_cards()) is None
-
-
-def test_role_detected_bbox_exactly_at_threshold_passes() -> None:
-    """bbox 단변 == 0.06 이면 발화됨 (경계값)."""
-    threshold_card = _card(bbox_w=0.06, bbox_h=0.10)
-    tracker = _MockTracker([threshold_card])
     rules = WerewolfRules(tracker)
     ctx = _ctx_role_reg()
     perception = _frame(hands=[_hand_at()])
@@ -147,9 +141,88 @@ def test_role_detected_bbox_exactly_at_threshold_passes() -> None:
     assert rules._check_role_detected(ctx, perception, tracker.get_tracked_cards()) is not None
 
 
+def test_role_detected_high_conf_not_low_flag() -> None:
+    """신뢰도 >= 0.5 → 발화하며 low_confidence=False."""
+    tracker = _MockTracker([_card(conf=0.8)])
+    rules = WerewolfRules(tracker)
+    ctx = _ctx_role_reg()
+    perception = _frame(hands=[_hand_at()])
+
+    result = rules._check_role_detected(ctx, perception, tracker.get_tracked_cards())
+    assert result is not None
+    _etype, data, _conf = result
+    assert data["low_confidence"] is False
+
+
+def test_role_detected_low_conf_still_fires_with_flag() -> None:
+    """신뢰도 < 0.5 여도 차단하지 않고 low_confidence=True 로 발화한다."""
+    tracker = _MockTracker([_card(conf=0.4)])
+    rules = WerewolfRules(tracker)
+    ctx = _ctx_role_reg()
+    perception = _frame(hands=[_hand_at()])
+
+    result = rules._check_role_detected(ctx, perception, tracker.get_tracked_cards())
+    assert result is not None
+    _etype, data, _conf = result
+    assert data["role"] == "seer"
+    assert data["low_confidence"] is True
+
+
+def test_role_detected_off_list_role_excluded() -> None:
+    """욜로 top-1이 이 게임에 없는 역할이면 후보에서 제외 → 발화 안 됨."""
+    tracker = _MockTracker([_card(cls_name="Hunter")])
+    rules = WerewolfRules(tracker)
+    ctx = _ctx_role_reg(in_game_roles=["seer", "werewolf", "villager"])
+    perception = _frame(hands=[_hand_at()])
+
+    assert rules._check_role_detected(ctx, perception, tracker.get_tracked_cards()) is None
+
+
+def test_role_detected_in_game_role_picked_over_off_list() -> None:
+    """게임에 포함된 역할만 후보가 된다 — off-list 카드가 더 커도 in-game 카드를 고른다."""
+    off_list_large = _card(
+        cls_name="Hunter", bbox_w=0.30, bbox_h=0.40, track_id=2, player_id="p_2"
+    )
+    in_game_small = _card(
+        cls_name="Seer", bbox_w=0.10, bbox_h=0.14, track_id=1, player_id="p_1"
+    )
+    tracker = _MockTracker([off_list_large, in_game_small])
+    rules = WerewolfRules(tracker)
+    ctx = _ctx_role_reg(in_game_roles=["seer", "werewolf", "villager"])
+    perception = _frame(hands=[_hand_at()])
+
+    result = rules._check_role_detected(ctx, perception, tracker.get_tracked_cards())
+    assert result is not None
+    _etype, data, _conf = result
+    assert data["role"] == "seer"
+
+
+def test_role_detected_picks_largest_face_up_card() -> None:
+    """여러 face_up 후보 중 bbox 면적이 가장 큰 카드를 선택한다.
+
+    테이블에 놓인 작은 카드가 다른 역할로 오분류돼도, 카메라에 가깝게 들어 보인
+    큰 카드(활성 플레이어의 카드)를 우선한다.
+    """
+    small_misdetect = _card(
+        cls_name="Werewolf", bbox_w=0.05, bbox_h=0.07, track_id=2, player_id="p_2"
+    )
+    large_held = _card(
+        cls_name="Seer", bbox_w=0.20, bbox_h=0.28, track_id=1, player_id="p_1"
+    )
+    tracker = _MockTracker([small_misdetect, large_held])
+    rules = WerewolfRules(tracker)
+    ctx = _ctx_role_reg("p_1")
+    perception = _frame(hands=[_hand_at()])
+
+    result = rules._check_role_detected(ctx, perception, tracker.get_tracked_cards())
+    assert result is not None
+    _etype, data, _conf = result
+    assert data["role"] == "seer"  # 큰 카드 선택
+
+
 def test_role_detected_insufficient_stable_frames() -> None:
-    """stable_frames < 5 이면 발화 안 됨."""
-    tracker = _MockTracker([_card(stable_frames=4)])
+    """stable_frames < 2 이면 발화 안 됨."""
+    tracker = _MockTracker([_card(stable_frames=1)])
     rules = WerewolfRules(tracker)
     ctx = _ctx_role_reg()
     perception = _frame(hands=[_hand_at()])
@@ -157,9 +230,9 @@ def test_role_detected_insufficient_stable_frames() -> None:
     assert rules._check_role_detected(ctx, perception, tracker.get_tracked_cards()) is None
 
 
-def test_role_detected_exactly_15_stable_frames_passes() -> None:
-    """stable_frames == 15 이면 발화됨 (경계값)."""
-    tracker = _MockTracker([_card(stable_frames=15)])
+def test_role_detected_exactly_2_stable_frames_passes() -> None:
+    """stable_frames == 2 이면 발화됨 (경계값)."""
+    tracker = _MockTracker([_card(stable_frames=2)])
     rules = WerewolfRules(tracker)
     ctx = _ctx_role_reg()
     perception = _frame(hands=[_hand_at()])
