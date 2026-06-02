@@ -1,4 +1,10 @@
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
+import { audio as audioApi } from '../../hooks/useAudioPlayer'
+
+// 안내 TTS가 끝난 뒤 다음 페이지로 넘어가기까지의 대기 시간.
+const TTS_END_DELAY_MS = 3000
+// TTS 시작/종료 신호가 끝내 오지 않을 때(합성 실패·TTS 비활성 등)의 안전 진행.
+const SAFETY_MS = 15000
 
 function WerewolfBg() {
   return (
@@ -77,13 +83,42 @@ function WerewolfBg() {
 }
 
 export default function RoleRegTransition({ player, send, onComplete }) {
+  const advancedRef = useRef(false)
+
   useEffect(() => {
+    // 안내 TTS가 끝나고 3초 뒤 백엔드에 진행을 요청한다. 실제 다음 플레이어 전환은
+    // 백엔드가 player_id를 갱신하며 주도하고(WerewolfGame이 화면을 닫음), 여기서는 그 시점을
+    // TTS 종료 + 3초로 페이싱한다.
+    const advance = () => {
+      if (advancedRef.current) return
+      advancedRef.current = true
+      send?.('REG_TRANSITION_ADVANCE', {})
+    }
+
+    let delayTimer = null
+    let unregisterEnd = null
+    // 이 화면의 TTS가 실제로 재생을 시작한 뒤에야 종료를 기다린다.
+    // (직전 화면의 TTS 종료 이벤트에 걸려 조기 진행되는 것을 방지)
+    const unregisterStart = audioApi.onNextTtsStarted(() => {
+      unregisterEnd = audioApi.onNextTtsEnded(() => {
+        delayTimer = setTimeout(advance, TTS_END_DELAY_MS)
+      })
+    })
+
     send?.('TTS_REQUEST', { text: `${player.playername}님 카드를 본인 앞에 엎어두고 다시 눈을 감아주세요.` })
-    // 전환은 백엔드가 주도한다(카드 내려놓기 감지 또는 하드 데드라인 ~5초 → 다음 플레이어로
-    // player_id 갱신 → WerewolfGame이 화면을 닫음). 이 타이머는 백엔드 신호가 유실됐을 때만
-    // 쓰는 안전장치이므로 하드캡 바로 위(6초)로 둔다.
-    const t = setTimeout(onComplete, 6000)
-    return () => clearTimeout(t)
+
+    // TTS 시작/종료 신호가 끝내 오지 않아도 진행되도록 하는 안전장치.
+    const safety = setTimeout(advance, SAFETY_MS)
+    // 백엔드 전환 신호까지 유실된 극단적 상황의 로컬 폴백.
+    const localFallback = setTimeout(onComplete, SAFETY_MS + 5000)
+
+    return () => {
+      unregisterStart()
+      unregisterEnd?.()
+      if (delayTimer) clearTimeout(delayTimer)
+      clearTimeout(safety)
+      clearTimeout(localFallback)
+    }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
