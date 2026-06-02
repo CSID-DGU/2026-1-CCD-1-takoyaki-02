@@ -175,20 +175,24 @@ const s = {
     gap: 18,
     marginBottom: 24,
   },
-  die: (kept, interactive = false) => ({
+  die: (kept, interactive = false, editing = false) => ({
     width: 68,
     height: 68,
-    border: kept ? '1px solid var(--yacht)' : '1px solid var(--border)',
+    border: editing
+      ? '2px dashed var(--yacht)'
+      : kept ? '1px solid var(--yacht)' : '1px solid var(--border)',
     borderRadius: 'var(--radius)',
-    background: kept ? 'var(--yacht)' : 'var(--bg-surface)',
-    color: kept ? '#17110c' : 'var(--fg)',
+    background: editing
+      ? 'color-mix(in oklch, var(--yacht) 16%, var(--bg-surface))'
+      : kept ? 'var(--yacht)' : 'var(--bg-surface)',
+    color: editing ? 'var(--fg)' : kept ? '#17110c' : 'var(--fg)',
     fontSize: 28,
     fontWeight: 800,
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
     cursor: interactive ? 'pointer' : 'default',
-    boxShadow: kept ? '0 8px 18px color-mix(in oklch, var(--yacht) 25%, transparent)' : 'var(--shadow-sm)',
+    boxShadow: kept && !editing ? '0 8px 18px color-mix(in oklch, var(--yacht) 25%, transparent)' : 'var(--shadow-sm)',
   }),
   actionRow: { display: 'flex', gap: 12, flexWrap: 'wrap' },
   rollMessage: {
@@ -491,57 +495,17 @@ const s = {
     background: 'transparent',
     cursor: 'pointer',
   },
-  manualModal: {
-    width: 'min(520px, calc(100vw - 32px))',
-    background: 'var(--bg-surface)',
-    border: '1px solid var(--border-soft)',
-    borderRadius: 'var(--radius-xl)',
-    boxShadow: 'var(--shadow-lg)',
-    padding: 28,
-    boxSizing: 'border-box',
-  },
-  manualTitle: {
-    fontSize: 24,
-    fontWeight: 850,
-    marginBottom: 10,
-    color: 'var(--fg)',
-  },
-  manualText: {
+  editHint: {
+    width: 'min(520px, 100%)',
+    marginBottom: 24,
+    padding: '13px 16px',
+    border: '1px solid color-mix(in oklch, var(--yacht) 35%, transparent)',
+    borderRadius: 'var(--radius)',
+    background: 'color-mix(in oklch, var(--yacht) 12%, var(--bg-elev))',
     color: 'var(--fg-soft)',
     fontSize: 15,
-    fontWeight: 650,
+    fontWeight: 700,
     lineHeight: 1.45,
-    marginBottom: 20,
-  },
-  manualDiceRow: {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(5, minmax(0, 1fr))',
-    gap: 10,
-    marginBottom: 16,
-  },
-  manualSelect: {
-    width: '100%',
-    height: 58,
-    border: '1px solid var(--border)',
-    borderRadius: 'var(--radius)',
-    background: 'var(--bg-elev)',
-    color: 'var(--fg)',
-    fontSize: 24,
-    fontWeight: 800,
-    textAlign: 'center',
-    cursor: 'pointer',
-  },
-  manualError: {
-    minHeight: 22,
-    color: 'var(--danger)',
-    fontSize: 14,
-    fontWeight: 750,
-    marginBottom: 14,
-  },
-  manualActions: {
-    display: 'flex',
-    justifyContent: 'flex-end',
-    gap: 10,
   },
   endShell: {
     width: '100vw',
@@ -585,9 +549,8 @@ export default function YachtGame({ players, tutorialMode = false, onExit, onCha
   // /ws/yacht 채널로도 audio_ack가 흐르도록 등록 (FSM 멘트는 이 채널로 옴).
   useAudioPlayer(send)
   const [leaderboardOpen, setLeaderboardOpen] = useState(false)
-  const [manualDiceOpen, setManualDiceOpen] = useState(false)
-  const [manualDiceValues, setManualDiceValues] = useState(['', '', '', '', ''])
-  const [manualDiceError, setManualDiceError] = useState('')
+  const [diceEditMode, setDiceEditMode] = useState(false)
+  const [editDiceValues, setEditDiceValues] = useState([1, 1, 1, 1, 1])
   const [tutorialGuideStep, setTutorialGuideStep] = useState(0)
   const [tutorialScoreHelpSeen, setTutorialScoreHelpSeen] = useState(false)
   const [ttsEnabled, setTtsEnabled] = useState(true)
@@ -640,12 +603,18 @@ export default function YachtGame({ players, tutorialMode = false, onExit, onCha
 
   useEffect(() => {
     if (!state?.tutorial_mode) return
-    const resetKey = `${state.current_player_id || ''}:${state.phase || ''}`
+    // 튜토리얼 가이드 진행도는 "턴 단위"로만 초기화한다. 플레이어가 바뀌거나
+    // 새 턴이 시작될 때(첫 굴림 전)에만 리셋하고, 한 턴 안에서 다시 굴려
+    // phase가 오갈 때는 보존한다. (이전에는 phase가 바뀔 때마다 리셋돼,
+    // 다시 굴리면 안내가 처음으로 되돌아가고 족보 설명을 다시 강제했다.)
+    const isTurnStart =
+      state.phase === 'AWAITING_ROLL' && Number(state.roll_count || 0) === 0
+    const resetKey = `${state.current_player_id || ''}:${isTurnStart ? 'start' : 'mid'}`
     if (previousTutorialResetKeyRef.current === resetKey) return
     previousTutorialResetKeyRef.current = resetKey
     setTutorialGuideStep(0)
     setTutorialScoreHelpSeen(false)
-  }, [state?.current_player_id, state?.phase, state?.tutorial_mode])
+  }, [state?.current_player_id, state?.phase, state?.roll_count, state?.tutorial_mode])
 
   // 백엔드가 보낸 hello 메시지 수신을 확인한 뒤에 START_YACHT 송신.
   // accept 직후 onopen이 뜨더라도 receive loop가 아직 시작되기 전일 수 있으므로,
@@ -767,6 +736,11 @@ export default function YachtGame({ players, tutorialMode = false, onExit, onCha
     send('TTS_REQUEST', { text: tutorialText, interrupt_existing: true })
   }, [connected, send, state?.current_player_id, state?.phase, state?.roll_count, tutorialGuideStep, tutorialText])
 
+  // 수동 수정이 불가능한 상태로 바뀌면(턴 종료·새 굴림 등) 편집 모드를 자동 종료.
+  useEffect(() => {
+    if (diceEditMode && !canManualDiceInput) setDiceEditMode(false)
+  }, [diceEditMode, canManualDiceInput])
+
   const startFullGame = () => {
     send('START_YACHT', { players: normalizePlayers(players), tutorial_mode: false })
   }
@@ -802,29 +776,27 @@ export default function YachtGame({ players, tutorialMode = false, onExit, onCha
     audioApi.setTtsEnabled(next)
   }
 
-  const openManualDiceInput = () => {
+  const startDiceEdit = () => {
     const values =
       state?.dice_values?.length === 5
-        ? state.dice_values.map(value => String(value || 1))
-        : ['1', '1', '1', '1', '1']
-    setManualDiceValues(values)
-    setManualDiceError('')
-    setManualDiceOpen(true)
+        ? state.dice_values.map(value => Number(value) || 1)
+        : [1, 1, 1, 1, 1]
+    setEditDiceValues(values)
+    setDiceEditMode(true)
   }
 
-  const updateManualDie = (index, value) => {
-    setManualDiceValues(prev => prev.map((item, i) => (i === index ? value : item)))
-    setManualDiceError('')
+  // 주사위를 누를 때마다 눈을 1씩 증가 (6 다음 1로 순환).
+  const cycleEditDie = index => {
+    setEditDiceValues(prev => prev.map((value, i) => (i === index ? (value % 6) + 1 : value)))
   }
 
-  const submitManualDiceInput = () => {
-    const diceValues = manualDiceValues.map(value => Number(value))
-    if (diceValues.length !== 5 || diceValues.some(value => !Number.isInteger(value) || value < 1 || value > 6)) {
-      setManualDiceError('1부터 6까지의 값을 5개 모두 선택해주세요.')
-      return
-    }
-    send('MANUAL_DICE_INPUT', { dice_values: diceValues })
-    setManualDiceOpen(false)
+  const cancelDiceEdit = () => {
+    setDiceEditMode(false)
+  }
+
+  const applyDiceEdit = () => {
+    send('MANUAL_DICE_INPUT', { dice_values: editDiceValues.map(Number) })
+    setDiceEditMode(false)
   }
 
   const exitGame = () => {
@@ -995,26 +967,53 @@ export default function YachtGame({ players, tutorialMode = false, onExit, onCha
             </div>
 
             <div style={s.diceTray}>
-              {(state.dice_values?.length ? state.dice_values : ['-', '-', '-', '-', '-']).map((value, index) => (
-                <button
-                  key={index}
-                  style={s.die(Boolean(state.keep_mask?.[index]), canToggleKeep(state) && !tutorialScoreHelpRequired)}
-                  onClick={() => toggleKeep(index, state, send)}
-                  disabled={!canToggleKeep(state) || tutorialScoreHelpRequired}
-                  title="보관"
-                >
-                  {value}
-                </button>
-              ))}
+              {diceEditMode
+                ? editDiceValues.map((value, index) => (
+                    <button
+                      key={index}
+                      style={s.die(false, true, true)}
+                      onClick={() => cycleEditDie(index)}
+                      title="눌러서 눈 변경"
+                    >
+                      {value}
+                    </button>
+                  ))
+                : (state.dice_values?.length ? state.dice_values : ['-', '-', '-', '-', '-']).map((value, index) => (
+                    <button
+                      key={index}
+                      style={s.die(Boolean(state.keep_mask?.[index]), canToggleKeep(state) && !tutorialScoreHelpRequired)}
+                      onClick={() => toggleKeep(index, state, send)}
+                      disabled={!canToggleKeep(state) || tutorialScoreHelpRequired}
+                      title="보관"
+                    >
+                      {value}
+                    </button>
+                  ))}
             </div>
+
+            {diceEditMode && (
+              <div style={s.editHint}>
+                실제로 나온 눈과 다르면 주사위를 눌러 맞춰주세요. 누를 때마다 눈이 1씩
+                커지고 6 다음은 1로 돌아갑니다. 다 맞췄으면 수정 완료를 눌러주세요.
+              </div>
+            )}
 
             <div style={s.actionRow}>
               <button style={s.buttonSmall} onClick={() => setLeaderboardOpen(true)}>리더보드 보기</button>
-              {canManualDiceInput && (
-                <button style={s.buttonSmall} onClick={openManualDiceInput}>인식이 잘못되었나요?</button>
-              )}
-              {canManualRoll && (
-                <button style={{ ...s.buttonSmall, ...s.primaryButton }} onClick={() => send('ROLL_DICE')}>굴리기</button>
+              {diceEditMode ? (
+                <>
+                  <button style={s.buttonSmall} onClick={cancelDiceEdit}>취소</button>
+                  <button style={{ ...s.buttonSmall, ...s.primaryButton }} onClick={applyDiceEdit}>수정 완료</button>
+                </>
+              ) : (
+                <>
+                  {canManualDiceInput && (
+                    <button style={s.buttonSmall} onClick={startDiceEdit}>✏️ 주사위 눈 수정</button>
+                  )}
+                  {canManualRoll && (
+                    <button style={{ ...s.buttonSmall, ...s.primaryButton }} onClick={() => send('ROLL_DICE')}>굴리기</button>
+                  )}
+                </>
               )}
             </div>
 
@@ -1062,36 +1061,6 @@ export default function YachtGame({ players, tutorialMode = false, onExit, onCha
         </div>
       )}
 
-      {manualDiceOpen && (
-        <div style={s.modalShade}>
-          <div style={s.manualModal}>
-            <div style={s.manualTitle}>인식값 수정</div>
-            <div style={s.manualText}>
-              실제 주사위 눈과 다르게 표시됐다면 올바른 값을 선택해주세요.
-            </div>
-            <div style={s.manualDiceRow}>
-              {manualDiceValues.map((value, index) => (
-                <select
-                  key={index}
-                  style={s.manualSelect}
-                  value={value}
-                  onChange={event => updateManualDie(index, event.target.value)}
-                  aria-label={`주사위 ${index + 1}`}
-                >
-                  {[1, 2, 3, 4, 5, 6].map(face => (
-                    <option key={face} value={face}>{face}</option>
-                  ))}
-                </select>
-              ))}
-            </div>
-            <div style={s.manualError}>{manualDiceError}</div>
-            <div style={s.manualActions}>
-              <button style={s.buttonSmall} onClick={() => setManualDiceOpen(false)}>취소</button>
-              <button style={{ ...s.buttonSmall, ...s.primaryButton }} onClick={submitManualDiceInput}>적용</button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   )
 }
