@@ -118,7 +118,10 @@ class FusionEngine:
             candidates.extend(yacht_candidates)
 
         # ── 늑대인간 전용 ─────────────────────────────────────────────────────
-        if ctx.game_type == "werewolf" and self._werewolf_rules is not None:
+        # 튜토리얼은 game_type="werewolf_practice"로 들어온다. 등록·최종공개 단계는
+        # 세션이 보내는 FusionContext라 game_type이 practice로 찍히는데, 정확 일치만
+        # 보면 이 단계에서 카드 인식 규칙이 통째로 비활성화된다(인식 안 됨). prefix로 매칭.
+        if str(ctx.game_type or "").startswith("werewolf") and self._werewolf_rules is not None:
             candidates.extend(self._werewolf_rules.build_candidates(ctx, perception))
 
         # ── GESTURE_CONFIRMED (OK 사인, phase 무관하게 expected_events에 있을 때 활성) ──

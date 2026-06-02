@@ -95,6 +95,8 @@ class WerewolfSession:
         self._reg_transition_deadline: float = 0.0
         # 현재 플레이어 목록 (AgentContext 빌드용)
         self._players_snapshot: list[dict] = []
+        # player_id → playername. 룰/진행 에이전트 TTS가 ID 대신 이름을 말하도록 사용.
+        self._player_names: dict[str, str] = {}
         self._seat_positions_fn = seat_positions_fn
         # 현재 재생 중인 BGM 트랙 이름. phase 전환 시 같은 트랙 중복 트리거 방지.
         self._current_bgm: str | None = None
@@ -189,6 +191,7 @@ class WerewolfSession:
             self._pending_game_data = None
             self._pending_role_reg = None
             self._role_reveal = None
+            self._player_names = {}
             self._pending_next_reg_player = None
             if self._reg_transition_task and not self._reg_transition_task.done():
                 self._reg_transition_task.cancel()
@@ -237,6 +240,12 @@ class WerewolfSession:
             return
         normalized_roles = [_normalize_role(r) for r in selected_roles]
         self._practice_mode = bool(payload.get("practice_mode", False))
+        # 프론트가 함께 보낸 이름 매핑 저장 (룰/진행 에이전트 TTS용). 누락 시 빈 dict.
+        self._player_names = {
+            str(p["player_id"]): str(p.get("playername") or p["player_id"])
+            for p in payload.get("players", [])
+            if p.get("player_id")
+        }
         self._pending_role_reg = {
             "selected_roles": normalized_roles,
             "player_order": player_order,
@@ -293,7 +302,11 @@ class WerewolfSession:
                     working.remove(role)
             center_cards = working[:3]
             players_data = [
-                {"player_id": pid, "role": confirmed[pid]}
+                {
+                    "player_id": pid,
+                    "role": confirmed[pid],
+                    "playername": self._player_names.get(pid, pid),
+                }
                 for pid in player_order
             ]
             self._role_reg = None
