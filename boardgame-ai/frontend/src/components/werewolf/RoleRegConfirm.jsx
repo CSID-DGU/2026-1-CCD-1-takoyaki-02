@@ -190,6 +190,11 @@ export default function RoleRegConfirm({ player, detectedRoleId, lowConfidence =
   const [showExplain, setShowExplain] = useState(false)
   const selectedRef = useRef(selected)
   selectedRef.current = selected
+  // gesture_confirmed는 한 번 설정되면 다음 태블릿 브로드캐스트까지 값이 유지된다(sticky).
+  // 마운트 시점에 이미 남아 있던 이전 단계(카드 세팅·이전 플레이어)의 값이 현재 플레이어 ID와
+  // 우연히 일치하면 확인 화면이 즉시 자동 확정되는 버그가 있어, 진입 시점 값을 기준선으로 잡고
+  // "새로" 현재 플레이어로 바뀔 때만 확정한다.
+  const prevGestureRef = useRef(wsState?.gesture_confirmed ?? null)
 
   // 확인 화면 진입 시 안내 TTS — 자동 확인으로 넘어가기 전, 태블릿에서 역할이 맞는지
   // 확인하고 틀리면 수정하도록 유도한다(고신뢰 오인식이 그대로 확정되는 것을 줄이기 위함).
@@ -225,11 +230,14 @@ export default function RoleRegConfirm({ player, detectedRoleId, lowConfidence =
     return () => clearInterval(interval)
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // OK 사인 감지 → 즉시 확인
+  // OK 사인 감지 → 즉시 확인. 마운트 시 남아 있던 stale 값으로 오확정되지 않도록,
+  // gesture_confirmed가 "새로" 현재 플레이어 ID로 바뀌는 전이에서만 확정한다.
   useEffect(() => {
-    if (wsState?.gesture_confirmed === player?.player_id) {
+    const cur = wsState?.gesture_confirmed ?? null
+    if (cur && cur !== prevGestureRef.current && cur === player?.player_id) {
       onConfirm(selectedRef.current)
     }
+    prevGestureRef.current = cur
   }, [wsState?.gesture_confirmed]) // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
