@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🎲 BoardMaster AI
+# 🎲 BoardBot
 
 ### 오버헤드 카메라 기반 실시간 객체인식과 멀티에이전트를 활용한 보드게임 진행 시스템
 
