@@ -9,6 +9,13 @@
 # Benchmark 결과
 boardgame-ai/benchmarks/results/
 
+# 데모 생성물 (register.py가 생성·갱신하는 좌석 등록 데이터)
+boardgame-ai/demos/players.json
+
+# Python
+__pycache__/
+*.pyc
+
 # OS
 .DS_Store
 Thumbs.db

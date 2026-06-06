@@ -168,21 +168,33 @@ class BenchmarkSession:
         # 채널별 응답 시간
         cl = results.get("channel_latency", {})
         if isinstance(cl, dict) and "by_channel" in cl:
-            lines.append("## ① 음성 채널별 응답 시간 (enqueue → broadcast)")
+            lines.append("## ① 음성 채널별 응답 시간")
             lines.append("")
-            lines.append("> 큐 직렬화 대기 포함 — 앞선 오디오 재생이 끝나야 다음 항목이")
-            lines.append("> broadcast되므로 cached 항목도 큐가 밀리면 latency가 커진다.")
-            lines.append("> 순수 합성/조회 비용은 synth_ms(JSON) 참고.")
+            lines.append("> 시작지연 = frontend 수신→재생 시작 (발화 1건당 체감 지연).")
+            lines.append("> 큐대기 = 앞 음성이 끝나길 기다린 누적 시간 (직렬 재생이라 큼).")
+            lines.append("> 합성 = 순수 TTS 합성 비용 (캐시 hit은 0).")
             lines.append("")
-            lines.append("| 채널 | count | p50 (ms) | p95 (ms) | p99 (ms) |")
-            lines.append("|---|---:|---:|---:|---:|")
+            lines.append(
+                "| 채널 | count | 시작지연 p50 | 시작지연 p95 | "
+                "큐대기 p50 | 큐대기 p95 | 합성 p50 |"
+            )
+            lines.append("|---|---:|---:|---:|---:|---:|---:|")
+
+            def _cell(summary: dict, key: str) -> str:
+                if isinstance(summary, dict) and summary.get("count"):
+                    return f"{summary[key]:.1f}"
+                return "-"
+
             for ch, data in cl["by_channel"].items():
-                s = data.get("enqueue_to_broadcast_ms", {})
-                if s.get("count"):
-                    lines.append(
-                        f"| {ch} | {data['count']} | "
-                        f"{s['p50']:.1f} | {s['p95']:.1f} | {s['p99']:.1f} |"
-                    )
+                start = data.get("frontend_receive_to_play_start_ms", {})
+                queue = data.get("queue_wait_ms", {})
+                synth = data.get("synth_ms", {})
+                lines.append(
+                    f"| {ch} | {data['count']} | "
+                    f"{_cell(start, 'p50')} | {_cell(start, 'p95')} | "
+                    f"{_cell(queue, 'p50')} | {_cell(queue, 'p95')} | "
+                    f"{_cell(synth, 'p50')} |"
+                )
             lines.append("")
 
         # UI 화면 갱신
