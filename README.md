@@ -47,14 +47,10 @@
   (GitHub 웹 편집 화면에 드래그&드롭해도 자동 업로드된다. 폭은 <img ... width="600"> 으로 조절.)
 -->
 <div align="center">
-
-<!-- ![시스템 구성 — 오버헤드 카메라 + 테이블 + 태블릿](docs/images/setup.jpeg) -->
-<!-- ![로비 · 좌석 등록 화면](docs/images/lobby.jpeg) -->
-<!-- ![요트다이스 진행 화면](docs/images/yacht.jpeg) -->
-<!-- ![한밤의 늑대인간 진행 화면](docs/images/werewolf.jpeg) -->
-
-_이 영역에 시스템 사진과 화면 캡처를 삽입한다._
-
+[시스템 구성 — 오버헤드 카메라 + 테이블 + 태블릿](docs/images/setup.jpeg)
+[로비 · 좌석 등록 화면](docs/images/lobby.png)
+[요트다이스 진행 화면](docs/images/yacht.png)
+[한밤의 늑대인간 진행 화면](docs/images/werewolf.png)
 </div>
 
 ---
